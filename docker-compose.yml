@@ -1,4 +1,4 @@
-version: "3.9"
+# REMOVE version line (optional warning fix)
 
 services:
   db:
@@ -18,8 +18,7 @@ services:
       retries: 10
 
   backend:
-    build:
-      context: ./backend
+    build: ./backend
     restart: unless-stopped
     env_file: .env
     environment:
@@ -39,16 +38,15 @@ services:
              python manage.py runserver 0.0.0.0:8000"
 
   frontend:
-    build:
-      context: ./frontend
+    build: ./frontend
     restart: unless-stopped
     volumes:
       - ./frontend:/app
       - /app/node_modules
     ports:
-      - "1607:5173"
+      - "3001:5173"
     environment:
-      - VITE_API_URL=http://backend:8000
+      - VITE_API_URL=http://123.231.60.24:1606
     depends_on:
       - backend
 
