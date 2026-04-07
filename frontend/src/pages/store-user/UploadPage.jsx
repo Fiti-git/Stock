@@ -5,11 +5,15 @@ import Alert from "../../components/Alert";
 import { useAuth } from "../../contexts/AuthContext";
 import { validateUpload, confirmUpload } from "../../api/uploads";
 
-const STEPS = { IDLE: "idle", VALIDATING: "validating", PREVIEW: "preview", UPLOADING: "uploading", DONE: "done" };
+const STEPS = { DATE_SELECT: "date_select", IDLE: "idle", VALIDATING: "validating", PREVIEW: "preview", UPLOADING: "uploading", DONE: "done" };
 
 export default function UploadPage() {
   const { user } = useAuth();
-  const [step, setStep] = useState(STEPS.IDLE);
+  const now = new Date();
+  const todayISO = now.toLocaleDateString("en-CA"); // YYYY-MM-DD
+
+  const [step, setStep] = useState(STEPS.DATE_SELECT);
+  const [uploadDate, setUploadDate] = useState(todayISO);
   const [file, setFile] = useState(null);
   const [validation, setValidation] = useState(null);
   const [result, setResult] = useState(null);
@@ -17,14 +21,12 @@ export default function UploadPage() {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef();
 
-  const now = new Date();
   const today = now.toLocaleDateString("en-GB", {
     day: "2-digit", month: "long", year: "numeric",
   });
-  const todayISO = now.toLocaleDateString("en-CA"); // YYYY-MM-DD fallback
   const uploadTime = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
-  const processFile = useCallback(async (f) => {
+  const processFile = useCallback(async (f, date) => {
     if (!f) return;
     const ext = f.name.split(".").pop().toLowerCase();
     if (!["xls", "xlsx"].includes(ext)) {
@@ -35,7 +37,7 @@ export default function UploadPage() {
     setError("");
     setStep(STEPS.VALIDATING);
     try {
-      const { data } = await validateUpload(f);
+      const { data } = await validateUpload(f, date);
       setValidation(data);
       setStep(STEPS.PREVIEW);
     } catch (err) {
@@ -47,14 +49,14 @@ export default function UploadPage() {
   const handleDrop = useCallback((e) => {
     e.preventDefault();
     setDragging(false);
-    processFile(e.dataTransfer.files[0]);
-  }, [processFile]);
+    processFile(e.dataTransfer.files[0], uploadDate);
+  }, [processFile, uploadDate]);
 
   const handleConfirm = async (overwrite = false) => {
     setStep(STEPS.UPLOADING);
     setError("");
     try {
-      const { data } = await confirmUpload(file, overwrite);
+      const { data } = await confirmUpload(file, overwrite, uploadDate);
       setResult(data);
       setStep(STEPS.DONE);
     } catch (err) {
@@ -69,7 +71,8 @@ export default function UploadPage() {
   };
 
   const reset = () => {
-    setStep(STEPS.IDLE);
+    setStep(STEPS.DATE_SELECT);
+    setUploadDate(todayISO);
     setFile(null);
     setValidation(null);
     setResult(null);
@@ -95,6 +98,41 @@ export default function UploadPage() {
           </p>
         </div>
 
+        {/* Step: DATE_SELECT */}
+        {step === STEPS.DATE_SELECT && (
+          <div className="bg-white border rounded-xl p-6 shadow-sm space-y-5">
+            <div>
+              <h2 className="font-semibold text-gray-900 mb-1">Select Upload Date</h2>
+              <p className="text-sm text-gray-500">Choose the date this stock data is for before selecting your file.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Stock date</label>
+              <input
+                type="date"
+                value={uploadDate}
+                max={todayISO}
+                onChange={(e) => setUploadDate(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+              />
+            </div>
+            {uploadDate !== todayISO && (
+              <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+                <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+                <span>Past-date uploads require <strong>admin approval</strong> before taking effect.</span>
+              </div>
+            )}
+            <button
+              onClick={() => setStep(STEPS.IDLE)}
+              disabled={!uploadDate}
+              className="w-full py-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-semibold rounded-lg text-sm transition-colors"
+            >
+              Continue →
+            </button>
+          </div>
+        )}
+
         {/* Step: IDLE or VALIDATING — drop zone */}
         {(step === STEPS.IDLE || step === STEPS.VALIDATING) && (
           <div
@@ -113,7 +151,7 @@ export default function UploadPage() {
               type="file"
               accept=".xls,.xlsx"
               className="hidden"
-              onChange={(e) => processFile(e.target.files[0])}
+              onChange={(e) => processFile(e.target.files[0], uploadDate)}
             />
             {step === STEPS.VALIDATING ? (
               <div className="text-brand-600 text-sm font-medium animate-pulse">
@@ -129,6 +167,17 @@ export default function UploadPage() {
                   Drop your XLS file here or <span className="text-brand-600">browse</span>
                 </p>
                 <p className="text-xs text-gray-400 mt-1">.xls and .xlsx accepted</p>
+                <p className="text-xs text-gray-500 mt-3">
+                  Stock date: <span className="font-semibold text-gray-700">{uploadDate}</span>
+                  {" · "}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setStep(STEPS.DATE_SELECT); }}
+                    className="text-brand-600 hover:underline"
+                  >
+                    Change
+                  </button>
+                </p>
               </>
             )}
           </div>
@@ -192,13 +241,8 @@ export default function UploadPage() {
 
               <p className="text-xs text-gray-400 mt-3">
                 File: <span className="font-mono">{file?.name}</span>
-                &nbsp;·&nbsp;XLS date:{" "}
-                <span className="font-semibold text-gray-600">
-                  {validation.preview?.snapshot_date ?? todayISO}
-                  {!validation.preview?.snapshot_date && (
-                    <span className="ml-1 text-amber-500">(today — not found in file)</span>
-                  )}
-                </span>
+                &nbsp;·&nbsp;Stock date:{" "}
+                <span className="font-semibold text-gray-600">{uploadDate}</span>
                 &nbsp;·&nbsp;Upload time:{" "}
                 <span className="font-semibold text-gray-600">{uploadTime}</span>
               </p>

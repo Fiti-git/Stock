@@ -33,3 +33,4 @@ class SubmitCountSerializer(serializers.Serializer):
     item_id = serializers.IntegerField()
     actual_qty = serializers.DecimalField(max_digits=12, decimal_places=3)
     location_tag = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    is_month_end = serializers.BooleanField(required=False, default=False)

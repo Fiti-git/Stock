@@ -1,17 +1,19 @@
 import api from "./client";
 
-export const validateUpload = (file) => {
+export const validateUpload = (file, uploadDate) => {
   const form = new FormData();
   form.append("file", file);
+  if (uploadDate) form.append("upload_date", uploadDate);
   return api.post("/uploads/validate/", form, {
     headers: { "Content-Type": "multipart/form-data" },
   });
 };
 
-export const confirmUpload = (file, overwrite = false) => {
+export const confirmUpload = (file, overwrite = false, uploadDate) => {
   const form = new FormData();
   form.append("file", file);
   form.append("overwrite", String(overwrite));
+  if (uploadDate) form.append("upload_date", uploadDate);
   return api.post("/uploads/confirm/", form, {
     headers: { "Content-Type": "multipart/form-data" },
   });
@@ -27,3 +29,8 @@ export const getPendingApprovals = () => api.get("/uploads/pending-approvals/");
 export const approveUpload = (logId) => api.post(`/uploads/${logId}/approve/`);
 
 export const rejectUpload = (logId) => api.post(`/uploads/${logId}/reject/`);
+
+export const getAllOutletsOverview = (date) =>
+  api.get("/uploads/overview/", date ? { params: { date } } : undefined);
+
+export const getAuditLog = (params) => api.get("/uploads/audit-log/", { params });

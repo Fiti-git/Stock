@@ -15,7 +15,7 @@ from apps.items.models import Item, PendingItem
 from utils.xls_parser import validate_file, parse_xls
 
 from .models import PosSnapshot, UploadLog, AuditLog
-from .serializers import UploadLogSerializer
+from .serializers import UploadLogSerializer, AuditLogSerializer
 
 
 # ---------------------------------------------------------------------------
@@ -42,13 +42,22 @@ def validate_upload(request):
     result = validate_file(file, file.name, outlet.outlet_name)
     parsed = result.pop("_parsed", None)
 
-    snapshot_date = None
-    if result["preview"].get("snapshot_date"):
-        from datetime import datetime
+    # Allow caller to override the date extracted from the XLS
+    raw_date = request.data.get("upload_date")
+    if raw_date:
         try:
-            snapshot_date = datetime.strptime(result["preview"]["snapshot_date"], "%Y-%m-%d").date()
+            snapshot_date = date.fromisoformat(raw_date)
+            result["preview"]["snapshot_date"] = str(snapshot_date)
         except ValueError:
-            pass
+            return Response({"detail": "Invalid upload_date format. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        snapshot_date = None
+        if result["preview"].get("snapshot_date"):
+            from datetime import datetime
+            try:
+                snapshot_date = datetime.strptime(result["preview"]["snapshot_date"], "%Y-%m-%d").date()
+            except ValueError:
+                pass
 
     needs_approval = snapshot_date is not None and snapshot_date != today
 
@@ -125,7 +134,15 @@ def confirm_upload(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    snapshot_date = parsed.snapshot_date
+    # Allow caller to override the date extracted from the XLS
+    raw_date = request.data.get("upload_date")
+    if raw_date:
+        try:
+            snapshot_date = date.fromisoformat(raw_date)
+        except ValueError:
+            return Response({"detail": "Invalid upload_date format. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        snapshot_date = parsed.snapshot_date
 
     # Handle duplicate
     existing_log = UploadLog.objects.filter(
@@ -353,6 +370,109 @@ def upload_history(request):
             missing.append(str(d))
 
     return Response({"logs": serializer.data, "missing_dates": missing})
+
+
+# ---------------------------------------------------------------------------
+# All-outlets upload overview (manager/admin)
+# ---------------------------------------------------------------------------
+@api_view(["GET"])
+@permission_classes([IsManager])
+def all_outlets_overview(request):
+    """
+    Returns today's (or a given date's) upload status for every outlet.
+    Query param: ?date=YYYY-MM-DD (default: today)
+    """
+    from datetime import datetime
+    raw_date = request.query_params.get("date", "")
+    try:
+        target_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
+    except ValueError:
+        target_date = date.today()
+
+    outlets = Outlet.objects.all().order_by("outlet_name")
+
+    # Fetch all successful upload logs for that date in one query
+    logs_by_outlet = {
+        log.outlet_id: log
+        for log in UploadLog.objects.filter(
+            snapshot_date=target_date,
+            status=UploadLog.Status.SUCCESS,
+        ).select_related("uploaded_by").order_by("-uploaded_at")
+    }
+
+    results = []
+    for outlet in outlets:
+        log = logs_by_outlet.get(outlet.id)
+        results.append({
+            "outlet_id": outlet.id,
+            "outlet_name": outlet.outlet_name,
+            "short_code": outlet.short_code,
+            "uploaded": log is not None,
+            "uploaded_at": log.uploaded_at.isoformat() if log else None,
+            "uploaded_by": log.uploaded_by.username if log else None,
+            "total_rows": log.total_rows if log else None,
+            "approval_status": log.approval_status if log else None,
+        })
+
+    uploaded_count = sum(1 for r in results if r["uploaded"])
+    return Response({
+        "date": str(target_date),
+        "total_outlets": len(results),
+        "uploaded_count": uploaded_count,
+        "missing_count": len(results) - uploaded_count,
+        "outlets": results,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Audit log (admin only)
+# ---------------------------------------------------------------------------
+@api_view(["GET"])
+@permission_classes([IsAdmin])
+def audit_log_list(request):
+    """
+    Paginated audit log. Filters: ?entity_type=, ?user=, ?from_date=, ?to_date=
+    """
+    from datetime import datetime
+    qs = AuditLog.objects.select_related("user").order_by("-created_at")
+
+    entity_type = request.query_params.get("entity_type")
+    if entity_type:
+        qs = qs.filter(entity_type=entity_type)
+
+    username = request.query_params.get("user")
+    if username:
+        qs = qs.filter(user__username__icontains=username)
+
+    try:
+        from_date = datetime.strptime(request.query_params.get("from_date", ""), "%Y-%m-%d").date()
+        qs = qs.filter(created_at__date__gte=from_date)
+    except ValueError:
+        pass
+
+    try:
+        to_date = datetime.strptime(request.query_params.get("to_date", ""), "%Y-%m-%d").date()
+        qs = qs.filter(created_at__date__lte=to_date)
+    except ValueError:
+        pass
+
+    # Simple manual pagination
+    try:
+        page = max(1, int(request.query_params.get("page", 1)))
+    except (ValueError, TypeError):
+        page = 1
+    page_size = 50
+    offset = (page - 1) * page_size
+    total = qs.count()
+    records = qs[offset: offset + page_size]
+
+    return Response({
+        "count": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": max(1, (total + page_size - 1) // page_size),
+        "results": AuditLogSerializer(records, many=True).data,
+    })
 
 
 # ---------------------------------------------------------------------------

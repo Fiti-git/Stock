@@ -15,6 +15,7 @@ export default function StockCountPage() {
   const [saving, setSaving] = useState(null); // item_id currently being saved
   const [inputs, setInputs] = useState({}); // { [item_id]: { qty: "", location_tag: "" } }
   const [recount, setRecount] = useState({}); // { [item_id]: true }
+  const [isMonthEnd, setIsMonthEnd] = useState(false);
   const inputRefs = useRef({});
 
   const today = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD
@@ -43,7 +44,7 @@ export default function StockCountPage() {
 
       setSaving(itemId);
       try {
-        const res = await submitCount(itemId, Number(qty), input.location_tag || "");
+        const res = await submitCount(itemId, Number(qty), input.location_tag || "", isMonthEnd);
         const count = res.data;
         setItems((prev) =>
           prev.map((item) =>
@@ -146,6 +147,20 @@ export default function StockCountPage() {
               </div>
             </div>
           )}
+
+          {/* Month-end toggle */}
+          <label className="flex items-center gap-2 mt-2 cursor-pointer select-none w-fit">
+            <input
+              type="checkbox"
+              checked={isMonthEnd}
+              onChange={(e) => setIsMonthEnd(e.target.checked)}
+              className="w-4 h-4 accent-brand-700"
+            />
+            <span className="text-xs text-gray-600 font-medium">
+              Month-End Count
+              {isMonthEnd && <span className="ml-1 text-brand-700">(active)</span>}
+            </span>
+          </label>
         </div>
 
         {error && (

@@ -9,9 +9,12 @@ import ItemDetailPage from "./pages/store-user/ItemDetailPage";
 import DashboardPage from "./pages/manager/DashboardPage";
 import PendingItemsPage from "./pages/manager/PendingItemsPage";
 import ShrinkagePage from "./pages/manager/ShrinkagePage";
+import CatalogPage from "./pages/manager/CatalogPage";
 import UploadApprovalsPage from "./pages/admin/UploadApprovalsPage";
 import OutletsPage from "./pages/admin/OutletsPage";
 import UsersPage from "./pages/admin/UsersPage";
+import OutletsOverviewPage from "./pages/admin/OutletsOverviewPage";
+import AuditLogPage from "./pages/admin/AuditLogPage";
 
 function RoleRoute({ children, allowedRoles }) {
   const { user, loading } = useAuth();
@@ -76,6 +79,16 @@ export default function App() {
             }
           />
 
+          {/* Overview — manager + admin */}
+          <Route
+            path="/overview"
+            element={
+              <RoleRoute allowedRoles={["manager", "admin"]}>
+                <OutletsOverviewPage />
+              </RoleRoute>
+            }
+          />
+
           {/* Admin routes */}
           <Route
             path="/admin/upload-approvals"
@@ -98,6 +111,14 @@ export default function App() {
             element={
               <RoleRoute allowedRoles={["admin"]}>
                 <UsersPage />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/admin/audit-log"
+            element={
+              <RoleRoute allowedRoles={["admin"]}>
+                <AuditLogPage />
               </RoleRoute>
             }
           />
@@ -125,6 +146,15 @@ export default function App() {
             element={
               <RoleRoute allowedRoles={["manager", "admin"]}>
                 <ShrinkagePage />
+              </RoleRoute>
+            }
+          />
+          {/* Product catalog */}
+          <Route
+            path="/catalog"
+            element={
+              <RoleRoute allowedRoles={["manager", "admin"]}>
+                <CatalogPage />
               </RoleRoute>
             }
           />

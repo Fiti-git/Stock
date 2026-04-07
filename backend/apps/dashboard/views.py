@@ -291,5 +291,6 @@ def submit_count(request):
         actual_qty=serializer.validated_data["actual_qty"],
         location_tag=serializer.validated_data.get("location_tag", ""),
         counted_by=request.user,
+        is_month_end=serializer.validated_data.get("is_month_end", False),
     )
     return Response(StockCountSerializer(count).data, status=201)
