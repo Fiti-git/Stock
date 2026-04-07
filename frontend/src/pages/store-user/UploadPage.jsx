@@ -191,8 +191,24 @@ export default function UploadPage() {
             <div className="bg-white border rounded-xl p-5 shadow-sm">
               <h2 className="font-semibold text-gray-900 mb-4">File Preview</h2>
 
-              {/* Validation errors */}
-              {!validation.valid && (
+              {/* Outlet mismatch — hard stop */}
+              {validation.outlet_mismatch && (
+                <div className="flex items-start gap-3 bg-red-50 border-2 border-red-400 rounded-lg p-4 mb-3">
+                  <svg className="w-5 h-5 mt-0.5 shrink-0 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                  </svg>
+                  <div>
+                    <p className="font-semibold text-red-700 text-sm">Wrong outlet file — upload blocked</p>
+                    <p className="text-red-600 text-sm mt-0.5">
+                      This file is for <strong>{validation.outlet_mismatch.found}</strong> but you are uploading to <strong>{validation.outlet_mismatch.expected}</strong>.
+                    </p>
+                    <p className="text-red-500 text-xs mt-1">Please select the correct file for <strong>{validation.outlet_mismatch.expected}</strong>.</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Other validation errors */}
+              {!validation.valid && !validation.outlet_mismatch && (
                 <Alert type="error">
                   <ul className="space-y-1">
                     {validation.errors.map((e, i) => <li key={i}>{e}</li>)}

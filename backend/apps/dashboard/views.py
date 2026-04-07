@@ -165,9 +165,12 @@ def alerts(request):
 @permission_classes([CanCount])
 def count_items(request):
     """
-    Items for the user's outlet from the latest POS snapshot,
-    annotated with today's count if present. Uncounted items first.
-    Admin may pass ?outlet=<id> to specify an outlet.
+    Items for the user's outlet from the POS snapshot for the requested date,
+    annotated with that date's count if already entered. Uncounted items first.
+
+    Query params:
+      outlet     — outlet id (admin override)
+      count_date — YYYY-MM-DD (default: today)
     """
     outlet_id = request.query_params.get("outlet")
     if outlet_id:
@@ -180,30 +183,37 @@ def count_items(request):
         if not outlet:
             return Response({"detail": "No outlet assigned."}, status=400)
 
-    latest_snapshot = (
-        PosSnapshot.objects.filter(outlet=outlet)
-        .order_by("-snapshot_date")
-        .values_list("snapshot_date", flat=True)
-        .first()
-    )
-
-    if not latest_snapshot:
-        return Response([])
+    # Resolve the count date (defaults to today)
+    raw_date = request.query_params.get("count_date", "")
+    try:
+        from datetime import datetime
+        count_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
+    except ValueError:
+        count_date = date.today()
 
     snapshots = (
-        PosSnapshot.objects.filter(outlet=outlet, snapshot_date=latest_snapshot)
+        PosSnapshot.objects.filter(outlet=outlet, snapshot_date=count_date)
         .select_related("item")
     )
 
-    today = date.today()
-    today_counts = {
+    if not snapshots.exists():
+        return Response(
+            {
+                "detail": f"No POS upload found for {count_date}. Ask the manager to upload the XLS for this date first.",
+                "no_upload": True,
+                "count_date": str(count_date),
+            },
+            status=200,
+        )
+
+    date_counts = {
         sc.item_id: sc
-        for sc in StockCount.objects.filter(outlet=outlet, count_date=today).select_related("counted_by")
+        for sc in StockCount.objects.filter(outlet=outlet, count_date=count_date).select_related("counted_by")
     }
 
     results = []
     for snap in snapshots:
-        sc = today_counts.get(snap.item_id)
+        sc = date_counts.get(snap.item_id)
         results.append(
             {
                 "item_id": snap.item.id,
@@ -212,7 +222,7 @@ def count_items(request):
                 "category": snap.item.category,
                 "barcode": snap.item.barcode,
                 "pos_qty": float(snap.pos_quantity),
-                "snapshot_date": str(latest_snapshot),
+                "snapshot_date": str(count_date),
                 "today_count_id": sc.id if sc else None,
                 "today_actual_qty": float(sc.actual_qty) if sc else None,
                 "today_location_tag": sc.location_tag if sc else "",
@@ -284,10 +294,18 @@ def submit_count(request):
         return Response({"detail": "Item not found."}, status=404)
 
     outlet = request.user.outlet
+
+    raw_date = request.data.get("count_date", "")
+    try:
+        from datetime import datetime
+        count_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        count_date = date.today()
+
     count = StockCount.objects.create(
         outlet=outlet,
         item=item,
-        count_date=date.today(),
+        count_date=count_date,
         actual_qty=serializer.validated_data["actual_qty"],
         location_tag=serializer.validated_data.get("location_tag", ""),
         counted_by=request.user,

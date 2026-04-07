@@ -7,7 +7,11 @@ import { useOutlet } from "../../contexts/OutletContext";
 
 export default function StockCountPage() {
   const { outletId } = useOutlet();
+  const todayISO = new Date().toLocaleDateString("en-CA");
+
+  const [countDate, setCountDate] = useState(todayISO);
   const [items, setItems] = useState([]);
+  const [noUpload, setNoUpload] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
@@ -18,16 +22,22 @@ export default function StockCountPage() {
   const [isMonthEnd, setIsMonthEnd] = useState(false);
   const inputRefs = useRef({});
 
-  const today = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD
-
   useEffect(() => {
     setLoading(true);
     setItems([]);
-    getCountItems(outletId)
-      .then((res) => setItems(res.data))
+    setNoUpload(false);
+    setError(null);
+    getCountItems(outletId, countDate)
+      .then((res) => {
+        if (res.data?.no_upload) {
+          setNoUpload(true);
+        } else {
+          setItems(Array.isArray(res.data) ? res.data : []);
+        }
+      })
       .catch(() => setError("Failed to load items. Make sure a POS upload exists for this outlet."))
       .finally(() => setLoading(false));
-  }, [outletId]);
+  }, [outletId, countDate]);
 
   function setInput(itemId, field, value) {
     setInputs((prev) => ({
@@ -44,7 +54,7 @@ export default function StockCountPage() {
 
       setSaving(itemId);
       try {
-        const res = await submitCount(itemId, Number(qty), input.location_tag || "", isMonthEnd);
+        const res = await submitCount(itemId, Number(qty), input.location_tag || "", isMonthEnd, countDate);
         const count = res.data;
         setItems((prev) =>
           prev.map((item) =>
@@ -128,9 +138,15 @@ export default function StockCountPage() {
       <div className="max-w-3xl">
         {/* Sticky progress bar */}
         <div className="sticky top-0 z-10 bg-gray-50 pb-3 pt-1">
-          <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center justify-between mb-2">
             <h1 className="text-xl font-semibold text-gray-900">Stock Count</h1>
-            <span className="text-sm text-gray-500">{today}</span>
+            <input
+              type="date"
+              value={countDate}
+              max={todayISO}
+              onChange={(e) => { setCountDate(e.target.value); setSearch(""); setFilter("all"); setInputs({}); setRecount({}); }}
+              className="border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
           </div>
 
           {totalItems > 0 && (
@@ -196,6 +212,10 @@ export default function StockCountPage() {
 
         {loading ? (
           <p className="text-gray-500 text-sm">Loading items…</p>
+        ) : noUpload ? (
+          <Alert type="warning">
+            No POS upload found for <strong>{countDate}</strong>. Ask the manager to upload the XLS for this date first.
+          </Alert>
         ) : items.length === 0 ? (
           <Alert type="info">
             No items found. Upload a POS snapshot first before entering counts.

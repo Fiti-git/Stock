@@ -256,18 +256,20 @@ def validate_file(file, filename: str, expected_outlet_name: str) -> dict:
     if result.snapshot_date is None:
         errors.append("Could not find 'Date As At' header in file.")
 
-    # Outlet match (case-insensitive, partial)
+    # Outlet match — exact match after normalising (strip spaces + uppercase)
+    outlet_mismatch = None
     if result.outlet_name is None:
         errors.append("Could not find 'SUPER MARKET:' header in file.")
     else:
         file_outlet = result.outlet_name.upper().replace(" ", "")
         expected = expected_outlet_name.upper().replace(" ", "")
-        # Strip common prefix if present in expected
-        for prefix in ("SUPERMARKET:", "SUPER MARKET:"):
-            expected = expected.replace(prefix, "")
-        if expected not in file_outlet and file_outlet not in expected:
+        if file_outlet != expected:
+            outlet_mismatch = {
+                "found": result.outlet_name,
+                "expected": expected_outlet_name,
+            }
             errors.append(
-                f"File outlet '{result.outlet_name}' does not match your outlet '{expected_outlet_name}'."
+                f"Wrong file: this sheet is for '{result.outlet_name}' but you are uploading to '{expected_outlet_name}'."
             )
 
     if not result.rows:
@@ -284,5 +286,6 @@ def validate_file(file, filename: str, expected_outlet_name: str) -> dict:
         "errors": errors,
         "warnings": warnings,
         "preview": preview,
+        "outlet_mismatch": outlet_mismatch,  # None or {"found": ..., "expected": ...}
         "_parsed": result,  # internal — stripped before returning to client
     }
