@@ -150,13 +150,22 @@ def _get_all_rows(file, filename: str) -> list:
 # ---------------------------------------------------------------------------
 # Header extraction
 # ---------------------------------------------------------------------------
+_HEADER_KEYWORDS = {
+    "STOCK", "LOCATION", "DATE", "SELECTION", "ITEM", "REPORT",
+    "ARUNALU", "SUPER", "MART", "NO", "AS", "AT", "BALANCE",
+}
+
+
 def _extract_headers(rows: list) -> tuple:
     """
     Scan first 20 rows for:
       "Date As At"   → snapshot_date
-      "SUPER MARKET:" → outlet_name
+      "SUPER MARKET:" → outlet_name (legacy format)
+      standalone uppercase location name (e.g. "AMPITIYA") → outlet_name (current format)
     Returns (snapshot_date: date | None, outlet_name: str | None)
     """
+    from datetime import datetime
+
     snapshot_date = None
     outlet_name = None
 
@@ -164,26 +173,46 @@ def _extract_headers(rows: list) -> tuple:
         for i, cell in enumerate(row):
             text = _normalise_cell(cell)
             if "Date As At" in text or "DATE AS AT" in text:
-                # Date is typically next cell
-                if i + 1 < len(row):
-                    d = row[i + 1]
+                # Date may be several columns over — scan remaining cells for first non-empty
+                for d in row[i + 1:]:
+                    if d is None or _normalise_cell(d) == "":
+                        continue
                     if isinstance(d, date):
                         snapshot_date = d
                     else:
                         try:
-                            from datetime import datetime
                             snapshot_date = datetime.strptime(
                                 _normalise_cell(d), "%d/%m/%Y"
                             ).date()
                         except (ValueError, TypeError):
                             pass
+                    break  # stop after first non-empty cell regardless
+
             if "SUPER MARKET:" in text:
-                # Value follows colon in same cell or next cell
+                # Legacy format: value follows colon in same cell or next cell
                 if ":" in text:
                     parts = text.split(":", 1)
                     outlet_name = parts[1].strip() if len(parts) > 1 else None
                 elif i + 1 < len(row):
                     outlet_name = _normalise_cell(row[i + 1])
+
+    # Current format: outlet name is a standalone uppercase cell in col 0
+    # e.g. "AMPITIYA" appearing after the header block with no other content
+    if outlet_name is None:
+        for row in rows[:20]:
+            col0 = _normalise_cell(row[0] if row else "")
+            if not col0:
+                continue
+            # Must be all letters/spaces, uppercase, length > 2, no colon or digits
+            if (
+                col0 == col0.upper()
+                and col0.replace(" ", "").isalpha()
+                and len(col0) > 2
+                and col0 not in _HEADER_KEYWORDS
+                and not any(kw in col0.split() for kw in _HEADER_KEYWORDS)
+            ):
+                outlet_name = col0
+                break
 
     return snapshot_date, outlet_name
 
@@ -259,7 +288,7 @@ def validate_file(file, filename: str, expected_outlet_name: str) -> dict:
     # Outlet match — exact match after normalising (strip spaces + uppercase)
     outlet_mismatch = None
     if result.outlet_name is None:
-        errors.append("Could not find 'SUPER MARKET:' header in file.")
+        errors.append("Could not determine outlet name from file.")
     else:
         file_outlet = result.outlet_name.upper().replace(" ", "")
         expected = expected_outlet_name.upper().replace(" ", "")
