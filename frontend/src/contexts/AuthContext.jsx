@@ -25,6 +25,7 @@ export function AuthProvider({ children }) {
           username: decoded.username,
           role: decoded.role,
           outlet_id: decoded.outlet_id,
+          outlet_name: decoded.outlet_name ?? null,
         });
       }
     } catch {
@@ -47,6 +48,7 @@ export function AuthProvider({ children }) {
       username: decoded.username,
       role: decoded.role,
       outlet_id: decoded.outlet_id,
+      outlet_name: decoded.outlet_name ?? null,
     };
     setUser(u);
     return u;

@@ -1,19 +1,21 @@
 import api from "./client";
 
-export const validateUpload = (file, uploadDate) => {
+export const validateUpload = (file, uploadDate, outletId) => {
   const form = new FormData();
   form.append("file", file);
   if (uploadDate) form.append("upload_date", uploadDate);
+  if (outletId) form.append("outlet_id", outletId);
   return api.post("/uploads/validate/", form, {
     headers: { "Content-Type": "multipart/form-data" },
   });
 };
 
-export const confirmUpload = (file, overwrite = false, uploadDate) => {
+export const confirmUpload = (file, overwrite = false, uploadDate, outletId) => {
   const form = new FormData();
   form.append("file", file);
   form.append("overwrite", String(overwrite));
   if (uploadDate) form.append("upload_date", uploadDate);
+  if (outletId) form.append("outlet_id", outletId);
   return api.post("/uploads/confirm/", form, {
     headers: { "Content-Type": "multipart/form-data" },
   });

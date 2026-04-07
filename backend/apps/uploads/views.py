@@ -34,7 +34,12 @@ def validate_upload(request):
         return Response({"detail": "No file provided."}, status=status.HTTP_400_BAD_REQUEST)
 
     user = request.user
-    outlet = user.outlet
+    outlet_id = request.data.get("outlet_id")
+    if outlet_id and user.role == User.Role.ADMIN:
+        from django.shortcuts import get_object_or_404
+        outlet = get_object_or_404(Outlet, pk=outlet_id)
+    else:
+        outlet = user.outlet
     if not outlet:
         return Response({"detail": "User has no outlet assigned."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -120,7 +125,12 @@ def confirm_upload(request):
         return Response({"detail": "No file provided."}, status=status.HTTP_400_BAD_REQUEST)
 
     user = request.user
-    outlet = user.outlet
+    outlet_id = request.data.get("outlet_id")
+    if outlet_id and user.role == User.Role.ADMIN:
+        from django.shortcuts import get_object_or_404
+        outlet = get_object_or_404(Outlet, pk=outlet_id)
+    else:
+        outlet = user.outlet
     if not outlet:
         return Response({"detail": "User has no outlet assigned."}, status=status.HTTP_400_BAD_REQUEST)
 

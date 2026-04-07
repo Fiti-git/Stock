@@ -9,6 +9,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token = super().get_token(user)
         token["role"] = user.role
         token["outlet_id"] = user.outlet_id
+        token["outlet_name"] = user.outlet.outlet_name if user.outlet else None
         token["username"] = user.username
         return token
 
