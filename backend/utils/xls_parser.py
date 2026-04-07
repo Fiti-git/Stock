@@ -264,21 +264,12 @@ def parse_xls(file, filename: str) -> ParseResult:
     return result
 
 
-def validate_file(
-    file,
-    filename: str,
-    expected_outlet_name: str,
-    file_location_name: str = "",
-) -> dict:
+def validate_file(file, filename: str) -> dict:
     """
     Run pre-import validation checks.
     Returns {"valid": bool, "errors": [...], "warnings": [...], "preview": {...}}
 
-    expected_outlet_name: outlet.outlet_name (e.g. "SUPER MARKET:ASMAMP")
-    file_location_name:   outlet.file_location_name (e.g. "AMPITIYA") — the name
-                          as it appears in the POS XLS header. When set, this is
-                          used for matching instead of expected_outlet_name.
-
+    Outlet is determined by user selection before upload — no header matching.
     Note: date is read from the file itself — no "must match today" check.
     The caller decides whether the date requires admin approval.
     """
@@ -291,31 +282,8 @@ def validate_file(
         errors.extend(result.errors)
         return {"valid": False, "errors": errors, "warnings": warnings, "preview": {}}
 
-    # Date must be present in file
     if result.snapshot_date is None:
         errors.append("Could not find 'Date As At' header in file.")
-
-    # Outlet match — prefer file_location_name when configured
-    outlet_mismatch = None
-    match_target = file_location_name.strip() if file_location_name.strip() else expected_outlet_name
-    if result.outlet_name is None:
-        # If no outlet name found in file but file_location_name is not configured,
-        # treat as error; if configured we have nothing to compare so allow it.
-        if not file_location_name.strip():
-            errors.append("Could not determine outlet name from file.")
-    else:
-        file_outlet = result.outlet_name.upper().replace(" ", "")
-        expected = match_target.upper().replace(" ", "")
-        if file_outlet != expected:
-            outlet_mismatch = {
-                "found": result.outlet_name,
-                "expected": expected_outlet_name,
-            }
-            errors.append(
-                f"Wrong outlet file — upload blocked\n\n"
-                f"This file is for {result.outlet_name} but you are uploading to {expected_outlet_name}.\n\n"
-                f"Please select the correct file for {expected_outlet_name}."
-            )
 
     if not result.rows:
         errors.append("No valid data rows found in the file.")
@@ -331,6 +299,6 @@ def validate_file(
         "errors": errors,
         "warnings": warnings,
         "preview": preview,
-        "outlet_mismatch": outlet_mismatch,  # None or {"found": ..., "expected": ...}
-        "_parsed": result,  # internal — stripped before returning to client
+        "outlet_mismatch": None,
+        "_parsed": result,
     }
