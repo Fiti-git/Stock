@@ -56,10 +56,19 @@ def count_progress(request):
 def variances(request):
     """
     POS qty vs latest actual count for the manager's outlet.
-    Returns items sorted by absolute variance descending.
+    Returns items sorted by absolute variance descending, limited to top 200.
+
+    Query params:
+      limit — max rows to return (default 200, max 500)
     """
+    from django.db.models import OuterRef, Subquery, FloatField
+
     outlet = _resolve_outlet(request)
-    today = date.today()
+
+    try:
+        limit = min(int(request.query_params.get("limit", 200)), 500)
+    except (TypeError, ValueError):
+        limit = 200
 
     # Get latest snapshot date available
     latest_snapshot = (
@@ -72,17 +81,29 @@ def variances(request):
     if not latest_snapshot:
         return Response([])
 
-    snapshots = PosSnapshot.objects.filter(
-        outlet=outlet, snapshot_date=latest_snapshot
-    ).select_related("item")
+    # Subquery: latest StockCount id per item for this outlet
+    latest_count_sq = (
+        StockCount.objects.filter(outlet=outlet, item=OuterRef("item"))
+        .order_by("-count_date")
+        .values("id")[:1]
+    )
+
+    snapshots = (
+        PosSnapshot.objects.filter(outlet=outlet, snapshot_date=latest_snapshot)
+        .select_related("item")
+        .annotate(latest_count_id=Subquery(latest_count_sq))
+    )
+
+    # Fetch all relevant counts in one query
+    count_ids = [s.latest_count_id for s in snapshots if s.latest_count_id is not None]
+    counts_by_id = {
+        c.id: c
+        for c in StockCount.objects.filter(id__in=count_ids).select_related("counted_by")
+    }
 
     results = []
     for snap in snapshots:
-        latest_count = (
-            StockCount.objects.filter(outlet=outlet, item=snap.item)
-            .order_by("-count_date")
-            .first()
-        )
+        latest_count = counts_by_id.get(snap.latest_count_id)
         actual_qty = float(latest_count.actual_qty) if latest_count else None
         pos_qty = float(snap.pos_quantity)
         variance = (actual_qty - pos_qty) if actual_qty is not None else None
@@ -108,7 +129,7 @@ def variances(request):
         reverse=True,
     )
 
-    return Response(results)
+    return Response(results[:limit])
 
 
 @api_view(["GET"])

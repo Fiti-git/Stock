@@ -46,6 +46,11 @@ const Icon = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
     </svg>
   ),
+  posHistory: (
+    <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 17v-2m3 2v-4m3 4v-6M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+    </svg>
+  ),
   approvals: (
     <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -132,6 +137,7 @@ export default function Layout({ children }) {
           { to: "/dashboard/pending", label: "Pending Items", icon: Icon.pending },
           { to: "/shrinkage", label: "Shrinkage", icon: Icon.shrinkage },
           { to: "/catalog", label: "Product Catalog", icon: Icon.catalog },
+          { to: "/items/history", label: "POS History", icon: Icon.posHistory },
           { to: "/count", label: "Stock Count", icon: Icon.count },
           { to: "/upload", label: "Upload XLS", icon: Icon.upload },
           { to: "/upload/history", label: "History", icon: Icon.history },
@@ -147,6 +153,7 @@ export default function Layout({ children }) {
           { to: "/dashboard/pending", label: "Pending Items", icon: Icon.pending },
           { to: "/shrinkage", label: "Shrinkage", icon: Icon.shrinkage },
           { to: "/catalog", label: "Product Catalog", icon: Icon.catalog },
+          { to: "/items/history", label: "POS History", icon: Icon.posHistory },
           { to: "/count", label: "Stock Count", icon: Icon.count },
           { to: "/upload", label: "Upload XLS", icon: Icon.upload },
           { to: "/upload/history", label: "History", icon: Icon.history },

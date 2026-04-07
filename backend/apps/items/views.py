@@ -51,13 +51,14 @@ class ItemDetailView(generics.RetrieveAPIView):
 class PendingItemListView(generics.ListAPIView):
     serializer_class = PendingItemSerializer
     permission_classes = [IsManager]
+    pagination_class = ItemListPagination
 
     def get_queryset(self):
         user = self.request.user
-        qs = PendingItem.objects.filter(status=PendingItem.Status.PENDING)
+        qs = PendingItem.objects.filter(status=PendingItem.Status.PENDING).select_related("first_seen_outlet", "item")
         if user.role != "admin":
             qs = qs.filter(first_seen_outlet=user.outlet)
-        return qs
+        return qs.order_by("first_seen_date")
 
 
 @api_view(["POST"])
@@ -260,8 +261,14 @@ def catalog_list(request):
 @permission_classes([IsManager])
 def item_price_history(request, item_id):
     """
-    Returns last 90 POS snapshots for a product (price + qty over time).
-    Non-admin users are restricted to their own outlet's items.
+    Paginated daily POS snapshot history for a product, with change markers.
+
+    Each row shows pos_quantity, selling_price, cost_price for that day.
+    Fields that changed vs the previous day are flagged in `changed`.
+
+    Query params:
+      page      — page number (default 1)
+      page_size — rows per page (default 60, max 365)
     """
     user = request.user
     try:
@@ -272,20 +279,67 @@ def item_price_history(request, item_id):
     if user.role != "admin" and item.outlet != user.outlet:
         return Response({"detail": "Not authorized."}, status=status.HTTP_403_FORBIDDEN)
 
-    snapshots = PosSnapshot.objects.filter(item=item).order_by("snapshot_date")[:90]
-    history = [
-        {
-            "snapshot_date": str(s.snapshot_date),
-            "selling_price": str(s.selling_price) if s.selling_price is not None else None,
-            "cost_price": str(s.cost_price) if s.cost_price is not None else None,
-            "pos_quantity": str(s.pos_quantity),
-        }
-        for s in snapshots
-    ]
+    try:
+        page = max(1, int(request.query_params.get("page", 1)))
+    except (ValueError, TypeError):
+        page = 1
+    try:
+        page_size = min(int(request.query_params.get("page_size", 60)), 365)
+    except (ValueError, TypeError):
+        page_size = 60
+
+    qs = PosSnapshot.objects.filter(item=item).order_by("-snapshot_date")
+    total = qs.count()
+
+    # Fetch one extra row before the page to enable change detection on first row
+    offset = (page - 1) * page_size
+    rows = list(qs[max(0, offset - 1): offset + page_size])
+
+    # If we fetched the "look-behind" row, separate it
+    if offset > 0:
+        lookbehind = rows[0]
+        page_rows = rows[1:]
+    else:
+        lookbehind = None
+        page_rows = rows
+
+    def _dec(val):
+        return float(val) if val is not None else None
+
+    history = []
+    # Rows are newest-first; compare each row to the one AFTER it (older)
+    for i, snap in enumerate(page_rows):
+        # Previous day = next item in the list (since list is desc)
+        prev = page_rows[i + 1] if i + 1 < len(page_rows) else lookbehind
+        changed = {}
+        if prev:
+            if snap.pos_quantity != prev.pos_quantity:
+                changed["pos_quantity"] = {"old": _dec(prev.pos_quantity), "new": _dec(snap.pos_quantity)}
+            if snap.selling_price != prev.selling_price:
+                changed["selling_price"] = {"old": _dec(prev.selling_price), "new": _dec(snap.selling_price)}
+            if snap.cost_price != prev.cost_price:
+                changed["cost_price"] = {"old": _dec(prev.cost_price), "new": _dec(snap.cost_price)}
+
+        history.append({
+            "snapshot_date": str(snap.snapshot_date),
+            "pos_quantity": _dec(snap.pos_quantity),
+            "selling_price": _dec(snap.selling_price),
+            "cost_price": _dec(snap.cost_price),
+            "uploaded_at": snap.uploaded_at.isoformat(),
+            "uploaded_by": snap.uploaded_by.username if snap.uploaded_by else None,
+            "changed": changed,
+        })
 
     return Response({
         "item_id": item.id,
         "item_code": item.item_code,
         "item_name": item.item_name,
+        "barcode": item.barcode,
+        "category": item.category,
+        "outlet_name": item.outlet.outlet_name if item.outlet else None,
+        "count": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": max(1, (total + page_size - 1) // page_size),
         "history": history,
     })

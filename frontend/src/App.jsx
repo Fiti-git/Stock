@@ -10,6 +10,7 @@ import DashboardPage from "./pages/manager/DashboardPage";
 import PendingItemsPage from "./pages/manager/PendingItemsPage";
 import ShrinkagePage from "./pages/manager/ShrinkagePage";
 import CatalogPage from "./pages/manager/CatalogPage";
+import ItemPosHistoryPage from "./pages/manager/ItemPosHistoryPage";
 import UploadApprovalsPage from "./pages/admin/UploadApprovalsPage";
 import OutletsPage from "./pages/admin/OutletsPage";
 import UsersPage from "./pages/admin/UsersPage";
@@ -155,6 +156,15 @@ export default function App() {
             element={
               <RoleRoute allowedRoles={["manager", "admin"]}>
                 <CatalogPage />
+              </RoleRoute>
+            }
+          />
+          {/* Product POS history */}
+          <Route
+            path="/items/history"
+            element={
+              <RoleRoute allowedRoles={["manager", "admin"]}>
+                <ItemPosHistoryPage />
               </RoleRoute>
             }
           />

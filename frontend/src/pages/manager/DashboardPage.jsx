@@ -114,7 +114,9 @@ export default function DashboardPage() {
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b flex items-center justify-between">
             <h2 className="font-semibold text-gray-900">Variance Report</h2>
-            <span className="text-xs text-gray-400">sorted by largest gap first</span>
+            <span className="text-xs text-gray-400">
+              top {variances.length} by gap — sorted largest first
+            </span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

@@ -190,14 +190,35 @@ function DataChangedCard({ item, onResolved }) {
 export default function PendingItemsPage() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const PAGE_SIZE = 50;
 
-  useEffect(() => {
-    getPendingItems()
-      .then(({ data }) => setItems(data))
+  const fetchPage = (p) => {
+    setLoading(true);
+    getPendingItems(p)
+      .then(({ data }) => {
+        // DRF PageNumberPagination returns { count, next, previous, results }
+        if (data && Array.isArray(data.results)) {
+          setTotalCount(data.count);
+          setItems(data.results);
+        } else {
+          // fallback for non-paginated response
+          setItems(Array.isArray(data) ? data : []);
+          setTotalCount(Array.isArray(data) ? data.length : 0);
+        }
+      })
       .finally(() => setLoading(false));
-  }, []);
+  };
 
-  const removeItem = (id) => setItems((prev) => prev.filter((i) => i.id !== id));
+  useEffect(() => { fetchPage(page); }, [page]);
+
+  const removeItem = (id) => {
+    setItems((prev) => prev.filter((i) => i.id !== id));
+    setTotalCount((c) => c - 1);
+  };
+
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   const newItems = items.filter((i) => i.change_type === "new_code" || !i.change_type);
   const changedItems = items.filter((i) => i.change_type === "data_changed");
@@ -205,18 +226,25 @@ export default function PendingItemsPage() {
   return (
     <Layout>
       <div className="max-w-4xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Pending Review Queue</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            New items need barcodes. Changed items need review before the master record is updated.
-          </p>
+        <div className="mb-6 flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Pending Review Queue</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              New items need barcodes. Changed items need review before the master record is updated.
+            </p>
+          </div>
+          {totalCount > 0 && (
+            <span className="text-sm text-gray-500 mt-1">
+              {totalCount} item{totalCount !== 1 ? "s" : ""} total
+            </span>
+          )}
         </div>
 
         {loading && (
           <div className="text-center py-12 text-gray-400">Loading…</div>
         )}
 
-        {!loading && items.length === 0 && (
+        {!loading && items.length === 0 && page === 1 && (
           <div className="text-center py-16 text-gray-400">
             <svg className="mx-auto w-12 h-12 mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
@@ -251,6 +279,29 @@ export default function PendingItemsPage() {
                 <DataChangedCard key={item.id} item={item} onResolved={removeItem} />
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-8 pt-4 border-t">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-4 py-2 text-sm font-medium border rounded-lg disabled:opacity-40 hover:bg-gray-50"
+            >
+              Previous
+            </button>
+            <span className="text-sm text-gray-500">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-4 py-2 text-sm font-medium border rounded-lg disabled:opacity-40 hover:bg-gray-50"
+            >
+              Next
+            </button>
           </div>
         )}
       </div>

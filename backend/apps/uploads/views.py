@@ -39,7 +39,7 @@ def validate_upload(request):
         return Response({"detail": "User has no outlet assigned."}, status=status.HTTP_400_BAD_REQUEST)
 
     today = date.today()
-    result = validate_file(file, file.name, outlet.outlet_name)
+    result = validate_file(file, file.name, outlet.outlet_name, outlet.file_location_name)
     parsed = result.pop("_parsed", None)
 
     # Allow caller to override the date extracted from the XLS
@@ -125,7 +125,7 @@ def confirm_upload(request):
         return Response({"detail": "User has no outlet assigned."}, status=status.HTTP_400_BAD_REQUEST)
 
     today = date.today()
-    validation = validate_file(file, file.name, outlet.outlet_name)
+    validation = validate_file(file, file.name, outlet.outlet_name, outlet.file_location_name)
     parsed = validation.pop("_parsed", None)
 
     if not validation["valid"]:

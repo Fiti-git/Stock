@@ -5,6 +5,10 @@ class Outlet(models.Model):
     outlet_name = models.CharField(max_length=200, unique=True)
     short_code = models.CharField(max_length=20, blank=True, default="")
     location_code = models.CharField(max_length=20, blank=True)
+    file_location_name = models.CharField(
+        max_length=200, blank=True, default="",
+        help_text="Name as it appears in the POS XLS file header (e.g. AMPITIYA). Used for upload matching."
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
