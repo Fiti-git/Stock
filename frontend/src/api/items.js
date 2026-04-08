@@ -1,7 +1,7 @@
 import api from "./client";
 
-export const getPendingItems = (page = 1) =>
-  api.get("/items/pending/", { params: { page, page_size: 50 } });
+export const getPendingItems = (page = 1, outlet = null) =>
+  api.get("/items/pending/", { params: { page, page_size: 10, ...(outlet ? { outlet } : {}) } });
 
 export const assignBarcode = (pendingId, barcode, category = "") =>
   api.post(`/items/pending/${pendingId}/assign-barcode/`, { barcode, category });

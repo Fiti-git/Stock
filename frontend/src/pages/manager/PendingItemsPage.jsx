@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import Layout from "../../components/Layout";
 import Alert from "../../components/Alert";
 import { getPendingItems, assignBarcode, acceptChange, rejectChange } from "../../api/items";
+import { getOutlets } from "../../api/outlets";
+import { useAuth } from "../../contexts/AuthContext";
 
 function FieldDiff({ field, diff }) {
   return (
@@ -188,15 +190,25 @@ function DataChangedCard({ item, onResolved }) {
 }
 
 export default function PendingItemsPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const PAGE_SIZE = 50;
+  const [outlets, setOutlets] = useState([]);
+  const [selectedOutlet, setSelectedOutlet] = useState("");
+  const PAGE_SIZE = 10;
 
-  const fetchPage = (p) => {
+  useEffect(() => {
+    if (isAdmin) {
+      getOutlets().then(({ data }) => setOutlets(Array.isArray(data) ? data : []));
+    }
+  }, [isAdmin]);
+
+  const fetchPage = (p, outlet) => {
     setLoading(true);
-    getPendingItems(p)
+    getPendingItems(p, outlet || null)
       .then(({ data }) => {
         // DRF PageNumberPagination returns { count, next, previous, results }
         if (data && Array.isArray(data.results)) {
@@ -211,7 +223,7 @@ export default function PendingItemsPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchPage(page); }, [page]);
+  useEffect(() => { fetchPage(page, selectedOutlet); }, [page, selectedOutlet]);
 
   const removeItem = (id) => {
     setItems((prev) => prev.filter((i) => i.id !== id));
@@ -226,18 +238,32 @@ export default function PendingItemsPage() {
   return (
     <Layout>
       <div className="max-w-4xl mx-auto">
-        <div className="mb-6 flex items-start justify-between">
+        <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Pending Review Queue</h1>
             <p className="text-sm text-gray-500 mt-1">
               New items need barcodes. Changed items need review before the master record is updated.
             </p>
           </div>
-          {totalCount > 0 && (
-            <span className="text-sm text-gray-500 mt-1">
-              {totalCount} item{totalCount !== 1 ? "s" : ""} total
-            </span>
-          )}
+          <div className="flex items-center gap-3 mt-1">
+            {isAdmin && outlets.length > 0 && (
+              <select
+                value={selectedOutlet}
+                onChange={(e) => { setSelectedOutlet(e.target.value); setPage(1); }}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="">All Outlets</option>
+                {outlets.map((o) => (
+                  <option key={o.id} value={o.id}>{o.outlet_name}</option>
+                ))}
+              </select>
+            )}
+            {totalCount > 0 && (
+              <span className="text-sm text-gray-500 whitespace-nowrap">
+                {totalCount} item{totalCount !== 1 ? "s" : ""} total
+              </span>
+            )}
+          </div>
         </div>
 
         {loading && (

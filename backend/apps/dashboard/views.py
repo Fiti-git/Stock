@@ -253,7 +253,27 @@ def count_items(request):
 
     # Uncounted first, then by item_code
     results.sort(key=lambda x: (x["today_actual_qty"] is not None, x["item_code"]))
-    return Response(results)
+
+    counted_count = sum(1 for r in results if r["today_actual_qty"] is not None)
+
+    # Pagination
+    try:
+        page = max(1, int(request.query_params.get("page", 1)))
+    except (ValueError, TypeError):
+        page = 1
+    page_size = 10
+    total = len(results)
+    start = (page - 1) * page_size
+    page_results = results[start:start + page_size]
+
+    return Response({
+        "count": total,
+        "counted_count": counted_count,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": max(1, (total + page_size - 1) // page_size),
+        "results": page_results,
+    })
 
 
 @api_view(["GET"])
@@ -323,13 +343,15 @@ def submit_count(request):
     except (ValueError, TypeError):
         count_date = date.today()
 
-    count = StockCount.objects.create(
+    count, _ = StockCount.objects.update_or_create(
         outlet=outlet,
         item=item,
         count_date=count_date,
-        actual_qty=serializer.validated_data["actual_qty"],
-        location_tag=serializer.validated_data.get("location_tag", ""),
-        counted_by=request.user,
-        is_month_end=serializer.validated_data.get("is_month_end", False),
+        defaults={
+            "actual_qty": serializer.validated_data["actual_qty"],
+            "location_tag": serializer.validated_data.get("location_tag", ""),
+            "counted_by": request.user,
+            "is_month_end": serializer.validated_data.get("is_month_end", False),
+        },
     )
     return Response(StockCountSerializer(count).data, status=201)

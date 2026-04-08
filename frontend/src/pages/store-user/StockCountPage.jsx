@@ -20,6 +20,10 @@ export default function StockCountPage() {
   const [inputs, setInputs] = useState({}); // { [item_id]: { qty: "", location_tag: "" } }
   const [recount, setRecount] = useState({}); // { [item_id]: true }
   const [isMonthEnd, setIsMonthEnd] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const [countedItems, setCountedItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const inputRefs = useRef({});
 
   useEffect(() => {
@@ -27,17 +31,22 @@ export default function StockCountPage() {
     setItems([]);
     setNoUpload(false);
     setError(null);
-    getCountItems(outletId, countDate)
+    getCountItems(outletId, countDate, page)
       .then((res) => {
         if (res.data?.no_upload) {
           setNoUpload(true);
+        } else if (res.data?.results) {
+          setItems(res.data.results);
+          setTotalItems(res.data.count || 0);
+          setCountedItems(res.data.counted_count || 0);
+          setTotalPages(res.data.total_pages || 1);
         } else {
           setItems(Array.isArray(res.data) ? res.data : []);
         }
       })
       .catch(() => setError("Failed to load items. Make sure a POS upload exists for this outlet."))
       .finally(() => setLoading(false));
-  }, [outletId, countDate]);
+  }, [outletId, countDate, page]);
 
   function setInput(itemId, field, value) {
     setInputs((prev) => ({
@@ -57,17 +66,18 @@ export default function StockCountPage() {
         const res = await submitCount(itemId, Number(qty), input.location_tag || "", isMonthEnd, countDate);
         const count = res.data;
         setItems((prev) =>
-          prev.map((item) =>
-            item.item_id === itemId
-              ? {
-                  ...item,
-                  today_count_id: count.id,
-                  today_actual_qty: Number(qty),
-                  today_location_tag: input.location_tag || "",
-                  today_counted_by: count.counted_by || null,
-                }
-              : item
-          )
+          prev.map((item) => {
+            if (item.item_id !== itemId) return item;
+            const wasUncounted = item.today_actual_qty === null;
+            if (wasUncounted) setCountedItems((c) => c + 1);
+            return {
+              ...item,
+              today_count_id: count.id,
+              today_actual_qty: Number(qty),
+              today_location_tag: input.location_tag || "",
+              today_counted_by: count.counted_by || null,
+            };
+          })
         );
         setInputs((prev) => { const n = { ...prev }; delete n[itemId]; return n; });
         setRecount((prev) => { const n = { ...prev }; delete n[itemId]; return n; });
@@ -128,9 +138,7 @@ export default function StockCountPage() {
       return true;
     });
 
-  const countedTotal = items.filter((i) => i.today_actual_qty !== null).length;
-  const totalItems = items.length;
-  const pct = totalItems > 0 ? Math.round((countedTotal / totalItems) * 100) : 0;
+  const pct = totalItems > 0 ? Math.round((countedItems / totalItems) * 100) : 0;
   const hasUncounted = items.some((i) => i.today_actual_qty === null);
 
   return (
@@ -144,7 +152,7 @@ export default function StockCountPage() {
               type="date"
               value={countDate}
               max={todayISO}
-              onChange={(e) => { setCountDate(e.target.value); setSearch(""); setFilter("all"); setInputs({}); setRecount({}); }}
+              onChange={(e) => { setCountDate(e.target.value); setSearch(""); setFilter("all"); setInputs({}); setRecount({}); setPage(1); }}
               className="border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
           </div>
@@ -152,7 +160,7 @@ export default function StockCountPage() {
           {totalItems > 0 && (
             <div>
               <div className="flex justify-between text-xs text-gray-500 mb-1">
-                <span>{countedTotal} of {totalItems} items counted</span>
+                <span>{countedItems} of {totalItems} items counted</span>
                 <span>{pct}%</span>
               </div>
               <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -223,7 +231,7 @@ export default function StockCountPage() {
         ) : filtered.length === 0 ? (
           <p className="text-gray-500 text-sm">No items match your search.</p>
         ) : (
-          <div className="space-y-2 pb-20 sm:pb-4">
+          <div className="space-y-2 pb-4">
             {filtered.map((item) => {
               const isCounted = item.today_actual_qty !== null && !recount[item.item_id];
               const isSaving = saving === item.item_id;
@@ -318,6 +326,27 @@ export default function StockCountPage() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && !loading && !noUpload && (
+          <div className="flex items-center justify-between mt-4 pt-4 border-t pb-20 sm:pb-4">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-4 py-2 text-sm font-medium border rounded-lg disabled:opacity-40 hover:bg-gray-50"
+            >
+              Previous
+            </button>
+            <span className="text-sm text-gray-500">Page {page} of {totalPages}</span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-4 py-2 text-sm font-medium border rounded-lg disabled:opacity-40 hover:bg-gray-50"
+            >
+              Next
+            </button>
           </div>
         )}
       </div>

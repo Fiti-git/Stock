@@ -492,7 +492,7 @@ def _has_changes(item: Item, row) -> bool:
     """Return True if any field in the XLS row differs from the stored Item."""
     if item.item_name != row.item_name:
         return True
-    if row.cost_price is not None and item.category != row.category:
+    if row.category and item.category != row.category:
         return True
     return False
 
@@ -504,14 +504,6 @@ def _build_changed_fields(item: Item, row) -> dict:
         changes["item_name"] = {"old": item.item_name, "new": row.item_name}
     if row.category and item.category != row.category:
         changes["category"] = {"old": item.category, "new": row.category}
-    if row.cost_price is not None:
-        old_cost = float(item.cost_price) if hasattr(item, "cost_price") and item.cost_price else None
-        if old_cost != row.cost_price:
-            changes["cost_price"] = {"old": old_cost, "new": row.cost_price}
-    if row.selling_price is not None:
-        old_sell = float(item.selling_price) if hasattr(item, "selling_price") and item.selling_price else None
-        if old_sell != row.selling_price:
-            changes["selling_price"] = {"old": old_sell, "new": row.selling_price}
     return changes
 
 

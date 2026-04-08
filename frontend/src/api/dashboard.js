@@ -9,9 +9,10 @@ export const getVariances = (outletId) =>
   api.get("/dashboard/variances/", outletParam(outletId));
 export const getAlerts = (outletId) =>
   api.get("/dashboard/alerts/", outletParam(outletId));
-export const getCountItems = (outletId, countDate) => {
+export const getCountItems = (outletId, countDate, page = 1) => {
   const config = outletParam(outletId) || { params: {} };
   if (countDate) config.params = { ...config.params, count_date: countDate };
+  config.params = { ...config.params, page };
   return api.get("/dashboard/count-items/", config);
 };
 export const submitCount = (itemId, actualQty, locationTag = "", isMonthEnd = false, countDate = null) =>

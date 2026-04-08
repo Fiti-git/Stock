@@ -243,7 +243,7 @@ def parse_xls(file, filename: str) -> ParseResult:
         kind = classify_row(row)
 
         if kind == "category":
-            current_category = _normalise_cell(row[COL_ITEM_CODE])
+            current_category = _normalise_cell(row[COL_ITEM_CODE]).upper()
         elif kind == "data":
             item_code = _normalise_cell(row[COL_ITEM_CODE])
             item_name = _normalise_cell(row[COL_ITEM_NAME])

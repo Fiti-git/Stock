@@ -16,6 +16,12 @@ class ItemListPagination(PageNumberPagination):
     max_page_size = 200
 
 
+class PendingItemPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+
 class ItemListView(generics.ListAPIView):
     serializer_class = ItemSerializer
     permission_classes = [IsAdmin]
@@ -51,12 +57,16 @@ class ItemDetailView(generics.RetrieveAPIView):
 class PendingItemListView(generics.ListAPIView):
     serializer_class = PendingItemSerializer
     permission_classes = [IsManager]
-    pagination_class = ItemListPagination
+    pagination_class = PendingItemPagination
 
     def get_queryset(self):
         user = self.request.user
         qs = PendingItem.objects.filter(status=PendingItem.Status.PENDING).select_related("first_seen_outlet", "item")
-        if user.role != "admin":
+        if user.role == "admin":
+            outlet_filter = self.request.query_params.get("outlet")
+            if outlet_filter:
+                qs = qs.filter(first_seen_outlet_id=outlet_filter)
+        else:
             qs = qs.filter(first_seen_outlet=user.outlet)
         return qs.order_by("first_seen_date")
 
@@ -89,6 +99,10 @@ def assign_barcode(request, pending_id):
         )
 
     outlet = pending.first_seen_outlet
+
+    # Managers can only assign barcodes for their own outlet
+    if request.user.role != "admin" and outlet != request.user.outlet:
+        return Response({"detail": "Not authorized for this outlet."}, status=status.HTTP_403_FORBIDDEN)
 
     # Get or create the Item for this outlet
     item, _ = Item.objects.get_or_create(
@@ -136,10 +150,11 @@ def accept_change(request, pending_id):
     item = pending.item
     changed = pending.changed_fields
 
-    if "item_name" in changed:
-        item.item_name = changed["item_name"]["new"]
-    if "category" in changed:
-        item.category = changed["category"]["new"]
+    # Apply every tracked field that maps directly onto the Item model
+    ITEM_FIELDS = {"item_name", "category"}
+    for field_name, diff in changed.items():
+        if field_name in ITEM_FIELDS:
+            setattr(item, field_name, diff["new"])
     item.save()
 
     pending.status = PendingItem.Status.ASSIGNED
