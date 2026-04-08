@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from apps.accounts.permissions import IsAdmin, IsManager, IsStoreUser
 from apps.uploads.models import AuditLog, PosSnapshot
 from .models import Item, PendingItem
-from .serializers import ItemSerializer, PendingItemSerializer, AssignBarcodeSerializer, ItemDetailSerializer
+from .serializers import ItemSerializer, PendingItemSerializer, AssignBarcodeSerializer, ItemDetailSerializer, ItemUpdateSerializer
 
 
 class ItemListPagination(PageNumberPagination):
@@ -24,20 +24,24 @@ class PendingItemPagination(PageNumberPagination):
 
 class ItemListView(generics.ListAPIView):
     serializer_class = ItemSerializer
-    permission_classes = [IsAdmin]
+    permission_classes = [IsManager]
     pagination_class = ItemListPagination
 
     def get_queryset(self):
-        qs = Item.objects.select_related("outlet").order_by("outlet__outlet_name", "item_code")
+        user = self.request.user
+        if user.role == "admin":
+            qs = Item.objects.select_related("outlet").order_by("outlet__outlet_name", "item_code")
+            outlet_filter = self.request.query_params.get("outlet")
+            if outlet_filter:
+                qs = qs.filter(outlet_id=outlet_filter)
+        else:
+            qs = Item.objects.select_related("outlet").filter(outlet=user.outlet).order_by("item_code")
+
         status_filter = self.request.query_params.get("status")
         if status_filter:
             qs = qs.filter(status=status_filter)
-        outlet_filter = self.request.query_params.get("outlet")
-        if outlet_filter:
-            qs = qs.filter(outlet_id=outlet_filter)
         q = self.request.query_params.get("q")
         if q:
-            from django.db.models import Q
             qs = qs.filter(Q(item_code__icontains=q) | Q(item_name__icontains=q))
         return qs
 
@@ -68,6 +72,9 @@ class PendingItemListView(generics.ListAPIView):
                 qs = qs.filter(first_seen_outlet_id=outlet_filter)
         else:
             qs = qs.filter(first_seen_outlet=user.outlet)
+        q = self.request.query_params.get("q", "").strip()
+        if q:
+            qs = qs.filter(Q(item_code__icontains=q) | Q(item_name__icontains=q))
         return qs.order_by("first_seen_date")
 
 
@@ -90,6 +97,8 @@ def assign_barcode(request, pending_id):
 
     barcode = serializer.validated_data["barcode"]
     category = serializer.validated_data.get("category", "")
+    rack_number = serializer.validated_data.get("rack_number", "")
+    shelf = serializer.validated_data.get("shelf", "")
 
     # Check barcode not already in use across all outlets
     if Item.objects.filter(barcode=barcode).exists():
@@ -112,6 +121,8 @@ def assign_barcode(request, pending_id):
     )
     item.barcode = barcode
     item.category = category or item.category
+    item.rack_number = rack_number or item.rack_number
+    item.shelf = shelf or item.shelf
     item.status = Item.Status.ACTIVE
     item.barcode_assigned_at = timezone.now()
     item.barcode_assigned_by = request.user
@@ -196,6 +207,41 @@ def reject_change(request, pending_id):
     )
 
     return Response({"detail": "Change rejected. Item master unchanged."})
+
+
+@api_view(["PATCH"])
+@permission_classes([IsManager])
+def update_item(request, item_id):
+    """Update editable fields on an Item record. Managers: own outlet only. Admins: any."""
+    try:
+        item = Item.objects.select_related("outlet").get(pk=item_id)
+    except Item.DoesNotExist:
+        return Response({"detail": "Item not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.user.role != "admin" and item.outlet != request.user.outlet:
+        return Response({"detail": "Not authorized for this outlet."}, status=status.HTTP_403_FORBIDDEN)
+
+    serializer = ItemUpdateSerializer(item, data=request.data, partial=True)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    # Check barcode uniqueness if being changed
+    new_barcode = serializer.validated_data.get("barcode")
+    if new_barcode and new_barcode != item.barcode:
+        if Item.objects.filter(barcode=new_barcode).exists():
+            return Response({"detail": "This barcode is already assigned to another item."}, status=status.HTTP_400_BAD_REQUEST)
+
+    updated = serializer.save()
+
+    AuditLog.objects.create(
+        user=request.user,
+        action="update_item",
+        entity_type="item",
+        entity_id=str(updated.id),
+        details={"item_code": updated.item_code, "changes": request.data},
+    )
+
+    return Response(ItemSerializer(updated).data, status=status.HTTP_200_OK)
 
 
 # ---------------------------------------------------------------------------

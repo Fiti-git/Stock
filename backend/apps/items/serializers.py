@@ -11,7 +11,7 @@ class ItemSerializer(serializers.ModelSerializer):
         model = Item
         fields = [
             "id", "outlet", "outlet_name", "item_code", "item_name", "barcode",
-            "category", "status", "created_at", "barcode_assigned_at",
+            "category", "rack_number", "shelf", "status", "created_at", "barcode_assigned_at",
         ]
         read_only_fields = ["id", "created_at", "barcode_assigned_at"]
 
@@ -31,9 +31,24 @@ class PendingItemSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "first_seen_date", "created_at"]
 
 
+class ItemUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Item
+        fields = ["item_name", "barcode", "category", "rack_number", "shelf"]
+        extra_kwargs = {
+            "item_name": {"required": False},
+            "barcode": {"required": False, "allow_null": True, "allow_blank": True},
+            "category": {"required": False, "allow_blank": True},
+            "rack_number": {"required": False, "allow_blank": True},
+            "shelf": {"required": False, "allow_blank": True},
+        }
+
+
 class AssignBarcodeSerializer(serializers.Serializer):
     barcode = serializers.CharField(max_length=100)
     category = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    rack_number = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    shelf = serializers.CharField(max_length=50, required=False, allow_blank=True)
 
 
 class PosSnapshotSerializer(serializers.ModelSerializer):
@@ -71,7 +86,7 @@ class ItemDetailSerializer(serializers.ModelSerializer):
         model = Item
         fields = [
             "id", "outlet", "outlet_name", "item_code", "item_name",
-            "barcode", "category", "status", "created_at", "barcode_assigned_at",
+            "barcode", "category", "rack_number", "shelf", "status", "created_at", "barcode_assigned_at",
             "latest_pos_qty", "latest_actual_qty", "variance",
             "pos_history", "count_history",
         ]

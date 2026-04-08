@@ -16,6 +16,7 @@ import OutletsPage from "./pages/admin/OutletsPage";
 import UsersPage from "./pages/admin/UsersPage";
 import OutletsOverviewPage from "./pages/admin/OutletsOverviewPage";
 import AuditLogPage from "./pages/admin/AuditLogPage";
+import ProductMasterPage from "./pages/manager/ProductMasterPage";
 
 function RoleRoute({ children, allowedRoles }) {
   const { user, loading } = useAuth();
@@ -165,6 +166,15 @@ export default function App() {
             element={
               <RoleRoute allowedRoles={["manager", "admin"]}>
                 <ItemPosHistoryPage />
+              </RoleRoute>
+            }
+          />
+          {/* Product Master CRUD */}
+          <Route
+            path="/product-master"
+            element={
+              <RoleRoute allowedRoles={["manager", "admin"]}>
+                <ProductMasterPage />
               </RoleRoute>
             }
           />

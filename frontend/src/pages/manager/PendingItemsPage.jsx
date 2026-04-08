@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Layout from "../../components/Layout";
 import Alert from "../../components/Alert";
 import { getPendingItems, assignBarcode, acceptChange, rejectChange } from "../../api/items";
@@ -18,7 +18,7 @@ function FieldDiff({ field, diff }) {
 
 function NewCodeCard({ item, onAssigned }) {
   const [assigning, setAssigning] = useState(false);
-  const [inputs, setInputs] = useState({ barcode: "", category: "" });
+  const [inputs, setInputs] = useState({ barcode: "", category: "", rack_number: "", shelf: "" });
   const [feedback, setFeedback] = useState(null);
 
   const setInput = (field, value) => setInputs((prev) => ({ ...prev, [field]: value }));
@@ -29,7 +29,7 @@ function NewCodeCard({ item, onAssigned }) {
     setAssigning(true);
     setFeedback(null);
     try {
-      await assignBarcode(item.id, barcode, inputs.category);
+      await assignBarcode(item.id, barcode, inputs.category, inputs.rack_number, inputs.shelf);
       setFeedback({ type: "success", msg: "Barcode assigned!" });
       setTimeout(() => onAssigned(item.id), 800);
     } catch (err) {
@@ -62,8 +62,8 @@ function NewCodeCard({ item, onAssigned }) {
         </div>
       )}
 
-      <div className="flex gap-3">
-        <div className="flex-1">
+      <div className="grid grid-cols-2 gap-3 mb-3">
+        <div className="col-span-2 sm:col-span-1">
           <label className="block text-xs font-medium text-gray-600 mb-1">
             Barcode (scan or type)
           </label>
@@ -77,10 +77,8 @@ function NewCodeCard({ item, onAssigned }) {
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-mono"
           />
         </div>
-        <div className="w-40">
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            Category (optional)
-          </label>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Category (optional)</label>
           <input
             type="text"
             placeholder="e.g. BISCUITS"
@@ -89,15 +87,36 @@ function NewCodeCard({ item, onAssigned }) {
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
           />
         </div>
-        <div className="flex items-end">
-          <button
-            onClick={handleAssign}
-            disabled={assigning || !inputs.barcode.trim()}
-            className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 whitespace-nowrap"
-          >
-            {assigning ? "Saving…" : "Assign"}
-          </button>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Rack No. (optional)</label>
+          <input
+            type="text"
+            placeholder="e.g. R3"
+            value={inputs.rack_number}
+            onChange={(e) => setInput("rack_number", e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+          />
         </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Shelf (optional)</label>
+          <input
+            type="text"
+            placeholder="e.g. S2"
+            value={inputs.shelf}
+            onChange={(e) => setInput("shelf", e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+          />
+        </div>
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          onClick={handleAssign}
+          disabled={assigning || !inputs.barcode.trim()}
+          className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 whitespace-nowrap"
+        >
+          {assigning ? "Saving…" : "Assign"}
+        </button>
       </div>
     </div>
   );
@@ -149,11 +168,12 @@ function DataChangedCard({ item, onResolved }) {
             <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded">{item.item_code}</span>
             <span>Outlet: {item.first_seen_outlet_name}</span>
             <span>Flagged: {item.first_seen_date}</span>
+            {item.rack_number && <span>Rack: {item.rack_number}</span>}
+            {item.shelf && <span>Shelf: {item.shelf}</span>}
           </div>
         </div>
       </div>
 
-      {/* Diff view */}
       <div className="bg-gray-50 rounded-lg p-3 mb-3 space-y-1">
         {Object.entries(changedFields).map(([field, diff]) => (
           <FieldDiff key={field} field={field} diff={diff} />
@@ -198,6 +218,8 @@ export default function PendingItemsPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [outlets, setOutlets] = useState([]);
   const [selectedOutlet, setSelectedOutlet] = useState("");
+  const [search, setSearch] = useState("");
+  const searchTimer = useRef(null);
   const PAGE_SIZE = 10;
 
   useEffect(() => {
@@ -206,16 +228,14 @@ export default function PendingItemsPage() {
     }
   }, [isAdmin]);
 
-  const fetchPage = (p, outlet) => {
+  const fetchPage = (p, outlet, q) => {
     setLoading(true);
-    getPendingItems(p, outlet || null)
+    getPendingItems(p, outlet || null, q || "")
       .then(({ data }) => {
-        // DRF PageNumberPagination returns { count, next, previous, results }
         if (data && Array.isArray(data.results)) {
           setTotalCount(data.count);
           setItems(data.results);
         } else {
-          // fallback for non-paginated response
           setItems(Array.isArray(data) ? data : []);
           setTotalCount(Array.isArray(data) ? data.length : 0);
         }
@@ -223,7 +243,17 @@ export default function PendingItemsPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchPage(page, selectedOutlet); }, [page, selectedOutlet]);
+  useEffect(() => { fetchPage(page, selectedOutlet, search); }, [page, selectedOutlet]);
+
+  const handleSearchChange = (e) => {
+    const val = e.target.value;
+    setSearch(val);
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      setPage(1);
+      fetchPage(1, selectedOutlet, val);
+    }, 300);
+  };
 
   const removeItem = (id) => {
     setItems((prev) => prev.filter((i) => i.id !== id));
@@ -245,7 +275,7 @@ export default function PendingItemsPage() {
               New items need barcodes. Changed items need review before the master record is updated.
             </p>
           </div>
-          <div className="flex items-center gap-3 mt-1">
+          <div className="flex items-center gap-3 mt-1 flex-wrap">
             {isAdmin && outlets.length > 0 && (
               <select
                 value={selectedOutlet}
@@ -266,17 +296,30 @@ export default function PendingItemsPage() {
           </div>
         </div>
 
+        {/* Search */}
+        <div className="mb-5">
+          <input
+            type="text"
+            placeholder="Search by item code or name…"
+            value={search}
+            onChange={handleSearchChange}
+            className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+          />
+        </div>
+
         {loading && (
           <div className="text-center py-12 text-gray-400">Loading…</div>
         )}
 
-        {!loading && items.length === 0 && page === 1 && (
+        {!loading && items.length === 0 && (
           <div className="text-center py-16 text-gray-400">
             <svg className="mx-auto w-12 h-12 mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                 d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <p className="font-medium">All caught up! No items awaiting review.</p>
+            <p className="font-medium">
+              {search ? "No items match your search." : "All caught up! No items awaiting review."}
+            </p>
           </div>
         )}
 

@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import ItemListView, ItemDetailView, PendingItemListView, assign_barcode, accept_change, reject_change, catalog_list, item_price_history
+from .views import ItemListView, ItemDetailView, PendingItemListView, assign_barcode, accept_change, reject_change, catalog_list, item_price_history, update_item
 
 urlpatterns = [
     path("", ItemListView.as_view(), name="item-list"),
@@ -10,4 +10,5 @@ urlpatterns = [
     path("pending/<int:pending_id>/assign-barcode/", assign_barcode, name="assign-barcode"),
     path("pending/<int:pending_id>/accept-change/", accept_change, name="accept-change"),
     path("pending/<int:pending_id>/reject-change/", reject_change, name="reject-change"),
+    path("<int:item_id>/update/", update_item, name="item-update"),
 ]

@@ -15,6 +15,8 @@ class Item(models.Model):
     item_name = models.CharField(max_length=300)
     barcode = models.CharField(max_length=100, blank=True, null=True, unique=True)
     category = models.CharField(max_length=200, blank=True)
+    rack_number = models.CharField(max_length=50, blank=True, default='')
+    shelf = models.CharField(max_length=50, blank=True, default='')
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING_BARCODE)
     created_at = models.DateTimeField(auto_now_add=True)
     barcode_assigned_at = models.DateTimeField(null=True, blank=True)

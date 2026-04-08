@@ -1,10 +1,12 @@
 import api from "./client";
 
-export const getPendingItems = (page = 1, outlet = null) =>
-  api.get("/items/pending/", { params: { page, page_size: 10, ...(outlet ? { outlet } : {}) } });
+export const getPendingItems = (page = 1, outlet = null, q = "") =>
+  api.get("/items/pending/", {
+    params: { page, page_size: 10, ...(outlet ? { outlet } : {}), ...(q ? { q } : {}) },
+  });
 
-export const assignBarcode = (pendingId, barcode, category = "") =>
-  api.post(`/items/pending/${pendingId}/assign-barcode/`, { barcode, category });
+export const assignBarcode = (pendingId, barcode, category = "", rack_number = "", shelf = "") =>
+  api.post(`/items/pending/${pendingId}/assign-barcode/`, { barcode, category, rack_number, shelf });
 
 export const acceptChange = (pendingId) =>
   api.post(`/items/pending/${pendingId}/accept-change/`);
@@ -19,3 +21,6 @@ export const getItemPosHistory = (itemId, page = 1, pageSize = 60) =>
 
 export const searchCatalog = (q, outletId) =>
   api.get("/items/catalog/", { params: { q, outlet: outletId, page_size: 20 } });
+
+export const updateItem = (itemId, data) =>
+  api.patch(`/items/${itemId}/update/`, data);

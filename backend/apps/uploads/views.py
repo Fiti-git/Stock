@@ -161,11 +161,17 @@ def confirm_upload(request):
         status=UploadLog.Status.SUCCESS,
     ).first()
 
-    if existing_log and not overwrite:
-        return Response(
-            {"detail": "A successful upload already exists for this date. Set overwrite=true to replace."},
-            status=status.HTTP_409_CONFLICT,
-        )
+    if existing_log:
+        if not overwrite:
+            return Response(
+                {"detail": "A successful upload already exists for this date. Set overwrite=true to replace."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        if user.role != User.Role.ADMIN:
+            return Response(
+                {"detail": "An upload already exists for today. Contact an admin to override."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
     # Past-date upload → save file and create pending approval log
     if snapshot_date != today:

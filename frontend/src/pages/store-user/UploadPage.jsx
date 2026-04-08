@@ -422,9 +422,15 @@ export default function UploadPage() {
 
               {/* Duplicate */}
               {validation.duplicate && !validation.needs_approval && (
-                <Alert type="warning">
-                  A successful upload already exists for this date. Confirming will overwrite it.
-                </Alert>
+                isAdmin ? (
+                  <Alert type="warning">
+                    A successful upload already exists for this date. As admin, you can override and overwrite it.
+                  </Alert>
+                ) : (
+                  <Alert type="error">
+                    An upload already exists for today. Only an admin can override this.
+                  </Alert>
+                )
               )}
 
               {/* Stats */}
@@ -458,7 +464,7 @@ export default function UploadPage() {
               >
                 ← Back
               </button>
-              {validation.valid && (
+              {validation.valid && !(validation.duplicate && !validation.needs_approval && !isAdmin) && (
                 <button
                   onClick={() => handleConfirm(validation.duplicate && !validation.needs_approval)}
                   className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-lg text-sm transition-colors"
@@ -466,7 +472,7 @@ export default function UploadPage() {
                   {validation.needs_approval
                     ? "Submit for Approval"
                     : validation.duplicate
-                    ? "Overwrite & Import"
+                    ? "Override & Import"
                     : "Confirm Import"}
                 </button>
               )}
