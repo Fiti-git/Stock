@@ -16,6 +16,7 @@ import OutletsPage from "./pages/admin/OutletsPage";
 import UsersPage from "./pages/admin/UsersPage";
 import OutletsOverviewPage from "./pages/admin/OutletsOverviewPage";
 import AuditLogPage from "./pages/admin/AuditLogPage";
+import NegativePosReportPage from "./pages/admin/NegativePosReportPage";
 import ProductMasterPage from "./pages/manager/ProductMasterPage";
 
 function RoleRoute({ children, allowedRoles }) {
@@ -121,6 +122,14 @@ export default function App() {
             element={
               <RoleRoute allowedRoles={["admin"]}>
                 <AuditLogPage />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/admin/negative-pos"
+            element={
+              <RoleRoute allowedRoles={["admin"]}>
+                <NegativePosReportPage />
               </RoleRoute>
             }
           />

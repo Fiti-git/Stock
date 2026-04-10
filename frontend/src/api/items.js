@@ -24,3 +24,8 @@ export const searchCatalog = (q, outletId) =>
 
 export const updateItem = (itemId, data) =>
   api.patch(`/items/${itemId}/update/`, data);
+
+export const getNegativePosReport = (date, outletId = null) =>
+  api.get("/items/negative-pos/", {
+    params: { date, ...(outletId ? { outlet: outletId } : {}) },
+  });

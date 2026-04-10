@@ -1,3 +1,5 @@
+from collections import defaultdict
+from decimal import Decimal
 from django.db.models import OuterRef, Subquery, Q
 from django.utils import timezone
 from rest_framework import generics, status
@@ -319,6 +321,50 @@ def catalog_list(request):
 
 
 @api_view(["GET"])
+@permission_classes([IsStoreUser])
+def item_lookup(request):
+    """
+    Look up a single item by barcode for the store-user's outlet.
+    Used by the mobile barcode scan app.
+
+    GET /api/items/lookup/?barcode=<value>
+
+    Returns item details + latest POS prices + today's count status.
+    Returns 404 if barcode not found in this outlet.
+    """
+    barcode = request.query_params.get("barcode", "").strip()
+    if not barcode:
+        return Response({"detail": "barcode query param required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        item = Item.objects.get(barcode=barcode, outlet=request.user.outlet)
+    except Item.DoesNotExist:
+        return Response({"detail": "Item not found for this barcode."}, status=status.HTTP_404_NOT_FOUND)
+
+    # Latest POS snapshot prices
+    latest_snap = PosSnapshot.objects.filter(item=item).order_by("-snapshot_date").first()
+    sell_price = str(latest_snap.selling_price) if latest_snap and latest_snap.selling_price is not None else None
+    cost_price = str(latest_snap.cost_price) if latest_snap and latest_snap.cost_price is not None else None
+
+    # Today's count if it exists
+    from apps.dashboard.models import StockCount
+    today = timezone.localdate()
+    today_count = StockCount.objects.filter(outlet=request.user.outlet, item=item, count_date=today).first()
+
+    return Response({
+        "item_id": item.id,
+        "item_code": item.item_code,
+        "item_name": item.item_name,
+        "barcode": item.barcode,
+        "category": item.category,
+        "sell_price": sell_price,
+        "cost_price": cost_price,
+        "already_counted_today": today_count is not None,
+        "today_actual_qty": str(today_count.actual_qty) if today_count else None,
+    })
+
+
+@api_view(["GET"])
 @permission_classes([IsManager])
 def item_price_history(request, item_id):
     """
@@ -404,3 +450,67 @@ def item_price_history(request, item_id):
         "total_pages": max(1, (total + page_size - 1) // page_size),
         "history": history,
     })
+
+
+@api_view(["GET"])
+@permission_classes([IsAdmin])
+def negative_pos_report(request):
+    """
+    Admin report: items with negative POS quantity for a given date, grouped by outlet.
+
+    Query params:
+      date   — snapshot date (YYYY-MM-DD, required)
+      outlet — outlet id (optional, filter to one outlet)
+
+    Response:
+      { date, outlets: [{ outlet_id, outlet_name, total_cost_value, items: [...] }] }
+    """
+    date_param = request.query_params.get("date", "").strip()
+    if not date_param:
+        return Response({"detail": "date query param is required (YYYY-MM-DD)."}, status=status.HTTP_400_BAD_REQUEST)
+
+    qs = (
+        PosSnapshot.objects
+        .filter(pos_quantity__lt=0, snapshot_date=date_param)
+        .select_related("item", "item__outlet")
+        .order_by("item__outlet__outlet_name", "item__item_code")
+    )
+
+    outlet_filter = request.query_params.get("outlet", "").strip()
+    if outlet_filter:
+        qs = qs.filter(outlet_id=outlet_filter)
+
+    # Group by outlet
+    outlets_map = defaultdict(lambda: {"outlet_id": None, "outlet_name": "", "items": [], "total_cost_value": Decimal("0")})
+
+    for snap in qs:
+        outlet = snap.item.outlet
+        key = outlet.id
+        entry = outlets_map[key]
+        entry["outlet_id"] = outlet.id
+        entry["outlet_name"] = outlet.outlet_name
+
+        qty = snap.pos_quantity  # negative
+        cost = snap.cost_price or Decimal("0")
+        line_cost_value = abs(qty) * cost
+
+        entry["items"].append({
+            "item_code": snap.item.item_code,
+            "item_name": snap.item.item_name,
+            "pos_quantity": float(qty),
+            "selling_price": float(snap.selling_price) if snap.selling_price is not None else None,
+            "cost_price": float(cost),
+            "line_cost_value": float(line_cost_value),
+        })
+        entry["total_cost_value"] += line_cost_value
+
+    outlets = []
+    for entry in outlets_map.values():
+        outlets.append({
+            "outlet_id": entry["outlet_id"],
+            "outlet_name": entry["outlet_name"],
+            "total_cost_value": float(entry["total_cost_value"]),
+            "items": entry["items"],
+        })
+
+    return Response({"date": date_param, "outlets": outlets})
