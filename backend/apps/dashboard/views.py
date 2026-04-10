@@ -129,7 +129,30 @@ def variances(request):
         reverse=True,
     )
 
-    return Response(results[:limit])
+    results = results[:limit]
+
+    # Pagination
+    try:
+        page = max(1, int(request.query_params.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = min(int(request.query_params.get("page_size", 50)), 200)
+    except (TypeError, ValueError):
+        page_size = 50
+
+    total = len(results)
+    offset = (page - 1) * page_size
+    page_results = results[offset: offset + page_size]
+
+    return Response({
+        "count": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": max(1, (total + page_size - 1) // page_size),
+        "snapshot_date": str(latest_snapshot),
+        "results": page_results,
+    })
 
 
 @api_view(["GET"])
@@ -315,6 +338,69 @@ def shrinkage(request):
 
     periods, summary = compute_shrinkage(outlet, from_date, to_date, period, category)
     return Response({"periods": periods, "summary": summary})
+
+
+@api_view(["GET"])
+@permission_classes([IsManager])
+def admin_summary(request):
+    """
+    Cross-outlet summary for admins. Returns per-outlet status rows + system totals.
+    Admin-only; managers receive 403.
+    """
+    if request.user.role != "admin":
+        from rest_framework.response import Response as R
+        return R({"detail": "Admin only."}, status=403)
+
+    today = date.today()
+    outlets = Outlet.objects.all().order_by("outlet_name")
+
+    # Uploaded today: outlet_ids with a successful upload for today
+    uploaded_today_ids = set(
+        UploadLog.objects.filter(status=UploadLog.Status.SUCCESS, snapshot_date=today)
+        .values_list("outlet_id", flat=True)
+    )
+
+    # Item counts per outlet (from latest snapshot)
+    from django.db.models import Max
+    from apps.items.models import Item
+
+    rows = []
+    total_items = 0
+    total_pending = 0
+    total_negative = 0
+
+    for outlet in outlets:
+        item_count = PosSnapshot.objects.filter(outlet=outlet).values("item").distinct().count()
+        pending_bc = PendingItem.objects.filter(
+            first_seen_outlet=outlet, status=PendingItem.Status.PENDING
+        ).count()
+        negative_count = PosSnapshot.objects.filter(
+            outlet=outlet, snapshot_date=today, pos_quantity__lt=0
+        ).count()
+        counted_today = StockCount.objects.filter(outlet=outlet, count_date=today).count()
+
+        total_items += item_count
+        total_pending += pending_bc
+        total_negative += negative_count
+
+        rows.append({
+            "outlet_id": outlet.id,
+            "outlet_name": outlet.outlet_name,
+            "item_count": item_count,
+            "uploaded_today": outlet.id in uploaded_today_ids,
+            "pending_barcodes": pending_bc,
+            "negative_items": negative_count,
+            "counted_today": counted_today,
+        })
+
+    return Response({
+        "today": str(today),
+        "outlet_count": len(rows),
+        "total_items": total_items,
+        "total_pending_barcodes": total_pending,
+        "total_negative_today": total_negative,
+        "outlets": rows,
+    })
 
 
 @api_view(["POST"])

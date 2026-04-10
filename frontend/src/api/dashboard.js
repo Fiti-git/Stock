@@ -5,8 +5,13 @@ const outletParam = (outletId) =>
 
 export const getCountProgress = (outletId) =>
   api.get("/dashboard/count-progress/", outletParam(outletId));
-export const getVariances = (outletId) =>
-  api.get("/dashboard/variances/", outletParam(outletId));
+export const getVariances = (outletId, page = 1, pageSize = 50) =>
+  api.get("/dashboard/variances/", {
+    params: { ...(outletId ? { outlet: outletId } : {}), page, page_size: pageSize },
+  });
+
+export const getAdminSummary = () =>
+  api.get("/dashboard/admin-summary/");
 export const getAlerts = (outletId) =>
   api.get("/dashboard/alerts/", outletParam(outletId));
 export const getCountItems = (outletId, countDate, page = 1) => {

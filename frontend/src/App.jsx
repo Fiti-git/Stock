@@ -17,6 +17,7 @@ import UsersPage from "./pages/admin/UsersPage";
 import OutletsOverviewPage from "./pages/admin/OutletsOverviewPage";
 import AuditLogPage from "./pages/admin/AuditLogPage";
 import NegativePosReportPage from "./pages/admin/NegativePosReportPage";
+import AdminDashboardPage from "./pages/admin/AdminDashboardPage";
 import ProductMasterPage from "./pages/manager/ProductMasterPage";
 
 function RoleRoute({ children, allowedRoles }) {
@@ -32,6 +33,7 @@ function HomeRedirect() {
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
   if (user.role === "store_user" || user.role === "staff") return <Navigate to="/count" replace />;
+  if (user.role === "admin") return <Navigate to="/admin/dashboard" replace />;
   return <Navigate to="/dashboard" replace />;
 }
 
@@ -114,6 +116,14 @@ export default function App() {
             element={
               <RoleRoute allowedRoles={["admin"]}>
                 <UsersPage />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/admin/dashboard"
+            element={
+              <RoleRoute allowedRoles={["admin"]}>
+                <AdminDashboardPage />
               </RoleRoute>
             }
           />

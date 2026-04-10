@@ -142,8 +142,8 @@ export default function Layout({ children }) {
       ? [{ to: "/count", label: "Stock Count", icon: Icon.count }]
       : user?.role === "admin"
       ? [
+          { to: "/admin/dashboard", label: "Dashboard", icon: Icon.dashboard },
           { to: "/overview", label: "Overview", icon: Icon.overview },
-          { to: "/dashboard", label: "Dashboard", icon: Icon.dashboard },
           { to: "/dashboard/pending", label: "Pending Items", icon: Icon.pending },
           { to: "/shrinkage", label: "Shrinkage", icon: Icon.shrinkage },
           { to: "/catalog", label: "Product Catalog", icon: Icon.catalog },
@@ -171,8 +171,6 @@ export default function Layout({ children }) {
           { to: "/upload", label: "Upload XLS", icon: Icon.upload },
           { to: "/upload/history", label: "History", icon: Icon.history },
         ];
-
-  const isDesktop = typeof window !== "undefined" && window.innerWidth >= 640;
 
   // On desktop, toggle icon-only collapse; on mobile, open/close drawer
   const handleToggle = () => {
