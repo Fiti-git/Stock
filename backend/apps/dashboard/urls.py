@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import count_progress, variances, alerts, submit_count, count_items, shrinkage, admin_summary
+from .views import count_progress, variances, alerts, submit_count, count_items, shrinkage, admin_summary, daily_counts
 
 urlpatterns = [
     path("count-progress/", count_progress, name="count-progress"),
@@ -9,4 +9,5 @@ urlpatterns = [
     path("count-items/", count_items, name="count-items"),
     path("shrinkage/", shrinkage, name="shrinkage"),
     path("admin-summary/", admin_summary, name="admin-summary"),
+    path("daily-counts/", daily_counts, name="daily-counts"),
 ]

@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 
-from django.db.models import F, ExpressionWrapper, DecimalField, Count
+from django.db.models import F, ExpressionWrapper, DecimalField, Count, Sum, Max
 from django.shortcuts import get_object_or_404
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -32,7 +32,7 @@ def count_progress(request):
     outlet = _resolve_outlet(request)
     today = date.today()
 
-    total_counted = StockCount.objects.filter(outlet=outlet, count_date=today).count()
+    total_counted = StockCount.objects.filter(outlet=outlet, count_date=today).values("item_id").distinct().count()
     # Total items in today's POS snapshot
     total_items = PosSnapshot.objects.filter(outlet=outlet, snapshot_date=today).count()
     # Pending barcode items
@@ -81,30 +81,39 @@ def variances(request):
     if not latest_snapshot:
         return Response([])
 
-    # Subquery: latest StockCount id per item for this outlet
-    latest_count_sq = (
-        StockCount.objects.filter(outlet=outlet, item=OuterRef("item"))
-        .order_by("-count_date")
-        .values("id")[:1]
-    )
+    # For each item: find the latest count_date, then SUM all location entries for that date
+    # Step 1: latest count_date per item
+    latest_date_by_item = {
+        row["item_id"]: row["max_date"]
+        for row in StockCount.objects.filter(outlet=outlet)
+        .values("item_id")
+        .annotate(max_date=Max("count_date"))
+    }
+
+    # Step 2: sum actual_qty per item for its latest count_date
+    summed_counts = {}
+    for row in (
+        StockCount.objects
+        .filter(outlet=outlet, item_id__in=latest_date_by_item.keys())
+        .values("item_id", "count_date")
+        .annotate(total_qty=Sum("actual_qty"))
+    ):
+        item_id = row["item_id"]
+        if row["count_date"] == latest_date_by_item.get(item_id):
+            summed_counts[item_id] = {
+                "total_qty": float(row["total_qty"]),
+                "count_date": row["count_date"],
+            }
 
     snapshots = (
         PosSnapshot.objects.filter(outlet=outlet, snapshot_date=latest_snapshot)
         .select_related("item")
-        .annotate(latest_count_id=Subquery(latest_count_sq))
     )
-
-    # Fetch all relevant counts in one query
-    count_ids = [s.latest_count_id for s in snapshots if s.latest_count_id is not None]
-    counts_by_id = {
-        c.id: c
-        for c in StockCount.objects.filter(id__in=count_ids).select_related("counted_by")
-    }
 
     results = []
     for snap in snapshots:
-        latest_count = counts_by_id.get(snap.latest_count_id)
-        actual_qty = float(latest_count.actual_qty) if latest_count else None
+        count_data = summed_counts.get(snap.item.id)
+        actual_qty = count_data["total_qty"] if count_data else None
         pos_qty = float(snap.pos_quantity)
         variance = (actual_qty - pos_qty) if actual_qty is not None else None
 
@@ -117,8 +126,8 @@ def variances(request):
                 "pos_qty": pos_qty,
                 "actual_qty": actual_qty,
                 "variance": variance,
-                "location_tag": latest_count.location_tag if latest_count else "",
-                "last_counted": str(latest_count.count_date) if latest_count else None,
+                "location_tag": "",
+                "last_counted": str(count_data["count_date"]) if count_data else None,
                 "snapshot_date": str(latest_snapshot),
             }
         )
@@ -250,14 +259,23 @@ def count_items(request):
             status=200,
         )
 
-    date_counts = {
-        sc.item_id: sc
-        for sc in StockCount.objects.filter(outlet=outlet, count_date=count_date).select_related("counted_by")
+    # Aggregate all location counts per item for this date
+    summed_date_counts = {
+        row["item_id"]: row["total_qty"]
+        for row in StockCount.objects.filter(outlet=outlet, count_date=count_date)
+        .values("item_id")
+        .annotate(total_qty=Sum("actual_qty"))
     }
+    # For display: get the most recent count record per item (for counted_by info)
+    last_count_per_item = {}
+    for sc in StockCount.objects.filter(outlet=outlet, count_date=count_date).select_related("counted_by").order_by("item_id", "-counted_at"):
+        if sc.item_id not in last_count_per_item:
+            last_count_per_item[sc.item_id] = sc
 
     results = []
     for snap in snapshots:
-        sc = date_counts.get(snap.item_id)
+        total_qty = summed_date_counts.get(snap.item_id)
+        sc = last_count_per_item.get(snap.item_id)
         results.append(
             {
                 "item_id": snap.item.id,
@@ -268,7 +286,7 @@ def count_items(request):
                 "pos_qty": float(snap.pos_quantity),
                 "snapshot_date": str(count_date),
                 "today_count_id": sc.id if sc else None,
-                "today_actual_qty": float(sc.actual_qty) if sc else None,
+                "today_actual_qty": float(total_qty) if total_qty is not None else None,
                 "today_location_tag": sc.location_tag if sc else "",
                 "today_counted_by": sc.counted_by.username if sc and sc.counted_by else None,
             }
@@ -377,7 +395,7 @@ def admin_summary(request):
         negative_count = PosSnapshot.objects.filter(
             outlet=outlet, snapshot_date=today, pos_quantity__lt=0
         ).count()
-        counted_today = StockCount.objects.filter(outlet=outlet, count_date=today).count()
+        counted_today = StockCount.objects.filter(outlet=outlet, count_date=today).values("item_id").distinct().count()
 
         total_items += item_count
         total_pending += pending_bc
@@ -429,15 +447,90 @@ def submit_count(request):
     except (ValueError, TypeError):
         count_date = date.today()
 
-    count, _ = StockCount.objects.update_or_create(
+    count = StockCount.objects.create(
         outlet=outlet,
         item=item,
         count_date=count_date,
-        defaults={
-            "actual_qty": serializer.validated_data["actual_qty"],
-            "location_tag": serializer.validated_data.get("location_tag", ""),
-            "counted_by": request.user,
-            "is_month_end": serializer.validated_data.get("is_month_end", False),
-        },
+        actual_qty=serializer.validated_data["actual_qty"],
+        location_tag=serializer.validated_data.get("location_tag", ""),
+        counted_by=request.user,
+        is_month_end=serializer.validated_data.get("is_month_end", False),
     )
     return Response(StockCountSerializer(count).data, status=201)
+
+
+@api_view(["GET"])
+@permission_classes([IsManager])
+def daily_counts(request):
+    """
+    All StockCount records for an outlet on a given date, with item details.
+    Useful for reviewing what was counted, where, and by whom.
+
+    Query params:
+      count_date — YYYY-MM-DD (default: today)
+      outlet     — outlet id (admin override)
+      search     — filter by item code or name
+      page, page_size
+    """
+    from datetime import datetime
+
+    outlet = _resolve_outlet(request)
+    if not outlet:
+        return Response({"detail": "No outlet."}, status=400)
+
+    raw_date = request.query_params.get("count_date", "")
+    try:
+        count_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        count_date = date.today()
+
+    search = request.query_params.get("search", "").strip()
+
+    qs = (
+        StockCount.objects.filter(outlet=outlet, count_date=count_date)
+        .select_related("item", "counted_by")
+        .order_by("item__item_code", "counted_at")
+    )
+
+    if search:
+        from django.db.models import Q
+        qs = qs.filter(
+            Q(item__item_code__icontains=search) | Q(item__item_name__icontains=search)
+        )
+
+    try:
+        page = max(1, int(request.query_params.get("page", 1)))
+    except (ValueError, TypeError):
+        page = 1
+    try:
+        page_size = min(int(request.query_params.get("page_size", 20)), 100)
+    except (ValueError, TypeError):
+        page_size = 20
+
+    total = qs.count()
+    offset = (page - 1) * page_size
+    page_qs = qs[offset: offset + page_size]
+
+    results = [
+        {
+            "id": sc.id,
+            "item_code": sc.item.item_code,
+            "item_name": sc.item.item_name,
+            "category": sc.item.category,
+            "location_tag": sc.location_tag,
+            "actual_qty": float(sc.actual_qty),
+            "counted_by_username": sc.counted_by.username if sc.counted_by else None,
+            "counted_at": sc.counted_at.isoformat(),
+            "is_month_end": sc.is_month_end,
+        }
+        for sc in page_qs
+    ]
+
+    return Response({
+        "count": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": max(1, (total + page_size - 1) // page_size),
+        "count_date": str(count_date),
+        "results": results,
+    })

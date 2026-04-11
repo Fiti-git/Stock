@@ -27,7 +27,6 @@ class StockCount(models.Model):
     class Meta:
         db_table = "stock_counts"
         ordering = ["-counted_at"]
-        unique_together = [("outlet", "item", "count_date")]
 
     def __str__(self):
         return f"{self.outlet} / {self.item.item_code} @ {self.count_date} = {self.actual_qty}"

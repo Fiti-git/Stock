@@ -19,6 +19,7 @@ import AuditLogPage from "./pages/admin/AuditLogPage";
 import NegativePosReportPage from "./pages/admin/NegativePosReportPage";
 import AdminDashboardPage from "./pages/admin/AdminDashboardPage";
 import ProductMasterPage from "./pages/manager/ProductMasterPage";
+import CountedStockDailyPage from "./pages/manager/CountedStockDailyPage";
 
 function RoleRoute({ children, allowedRoles }) {
   const { user, loading } = useAuth();
@@ -194,6 +195,15 @@ export default function App() {
             element={
               <RoleRoute allowedRoles={["manager", "admin"]}>
                 <ProductMasterPage />
+              </RoleRoute>
+            }
+          />
+          {/* Counted Stock Daily */}
+          <Route
+            path="/daily-counts"
+            element={
+              <RoleRoute allowedRoles={["manager", "admin"]}>
+                <CountedStockDailyPage />
               </RoleRoute>
             }
           />

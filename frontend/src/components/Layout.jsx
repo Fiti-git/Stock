@@ -149,7 +149,7 @@ export default function Layout({ children }) {
           { to: "/catalog", label: "Product Catalog", icon: Icon.catalog },
           { to: "/product-master", label: "Product Master", icon: Icon.productMaster },
           { to: "/items/history", label: "POS History", icon: Icon.posHistory },
-          { to: "/count", label: "Stock Count", icon: Icon.count },
+          { to: "/daily-counts", label: "Counted Stock Daily", icon: Icon.count },
           { to: "/upload", label: "Upload XLS", icon: Icon.upload },
           { to: "/upload/history", label: "History", icon: Icon.history },
           { to: "/admin/upload-approvals", label: "Approvals", icon: Icon.approvals },
@@ -167,7 +167,7 @@ export default function Layout({ children }) {
           { to: "/catalog", label: "Product Catalog", icon: Icon.catalog },
           { to: "/product-master", label: "Product Master", icon: Icon.productMaster },
           { to: "/items/history", label: "POS History", icon: Icon.posHistory },
-          { to: "/count", label: "Stock Count", icon: Icon.count },
+          { to: "/daily-counts", label: "Counted Stock Daily", icon: Icon.count },
           { to: "/upload", label: "Upload XLS", icon: Icon.upload },
           { to: "/upload/history", label: "History", icon: Icon.history },
         ];

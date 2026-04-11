@@ -346,10 +346,21 @@ def item_lookup(request):
     sell_price = str(latest_snap.selling_price) if latest_snap and latest_snap.selling_price is not None else None
     cost_price = str(latest_snap.cost_price) if latest_snap and latest_snap.cost_price is not None else None
 
-    # Today's count if it exists
+    # Today's counts (may be multiple if item counted in several locations)
     from apps.dashboard.models import StockCount
     today = timezone.localdate()
-    today_count = StockCount.objects.filter(outlet=request.user.outlet, item=item, count_date=today).first()
+    today_counts_qs = StockCount.objects.filter(
+        outlet=request.user.outlet, item=item, count_date=today
+    ).order_by("counted_at")
+
+    today_counts = [
+        {
+            "location_tag": c.location_tag or "",
+            "actual_qty": str(c.actual_qty),
+            "counted_at": c.counted_at.strftime("%-I:%M %p") if c.counted_at else None,
+        }
+        for c in today_counts_qs
+    ]
 
     return Response({
         "item_id": item.id,
@@ -359,8 +370,8 @@ def item_lookup(request):
         "category": item.category,
         "sell_price": sell_price,
         "cost_price": cost_price,
-        "already_counted_today": today_count is not None,
-        "today_actual_qty": str(today_count.actual_qty) if today_count else None,
+        "already_counted_today": len(today_counts) > 0,
+        "today_counts": today_counts,
     })
 
 

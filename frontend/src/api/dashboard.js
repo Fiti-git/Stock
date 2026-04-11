@@ -28,3 +28,14 @@ export const submitCount = (itemId, actualQty, locationTag = "", isMonthEnd = fa
     is_month_end: isMonthEnd,
     ...(countDate ? { count_date: countDate } : {}),
   });
+
+export const getDailyCounts = ({ outletId, countDate, search, page = 1, pageSize = 20 } = {}) =>
+  api.get("/dashboard/daily-counts/", {
+    params: {
+      ...(outletId ? { outlet: outletId } : {}),
+      ...(countDate ? { count_date: countDate } : {}),
+      ...(search ? { search } : {}),
+      page,
+      page_size: pageSize,
+    },
+  });

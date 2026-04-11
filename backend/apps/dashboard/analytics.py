@@ -7,7 +7,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.db.models import Q
+from django.db.models import Q, Sum
 
 from apps.uploads.models import PosSnapshot
 from .models import StockCount
@@ -27,10 +27,10 @@ def compute_shrinkage(outlet, from_date: date, to_date: date, period: str, categ
     """
     Compute shrinkage per period for the given outlet and date range.
 
-    For each StockCount in the range:
-    - Find the PosSnapshot for the same (outlet, item, date). If missing,
-      fall back to the nearest snapshot on or before the count date.
-    - Shrinkage = pos_qty − actual_qty
+    Multiple location counts for the same item+date are summed before
+    computing shrinkage so that multi-location counts don't inflate figures.
+
+    Shrinkage = pos_qty − total_actual_qty (positive = stock missing/lost).
 
     Returns a list of period dicts and an overall summary.
     """
@@ -38,13 +38,41 @@ def compute_shrinkage(outlet, from_date: date, to_date: date, period: str, categ
         outlet=outlet,
         count_date__gte=from_date,
         count_date__lte=to_date,
-    ).select_related("item")
+    )
 
     if category:
         counts_qs = counts_qs.filter(item__category=category)
 
-    # Pre-fetch all relevant snapshots in one query keyed by (item_id, snapshot_date)
-    item_ids = list(counts_qs.values_list("item_id", flat=True).distinct())
+    # Aggregate multiple location entries: sum actual_qty per (item, count_date)
+    aggregated = list(
+        counts_qs
+        .values("item_id", "count_date")
+        .annotate(total_qty=Sum("actual_qty"))
+    )
+
+    if not aggregated:
+        all_labels = _generate_period_labels(from_date, to_date, period)
+        periods = [
+            {
+                "label": label,
+                "total_shrinkage_qty": 0.0,
+                "total_shrinkage_value": 0.0,
+                "items_counted": 0,
+                "top_items": [],
+            }
+            for label in all_labels
+        ]
+        return periods, {"total_shrinkage_qty": 0.0, "total_shrinkage_value": 0.0, "worst_category": None}
+
+    # Pre-fetch item metadata
+    from apps.items.models import Item
+    item_ids = list({row["item_id"] for row in aggregated})
+    if category:
+        item_map = {item.id: item for item in Item.objects.filter(id__in=item_ids, category=category)}
+    else:
+        item_map = {item.id: item for item in Item.objects.filter(id__in=item_ids)}
+
+    # Pre-fetch all relevant snapshots in one query
     snapshots_qs = PosSnapshot.objects.filter(
         outlet=outlet,
         item_id__in=item_ids,
@@ -58,7 +86,6 @@ def compute_shrinkage(outlet, from_date: date, to_date: date, period: str, categ
 
     def get_pos_for_count(item_id: int, count_date: date):
         snaps = snap_by_item.get(item_id, [])
-        # Find exact match first, then nearest prior
         best = None
         for sd, qty, cost in snaps:
             if sd <= count_date:
@@ -67,13 +94,12 @@ def compute_shrinkage(outlet, from_date: date, to_date: date, period: str, categ
                 break
         return best  # (pos_qty, cost_price) or None
 
-    # Group counts by period
+    # Group aggregated counts by period
     period_counts: dict[str, list] = defaultdict(list)
-    for sc in counts_qs:
-        label = _iso_week_label(sc.count_date) if period == "weekly" else _month_label(sc.count_date)
-        period_counts[label].append(sc)
+    for row in aggregated:
+        label = _iso_week_label(row["count_date"]) if period == "weekly" else _month_label(row["count_date"])
+        period_counts[label].append(row)
 
-    # Build ordered list of period labels within the range
     all_labels = _generate_period_labels(from_date, to_date, period)
 
     periods = []
@@ -82,17 +108,22 @@ def compute_shrinkage(outlet, from_date: date, to_date: date, period: str, categ
     category_shrinkage: dict[str, Decimal] = defaultdict(Decimal)
 
     for label in all_labels:
-        counts_in_period = period_counts.get(label, [])
+        rows_in_period = period_counts.get(label, [])
         period_shrinkage_qty = Decimal("0")
         period_shrinkage_value = Decimal("0")
         item_shrinkage: dict[int, dict] = {}
 
-        for sc in counts_in_period:
-            snap = get_pos_for_count(sc.item_id, sc.count_date)
+        for row in rows_in_period:
+            item_id = row["item_id"]
+            item = item_map.get(item_id)
+            if item is None:
+                continue
+            snap = get_pos_for_count(item_id, row["count_date"])
             if snap is None:
                 continue
             pos_qty, cost_price = snap
-            shrink_qty = pos_qty - sc.actual_qty
+            total_counted = row["total_qty"]
+            shrink_qty = pos_qty - total_counted
             cost = cost_price if cost_price else Decimal("0")
             shrink_value = shrink_qty * cost
 
@@ -100,14 +131,13 @@ def compute_shrinkage(outlet, from_date: date, to_date: date, period: str, categ
             period_shrinkage_value += shrink_value
             total_shrinkage_qty += shrink_qty
             total_shrinkage_value += shrink_value
-            category_shrinkage[sc.item.category or "Uncategorised"] += shrink_value
+            category_shrinkage[item.category or "Uncategorised"] += shrink_value
 
-            # Keep worst shrinkage per item within this period
-            if sc.item_id not in item_shrinkage or shrink_qty > item_shrinkage[sc.item_id]["shrinkage_qty"]:
-                item_shrinkage[sc.item_id] = {
-                    "item_code": sc.item.item_code,
-                    "item_name": sc.item.item_name,
-                    "category": sc.item.category or "Uncategorised",
+            if item_id not in item_shrinkage or shrink_qty > item_shrinkage[item_id]["shrinkage_qty"]:
+                item_shrinkage[item_id] = {
+                    "item_code": item.item_code,
+                    "item_name": item.item_name,
+                    "category": item.category or "Uncategorised",
                     "shrinkage_qty": float(shrink_qty),
                     "shrinkage_value": float(shrink_value),
                 }
@@ -123,7 +153,7 @@ def compute_shrinkage(outlet, from_date: date, to_date: date, period: str, categ
                 "label": label,
                 "total_shrinkage_qty": float(period_shrinkage_qty),
                 "total_shrinkage_value": float(period_shrinkage_value),
-                "items_counted": len(counts_in_period),
+                "items_counted": len(rows_in_period),
                 "top_items": top_items,
             }
         )
