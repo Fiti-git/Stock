@@ -194,6 +194,45 @@ export default function AdminDashboardPage() {
           ))}
         </div>
 
+        {/* Negative POS widget */}
+        {!summaryLoad && summary?.outlets?.some((o) => o.negative_items > 0) && (
+          <div className="bg-white border border-red-200 rounded-xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-red-100 flex items-center justify-between bg-red-50">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                <h2 className="font-semibold text-red-900 text-base">Negative POS — Today</h2>
+              </div>
+              <Link
+                to="/admin/negative-pos"
+                className="text-xs font-medium text-red-700 hover:text-red-900 hover:underline"
+              >
+                View Full Report →
+              </Link>
+            </div>
+            <div className="divide-y divide-gray-50">
+              {summary.outlets
+                .filter((o) => o.negative_items > 0)
+                .sort((a, b) => b.negative_items - a.negative_items)
+                .map((o) => (
+                  <div key={o.outlet_id} className="flex items-center justify-between px-5 py-3">
+                    <span className="text-sm font-medium text-gray-800">{o.outlet_name}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="inline-block bg-red-100 text-red-700 text-xs font-semibold rounded px-2 py-0.5">
+                        {o.negative_items} item{o.negative_items !== 1 ? "s" : ""}
+                      </span>
+                      <Link
+                        to={`/admin/negative-pos?outlet=${o.outlet_id}`}
+                        className="text-xs text-gray-400 hover:text-red-600 hover:underline"
+                      >
+                        View
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+
         {/* Per-outlet status table */}
         <div className="bg-white border rounded-xl overflow-hidden">
           <div className="px-5 py-4 border-b flex items-center justify-between">

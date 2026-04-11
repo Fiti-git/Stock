@@ -5,17 +5,6 @@ import { getPendingItems, assignBarcode, acceptChange, rejectChange } from "../.
 import { getOutlets } from "../../api/outlets";
 import { useAuth } from "../../contexts/AuthContext";
 
-function FieldDiff({ field, diff }) {
-  return (
-    <div className="text-xs">
-      <span className="font-medium text-gray-600 capitalize">{field.replace("_", " ")}:</span>{" "}
-      <span className="line-through text-red-500">{diff.old ?? "—"}</span>
-      {" → "}
-      <span className="text-green-600 font-medium">{diff.new ?? "—"}</span>
-    </div>
-  );
-}
-
 function NewCodeCard({ item, onAssigned }) {
   const [assigning, setAssigning] = useState(false);
   const [inputs, setInputs] = useState({ barcode: "", category: "", rack_number: "", shelf: "" });
@@ -41,81 +30,88 @@ function NewCodeCard({ item, onAssigned }) {
   };
 
   return (
-    <div className="bg-white border rounded-xl p-5 shadow-sm">
-      <div className="flex items-start gap-3 mb-3">
-        <span className="text-xs bg-amber-100 text-amber-700 font-semibold px-2 py-0.5 rounded mt-0.5 whitespace-nowrap">
-          New Item
-        </span>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-gray-900 truncate">{item.item_name}</p>
-          <div className="flex flex-wrap gap-3 mt-1 text-xs text-gray-500">
-            <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded">{item.item_code}</span>
-            <span>First seen: {item.first_seen_date}</span>
-            <span>Outlet: {item.first_seen_outlet_name}</span>
+    <div className="bg-white rounded-xl shadow-sm overflow-hidden flex border border-gray-200">
+      {/* Left amber stripe */}
+      <div className="w-1 shrink-0 bg-amber-400" />
+
+      <div className="flex-1 p-5">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <p className="text-base font-bold text-gray-900 leading-snug">{item.item_name}</p>
+            <span className="inline-block mt-1 font-mono text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+              {item.item_code}
+            </span>
+          </div>
+          <span className="shrink-0 text-xs bg-amber-100 text-amber-700 font-semibold px-2 py-1 rounded-full whitespace-nowrap">
+            New Item
+          </span>
+        </div>
+
+        {/* Metadata */}
+        <div className="flex flex-wrap gap-4 text-xs text-gray-500 mb-4">
+          <span>First seen: <span className="font-medium text-gray-700">{item.first_seen_date}</span></span>
+          <span>Outlet: <span className="font-medium text-gray-700">{item.first_seen_outlet_name}</span></span>
+        </div>
+
+        {feedback && (
+          <div className="mb-3">
+            <Alert type={feedback.type}>{feedback.msg}</Alert>
+          </div>
+        )}
+
+        {/* Barcode input — full width, prominent */}
+        <div className="mb-3">
+          <label className="block text-xs font-medium text-gray-600 mb-1">Barcode</label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                  d="M4 6h1v12H4V6zm2 0h1v12H6V6zm3 0h2v12H9V6zm3 0h1v12h-1V6zm3 0h1v12h-1V6zm2 0h2v12h-2V6z" />
+              </svg>
+            </span>
+            <input
+              type="text"
+              autoComplete="off"
+              placeholder="Scan or type barcode…"
+              value={inputs.barcode}
+              onChange={(e) => setInput("barcode", e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAssign()}
+              className="w-full border-2 border-gray-300 rounded-lg pl-9 pr-3 py-2.5 text-sm font-mono
+                focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+            />
           </div>
         </div>
-      </div>
 
-      {feedback && (
-        <div className="mb-3">
-          <Alert type={feedback.type}>{feedback.msg}</Alert>
+        {/* Optional fields — 3-col grid */}
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          {[
+            { field: "category", label: "Category", placeholder: "BISCUITS" },
+            { field: "rack_number", label: "Rack No.", placeholder: "R3" },
+            { field: "shelf", label: "Shelf", placeholder: "S2" },
+          ].map(({ field, label, placeholder }) => (
+            <div key={field}>
+              <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
+              <input
+                type="text"
+                placeholder={placeholder}
+                value={inputs[field]}
+                onChange={(e) => setInput(field, e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs
+                  focus:outline-none focus:ring-1 focus:ring-brand-500"
+              />
+            </div>
+          ))}
         </div>
-      )}
 
-      <div className="grid grid-cols-2 gap-3 mb-3">
-        <div className="col-span-2 sm:col-span-1">
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            Barcode (scan or type)
-          </label>
-          <input
-            type="text"
-            autoComplete="off"
-            placeholder="e.g. 4009900531030"
-            value={inputs.barcode}
-            onChange={(e) => setInput("barcode", e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleAssign()}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-mono"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Category (optional)</label>
-          <input
-            type="text"
-            placeholder="e.g. BISCUITS"
-            value={inputs.category}
-            onChange={(e) => setInput("category", e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Rack No. (optional)</label>
-          <input
-            type="text"
-            placeholder="e.g. R3"
-            value={inputs.rack_number}
-            onChange={(e) => setInput("rack_number", e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Shelf (optional)</label>
-          <input
-            type="text"
-            placeholder="e.g. S2"
-            value={inputs.shelf}
-            onChange={(e) => setInput("shelf", e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-          />
-        </div>
-      </div>
-
-      <div className="flex justify-end">
+        {/* Assign button */}
         <button
           onClick={handleAssign}
           disabled={assigning || !inputs.barcode.trim()}
-          className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 whitespace-nowrap"
+          className="w-full py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold
+            rounded-lg transition-colors disabled:opacity-40"
         >
-          {assigning ? "Saving…" : "Assign"}
+          {assigning ? "Saving…" : "Assign Barcode"}
         </button>
       </div>
     </div>
@@ -157,53 +153,78 @@ function DataChangedCard({ item, onResolved }) {
   const changedFields = item.changed_fields || {};
 
   return (
-    <div className="bg-white border border-blue-200 rounded-xl p-5 shadow-sm">
-      <div className="flex items-start gap-3 mb-3">
-        <span className="text-xs bg-blue-100 text-blue-700 font-semibold px-2 py-0.5 rounded mt-0.5 whitespace-nowrap">
-          Data Changed
-        </span>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-gray-900 truncate">{item.item_name}</p>
-          <div className="flex flex-wrap gap-3 mt-1 text-xs text-gray-500">
-            <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded">{item.item_code}</span>
-            <span>Outlet: {item.first_seen_outlet_name}</span>
-            <span>Flagged: {item.first_seen_date}</span>
-            {item.rack_number && <span>Rack: {item.rack_number}</span>}
-            {item.shelf && <span>Shelf: {item.shelf}</span>}
+    <div className="bg-white rounded-xl shadow-sm overflow-hidden flex border border-gray-200">
+      {/* Left blue stripe */}
+      <div className="w-1 shrink-0 bg-blue-500" />
+
+      <div className="flex-1 p-5">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <p className="text-base font-bold text-gray-900 leading-snug">{item.item_name}</p>
+            <span className="inline-block mt-1 font-mono text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+              {item.item_code}
+            </span>
           </div>
+          <span className="shrink-0 text-xs bg-blue-100 text-blue-700 font-semibold px-2 py-1 rounded-full whitespace-nowrap">
+            Data Changed
+          </span>
         </div>
-      </div>
 
-      <div className="bg-gray-50 rounded-lg p-3 mb-3 space-y-1">
-        {Object.entries(changedFields).map(([field, diff]) => (
-          <FieldDiff key={field} field={field} diff={diff} />
-        ))}
-        {Object.keys(changedFields).length === 0 && (
-          <p className="text-xs text-gray-400">No field details available.</p>
+        {/* Metadata */}
+        <div className="flex flex-wrap gap-4 text-xs text-gray-500 mb-3">
+          <span>Outlet: <span className="font-medium text-gray-700">{item.first_seen_outlet_name}</span></span>
+          <span>Flagged: <span className="font-medium text-gray-700">{item.first_seen_date}</span></span>
+          {item.rack_number && <span>Rack: <span className="font-medium text-gray-700">{item.rack_number}</span></span>}
+          {item.shelf && <span>Shelf: <span className="font-medium text-gray-700">{item.shelf}</span></span>}
+        </div>
+
+        {/* Diff pill rows */}
+        <div className="flex flex-col gap-2 mb-4">
+          {Object.entries(changedFields).map(([field, diff]) => (
+            <div key={field} className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-semibold text-gray-500 capitalize w-24 shrink-0">
+                {field.replace(/_/g, " ")}
+              </span>
+              <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded line-through">
+                {diff.old ?? "—"}
+              </span>
+              <span className="text-gray-400 text-xs">→</span>
+              <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded font-medium">
+                {diff.new ?? "—"}
+              </span>
+            </div>
+          ))}
+          {Object.keys(changedFields).length === 0 && (
+            <p className="text-xs text-gray-400">No field details available.</p>
+          )}
+        </div>
+
+        {feedback && (
+          <div className="mb-3">
+            <Alert type={feedback.type}>{feedback.msg}</Alert>
+          </div>
         )}
-      </div>
 
-      {feedback && (
-        <div className="mb-3">
-          <Alert type={feedback.type}>{feedback.msg}</Alert>
+        {/* Action buttons */}
+        <div className="flex gap-2">
+          <button
+            onClick={handleAccept}
+            disabled={loading}
+            className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold
+              rounded-lg transition-colors disabled:opacity-40"
+          >
+            Accept Update
+          </button>
+          <button
+            onClick={handleReject}
+            disabled={loading}
+            className="flex-1 py-2.5 border-2 border-gray-300 hover:bg-gray-50 text-gray-700 text-sm
+              font-semibold rounded-lg transition-colors disabled:opacity-40"
+          >
+            Keep Original
+          </button>
         </div>
-      )}
-
-      <div className="flex gap-2">
-        <button
-          onClick={handleAccept}
-          disabled={loading}
-          className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40"
-        >
-          Accept Change
-        </button>
-        <button
-          onClick={handleReject}
-          disabled={loading}
-          className="flex-1 py-2 border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-semibold rounded-lg transition-colors disabled:opacity-40"
-        >
-          Keep Old
-        </button>
       </div>
     </div>
   );
@@ -219,6 +240,7 @@ export default function PendingItemsPage() {
   const [outlets, setOutlets] = useState([]);
   const [selectedOutlet, setSelectedOutlet] = useState("");
   const [search, setSearch] = useState("");
+  const [activeTab, setActiveTab] = useState("new");
   const searchTimer = useRef(null);
   const PAGE_SIZE = 10;
 
@@ -261,50 +283,81 @@ export default function PendingItemsPage() {
   };
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
-
   const newItems = items.filter((i) => i.change_type === "new_code" || !i.change_type);
   const changedItems = items.filter((i) => i.change_type === "data_changed");
+
+  const tabs = [
+    { key: "new", label: "New Items", count: newItems.length },
+    { key: "changed", label: "Data Changes", count: changedItems.length },
+  ];
 
   return (
     <Layout>
       <div className="max-w-4xl mx-auto">
-        <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
+        {/* Header */}
+        <div className="mb-5 flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Pending Review Queue</h1>
             <p className="text-sm text-gray-500 mt-1">
               New items need barcodes. Changed items need review before the master record is updated.
             </p>
           </div>
-          <div className="flex items-center gap-3 mt-1 flex-wrap">
-            {isAdmin && outlets.length > 0 && (
+          {totalCount > 0 && (
+            <span className="text-sm bg-gray-100 text-gray-600 px-3 py-1.5 rounded-full font-medium">
+              {totalCount} pending
+            </span>
+          )}
+        </div>
+
+        {/* Filter bar */}
+        <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 mb-5 flex flex-col sm:flex-row gap-3">
+          <div className="flex-1">
+            <label className="block text-xs font-medium text-gray-500 mb-1">Search</label>
+            <input
+              type="text"
+              placeholder="Item code or name…"
+              value={search}
+              onChange={handleSearchChange}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+            />
+          </div>
+          {isAdmin && outlets.length > 0 && (
+            <div className="sm:w-52">
+              <label className="block text-xs font-medium text-gray-500 mb-1">Outlet</label>
               <select
                 value={selectedOutlet}
                 onChange={(e) => { setSelectedOutlet(e.target.value); setPage(1); }}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
                 <option value="">All Outlets</option>
                 {outlets.map((o) => (
                   <option key={o.id} value={o.id}>{o.outlet_name}</option>
                 ))}
               </select>
-            )}
-            {totalCount > 0 && (
-              <span className="text-sm text-gray-500 whitespace-nowrap">
-                {totalCount} item{totalCount !== 1 ? "s" : ""} total
-              </span>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
-        {/* Search */}
-        <div className="mb-5">
-          <input
-            type="text"
-            placeholder="Search by item code or name…"
-            value={search}
-            onChange={handleSearchChange}
-            className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-          />
+        {/* Tab navigation */}
+        <div className="border-b border-gray-200 mb-6">
+          <div className="flex">
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
+                  ${activeTab === tab.key
+                    ? "border-brand-600 text-brand-700"
+                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"}`}
+              >
+                {tab.label}
+                <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-semibold
+                  ${activeTab === tab.key ? "bg-brand-100 text-brand-700" : "bg-gray-100 text-gray-500"}`}>
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {loading && (
@@ -323,37 +376,55 @@ export default function PendingItemsPage() {
           </div>
         )}
 
-        {/* New items needing barcodes */}
-        {newItems.length > 0 && (
-          <div className="mb-6">
-            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-              New Items — Assign Barcode ({newItems.length})
-            </h2>
-            <div className="space-y-4">
-              {newItems.map((item) => (
-                <NewCodeCard key={item.id} item={item} onAssigned={removeItem} />
-              ))}
-            </div>
-          </div>
-        )}
+        {!loading && items.length > 0 && (
+          <>
+            {activeTab === "new" && (
+              newItems.length === 0 ? (
+                <div className="text-center py-16">
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-amber-50 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <p className="font-medium text-gray-500">
+                    {search ? "No new items match your search." : "No new items awaiting barcode assignment."}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {newItems.map((item) => (
+                    <NewCodeCard key={item.id} item={item} onAssigned={removeItem} />
+                  ))}
+                </div>
+              )
+            )}
 
-        {/* Data changed items */}
-        {changedItems.length > 0 && (
-          <div>
-            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-              Data Changes — Review Required ({changedItems.length})
-            </h2>
-            <div className="space-y-4">
-              {changedItems.map((item) => (
-                <DataChangedCard key={item.id} item={item} onResolved={removeItem} />
-              ))}
-            </div>
-          </div>
+            {activeTab === "changed" && (
+              changedItems.length === 0 ? (
+                <div className="text-center py-16">
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-blue-50 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <p className="font-medium text-gray-500">
+                    {search ? "No data changes match your search." : "No data changes pending review."}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {changedItems.map((item) => (
+                    <DataChangedCard key={item.id} item={item} onResolved={removeItem} />
+                  ))}
+                </div>
+              )
+            )}
+          </>
         )}
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between mt-8 pt-4 border-t">
+          <div className="flex items-center justify-between mt-8 pt-4 border-t border-gray-200">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
@@ -362,7 +433,10 @@ export default function PendingItemsPage() {
               Previous
             </button>
             <span className="text-sm text-gray-500">
-              Page {page} of {totalPages}
+              Page <span className="font-semibold text-gray-800">{page}</span> of{" "}
+              <span className="font-semibold text-gray-800">{totalPages}</span>
+              {" · "}
+              <span className="font-semibold text-gray-800">{totalCount}</span> items total
             </span>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
