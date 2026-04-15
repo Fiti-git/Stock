@@ -643,3 +643,108 @@ def _process_upload(parsed, outlet, user, snapshot_date, overwrite, filename, ex
         },
         status=status.HTTP_201_CREATED,
     )
+
+
+# ---------------------------------------------------------------------------
+# Admin: diff preview for a pending upload
+# ---------------------------------------------------------------------------
+@api_view(["GET"])
+@permission_classes([IsAdmin])
+def upload_diff(request, log_id):
+    """
+    Return a diff preview for a PENDING upload without committing anything.
+    Parses the stored file and compares against the current item/snapshot data.
+    Flags suspicious items where the selling price changed by more than 20%.
+    """
+    try:
+        log = UploadLog.objects.select_related("outlet").get(
+            pk=log_id, approval_status=UploadLog.ApprovalStatus.PENDING
+        )
+    except UploadLog.DoesNotExist:
+        return Response({"detail": "Pending upload not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if not log.stored_file:
+        return Response({"detail": "No stored file found."}, status=status.HTTP_400_BAD_REQUEST)
+
+    log.stored_file.open("rb")
+    parsed = parse_xls(log.stored_file, log.filename)
+    log.stored_file.close()
+
+    if not parsed.rows:
+        return Response({"detail": "Could not parse stored file."}, status=status.HTTP_400_BAD_REQUEST)
+
+    outlet = log.outlet
+    item_codes = [r.item_code for r in parsed.rows]
+
+    # Fetch existing items for this outlet
+    existing_items = {
+        item.item_code: item
+        for item in Item.objects.filter(outlet=outlet, item_code__in=item_codes)
+    }
+
+    # Fetch latest snapshots for existing items (most recent before this upload's date)
+    existing_item_ids = [item.id for item in existing_items.values()]
+    latest_snaps = {}
+    if existing_item_ids:
+        for snap in PosSnapshot.objects.filter(
+            outlet=outlet,
+            item_id__in=existing_item_ids,
+            snapshot_date__lt=log.snapshot_date,
+        ).order_by("item_id", "-snapshot_date"):
+            if snap.item_id not in latest_snaps:
+                latest_snaps[snap.item_id] = snap
+
+    matched_items = []
+    new_items_list = []
+    suspicious_items = []
+
+    price_change_threshold = Decimal("0.20")  # 20%
+
+    for row in parsed.rows:
+        existing = existing_items.get(row.item_code)
+        if existing is None:
+            new_items_list.append({
+                "item_code": row.item_code,
+                "item_name": row.item_name,
+                "cost_price": str(row.cost_price) if row.cost_price is not None else None,
+                "selling_price": str(row.selling_price) if row.selling_price is not None else None,
+                "pos_quantity": str(row.pos_quantity) if row.pos_quantity is not None else None,
+            })
+        else:
+            snap = latest_snaps.get(existing.id)
+            entry = {
+                "item_code": row.item_code,
+                "item_name": row.item_name,
+                "new_selling_price": str(row.selling_price) if row.selling_price is not None else None,
+                "new_cost_price": str(row.cost_price) if row.cost_price is not None else None,
+                "new_pos_quantity": str(row.pos_quantity) if row.pos_quantity is not None else None,
+                "old_selling_price": str(snap.selling_price) if snap and snap.selling_price is not None else None,
+                "old_cost_price": str(snap.cost_price) if snap and snap.cost_price is not None else None,
+                "old_pos_quantity": str(snap.pos_quantity) if snap and snap.pos_quantity is not None else None,
+                "pct_change": None,
+                "suspicious": False,
+            }
+
+            # Check for suspicious price change
+            if snap and snap.selling_price and row.selling_price is not None:
+                old = snap.selling_price
+                new_val = row.selling_price
+                if old > 0:
+                    pct = abs(new_val - old) / old
+                    entry["pct_change"] = f"{float(pct * 100):.1f}"
+                    if pct > price_change_threshold:
+                        entry["suspicious"] = True
+                        suspicious_items.append(entry)
+
+            matched_items.append(entry)
+
+    return Response({
+        "summary": {
+            "total": len(parsed.rows),
+            "matched": len(matched_items),
+            "new_items": len(new_items_list),
+            "suspicious": len(suspicious_items),
+        },
+        "suspicious_items": suspicious_items,
+        "new_items": new_items_list,
+    })

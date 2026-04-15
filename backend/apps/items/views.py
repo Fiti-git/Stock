@@ -45,6 +45,12 @@ class ItemListView(generics.ListAPIView):
         q = self.request.query_params.get("q")
         if q:
             qs = qs.filter(Q(item_code__icontains=q) | Q(item_name__icontains=q))
+
+        latest_snap = PosSnapshot.objects.filter(item=OuterRef("pk")).order_by("-snapshot_date")
+        qs = qs.annotate(
+            latest_cost_price=Subquery(latest_snap.values("cost_price")[:1]),
+            latest_selling_price=Subquery(latest_snap.values("selling_price")[:1]),
+        )
         return qs
 
 

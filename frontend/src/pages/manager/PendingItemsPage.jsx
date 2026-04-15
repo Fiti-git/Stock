@@ -52,6 +52,12 @@ function NewCodeCard({ item, onAssigned }) {
         <div className="flex flex-wrap gap-4 text-xs text-gray-500 mb-4">
           <span>First seen: <span className="font-medium text-gray-700">{item.first_seen_date}</span></span>
           <span>Outlet: <span className="font-medium text-gray-700">{item.first_seen_outlet_name}</span></span>
+          {item.latest_cost_price != null && (
+            <span>Cost: <span className="font-medium text-gray-700">LKR {Number(item.latest_cost_price).toFixed(2)}</span></span>
+          )}
+          {item.latest_selling_price != null && (
+            <span>Sell: <span className="font-medium text-gray-700">LKR {Number(item.latest_selling_price).toFixed(2)}</span></span>
+          )}
         </div>
 
         {feedback && (
@@ -177,6 +183,12 @@ function DataChangedCard({ item, onResolved }) {
           <span>Flagged: <span className="font-medium text-gray-700">{item.first_seen_date}</span></span>
           {item.rack_number && <span>Rack: <span className="font-medium text-gray-700">{item.rack_number}</span></span>}
           {item.shelf && <span>Shelf: <span className="font-medium text-gray-700">{item.shelf}</span></span>}
+          {item.latest_cost_price != null && (
+            <span>Cost: <span className="font-medium text-gray-700">LKR {Number(item.latest_cost_price).toFixed(2)}</span></span>
+          )}
+          {item.latest_selling_price != null && (
+            <span>Sell: <span className="font-medium text-gray-700">LKR {Number(item.latest_selling_price).toFixed(2)}</span></span>
+          )}
         </div>
 
         {/* Diff pill rows */}

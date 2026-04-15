@@ -6,12 +6,15 @@ from apps.dashboard.models import StockCount
 
 class ItemSerializer(serializers.ModelSerializer):
     outlet_name = serializers.CharField(source="outlet.outlet_name", read_only=True)
+    latest_cost_price = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True, default=None)
+    latest_selling_price = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True, default=None)
 
     class Meta:
         model = Item
         fields = [
             "id", "outlet", "outlet_name", "item_code", "item_name", "barcode",
             "category", "rack_number", "shelf", "status", "created_at", "barcode_assigned_at",
+            "latest_cost_price", "latest_selling_price",
         ]
         read_only_fields = ["id", "created_at", "barcode_assigned_at"]
 
@@ -20,6 +23,8 @@ class PendingItemSerializer(serializers.ModelSerializer):
     first_seen_outlet_name = serializers.CharField(
         source="first_seen_outlet.outlet_name", read_only=True
     )
+    latest_cost_price = serializers.SerializerMethodField()
+    latest_selling_price = serializers.SerializerMethodField()
 
     class Meta:
         model = PendingItem
@@ -27,8 +32,21 @@ class PendingItemSerializer(serializers.ModelSerializer):
             "id", "item_code", "item_name", "first_seen_outlet",
             "first_seen_outlet_name", "first_seen_date", "staff_note",
             "status", "change_type", "changed_fields", "item", "created_at",
+            "latest_cost_price", "latest_selling_price",
         ]
         read_only_fields = ["id", "first_seen_date", "created_at"]
+
+    def get_latest_cost_price(self, obj):
+        if not obj.item_id:
+            return None
+        snap = PosSnapshot.objects.filter(item_id=obj.item_id).order_by("-snapshot_date").first()
+        return snap.cost_price if snap else None
+
+    def get_latest_selling_price(self, obj):
+        if not obj.item_id:
+            return None
+        snap = PosSnapshot.objects.filter(item_id=obj.item_id).order_by("-snapshot_date").first()
+        return snap.selling_price if snap else None
 
 
 class ItemUpdateSerializer(serializers.ModelSerializer):

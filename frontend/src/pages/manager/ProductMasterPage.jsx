@@ -243,6 +243,8 @@ export default function ProductMasterPage() {
                     <th className="px-4 py-3 font-medium">Rack</th>
                     <th className="px-4 py-3 font-medium">Shelf</th>
                     {isAdmin && <th className="px-4 py-3 font-medium">Outlet</th>}
+                    <th className="px-4 py-3 font-medium text-right">Cost (LKR)</th>
+                    <th className="px-4 py-3 font-medium text-right">Sell (LKR)</th>
                     <th className="px-4 py-3 font-medium">Status</th>
                     <th className="px-4 py-3"></th>
                   </tr>
@@ -257,6 +259,12 @@ export default function ProductMasterPage() {
                       <td className="px-4 py-3 text-gray-600">{item.rack_number || <span className="text-gray-300">—</span>}</td>
                       <td className="px-4 py-3 text-gray-600">{item.shelf || <span className="text-gray-300">—</span>}</td>
                       {isAdmin && <td className="px-4 py-3 text-gray-500 text-xs">{item.outlet_name}</td>}
+                      <td className="px-4 py-3 text-right text-gray-700 text-xs tabular-nums">
+                        {item.latest_cost_price != null ? Number(item.latest_cost_price).toFixed(2) : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-700 text-xs tabular-nums">
+                        {item.latest_selling_price != null ? Number(item.latest_selling_price).toFixed(2) : <span className="text-gray-300">—</span>}
+                      </td>
                       <td className="px-4 py-3">
                         {item.status === "active" ? (
                           <span className="inline-block px-2 py-0.5 rounded text-xs bg-green-100 text-green-700 font-medium">Active</span>
