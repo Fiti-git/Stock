@@ -8,6 +8,7 @@ import {
   getDbStatus,
   listBackups,
   restoreBackup,
+  uploadBackup,
 } from "../api/dbops";
 
 function formatBytes(n) {
@@ -48,8 +49,10 @@ export default function DbManagement() {
   const [restoreLog, setRestoreLog] = useState([]);
   const [backing, setBacking] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [confirm, setConfirm] = useState(null);
   const [feedback, setFeedback] = useState(null);
+  const fileInputRef = useRef(null);
 
   function flash(type, message) {
     setFeedback({ type, message });
@@ -132,6 +135,25 @@ export default function DbManagement() {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch {
       flash("error", "Download failed.");
+    }
+  }
+
+  async function handleUpload(file) {
+    if (!file) return;
+    if (!/\.sql(\.gz)?$/i.test(file.name)) {
+      flash("error", "File must end in .sql or .sql.gz");
+      return;
+    }
+    setUploading(true);
+    try {
+      const { data } = await uploadBackup(file);
+      flash("success", `Uploaded: ${data.filename}`);
+      refreshBackups();
+    } catch (err) {
+      flash("error", err.response?.data?.error || "Upload failed.");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
 
@@ -226,14 +248,30 @@ export default function DbManagement() {
 
         {/* Backup list */}
         <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
             <h2 className="text-lg font-semibold text-gray-800">Available Backups</h2>
-            <button
-              onClick={refreshBackups}
-              className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
-            >
-              Refresh
-            </button>
+            <div className="flex items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".sql,.gz,.sql.gz"
+                className="hidden"
+                onChange={(e) => handleUpload(e.target.files?.[0])}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="text-xs px-3 py-1.5 rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                {uploading ? "Uploading…" : "Upload Backup"}
+              </button>
+              <button
+                onClick={refreshBackups}
+                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+              >
+                Refresh
+              </button>
+            </div>
           </div>
 
           {backups.length === 0 ? (

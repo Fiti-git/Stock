@@ -121,6 +121,37 @@ class DbBackupCreateView(APIView):
             return Response({"ok": False, "log": "\n".join(log_lines)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+class DbBackupUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        _ensure_dir()
+        upload = request.FILES.get("file")
+        if not upload:
+            return Response({"ok": False, "error": "No file uploaded."}, status=status.HTTP_400_BAD_REQUEST)
+
+        name = Path(upload.name).name
+        if not SAFE_NAME.match(name):
+            return Response(
+                {"ok": False, "error": "Invalid filename. Must be *.sql or *.sql.gz with safe characters."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        dest = BACKUPS_DIR / name
+        if dest.exists():
+            stem = dest.stem.removesuffix(".sql") if dest.name.endswith(".sql.gz") else dest.stem
+            suffix = ".sql.gz" if dest.name.endswith(".sql.gz") else dest.suffix
+            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            dest = BACKUPS_DIR / f"{stem}_uploaded_{stamp}{suffix}"
+
+        with open(dest, "wb") as f:
+            for chunk in upload.chunks():
+                f.write(chunk)
+
+        size = dest.stat().st_size
+        return Response({"ok": True, "filename": dest.name, "size_bytes": size})
+
+
 class DbBackupDownloadView(APIView):
     permission_classes = [IsAuthenticated]
 
