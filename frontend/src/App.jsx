@@ -25,6 +25,7 @@ import CountedStockDailyPage from "./pages/manager/CountedStockDailyPage";
 
 const LicenseSetupRequired = lazy(() => import("./pages/LicenseSetupRequired"));
 const LicenseConfiguration = lazy(() => import("./pages/admin/LicenseConfiguration"));
+const DbManagement = lazy(() => import("./pages/DbManagement"));
 
 function RoleRoute({ children, allowedRoles }) {
   const { user, loading } = useAuth();
@@ -59,6 +60,16 @@ export default function App() {
           <Route path="/admin/license-configuration" element={
             <RoleRoute allowedRoles={["admin"]}><LicenseConfiguration /></RoleRoute>
           } />
+
+          {/* DB management — accessible to every authenticated role */}
+          <Route
+            path="/db-management"
+            element={
+              <RoleRoute allowedRoles={["store_user", "staff", "manager", "admin"]}>
+                <DbManagement />
+              </RoleRoute>
+            }
+          />
 
           {/* Item detail route */}
           <Route

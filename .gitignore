@@ -1,0 +1,90 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.pyo
+*.pyd
+.env
+venv/
+env/
+**/venv/
+**/env/
+*.sqlite3
+.DS_Store
+
+# Django
+*.log
+*.pot
+*.pyc
+local_settings.py
+db.sqlite3
+media/
+staticfiles/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+/dist/
+/build/
+.DS_Store
+
+# Vite
+/.vite
+
+# Docker
+docker-compose.override.yml
+**/docker-compose.override.yml
+
+# IDEs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# System
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs
+*.log
+
+# Python virtual environments
+.Python
+pip-wheel-metadata/
+.python-version
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# Mac
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+
+# Generated files
+*.egg-info/
+build/
+dist/
+
+# Backend media and uploads
+backend/media/
+
+# DB backups
+backups/
+
+# Frontend build output
+frontend/dist/
+frontend/build/

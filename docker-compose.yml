@@ -27,6 +27,7 @@ services:
     volumes:
       - ./backend:/app
       - media_files:/app/media
+      - ./backups:/app/backups
     ports:
       - "8001:8000"
     depends_on:

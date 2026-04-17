@@ -102,6 +102,13 @@ const Icon = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
     </svg>
   ),
+  database: (
+    <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 7c0-1.657 3.582-3 8-3s8 1.343 8 3-3.582 3-8 3-8-1.343-8-3z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 7v5c0 1.657 3.582 3 8 3s8-1.343 8-3V7" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 12v5c0 1.657 3.582 3 8 3s8-1.343 8-3v-5" />
+    </svg>
+  ),
 };
 
 export default function Layout({ children }) {
@@ -138,9 +145,13 @@ export default function Layout({ children }) {
           { to: "/count", label: "Stock Count", icon: Icon.count },
           { to: "/upload", label: "Upload XLS", icon: Icon.upload },
           { to: "/upload/history", label: "History", icon: Icon.history },
+          { to: "/db-management", label: "DB Management", icon: Icon.database },
         ]
       : user?.role === "staff"
-      ? [{ to: "/count", label: "Stock Count", icon: Icon.count }]
+      ? [
+          { to: "/count", label: "Stock Count", icon: Icon.count },
+          { to: "/db-management", label: "DB Management", icon: Icon.database },
+        ]
       : user?.role === "admin"
       ? [
           { to: "/admin/dashboard", label: "Dashboard", icon: Icon.dashboard },
@@ -158,6 +169,7 @@ export default function Layout({ children }) {
           { to: "/admin/users", label: "Users", icon: Icon.users },
           { to: "/admin/audit-log", label: "Audit Log", icon: Icon.auditlog },
           { to: "/admin/negative-pos", label: "Negative POS", icon: Icon.negativePos },
+          { to: "/db-management", label: "DB Management", icon: Icon.database },
         ]
       : [
           // manager
@@ -171,6 +183,7 @@ export default function Layout({ children }) {
           { to: "/daily-counts", label: "Counted Stock Daily", icon: Icon.count },
           { to: "/upload", label: "Upload XLS", icon: Icon.upload },
           { to: "/upload/history", label: "History", icon: Icon.history },
+          { to: "/db-management", label: "DB Management", icon: Icon.database },
         ];
 
   // On desktop, toggle icon-only collapse; on mobile, open/close drawer
