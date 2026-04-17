@@ -39,6 +39,7 @@ function HomeRedirect() {
   const { user, loading } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
+  if (user.role === "ServiceProvider") return <Navigate to="/admin/license-configuration" replace />;
   if (user.role === "store_user" || user.role === "staff") return <Navigate to="/count" replace />;
   if (user.role === "admin") return <Navigate to="/admin/dashboard" replace />;
   return <Navigate to="/dashboard" replace />;

@@ -15,8 +15,12 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const user = await login(form.username, form.password);
-      if (user.role === "store_user") {
+      if (user.role === "ServiceProvider") {
+        navigate("/admin/license-configuration");
+      } else if (user.role === "store_user") {
         navigate("/upload");
+      } else if (user.role === "admin") {
+        navigate("/admin/dashboard");
       } else {
         navigate("/dashboard");
       }

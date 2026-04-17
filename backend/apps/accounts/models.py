@@ -24,9 +24,10 @@ class User(AbstractBaseUser, PermissionsMixin):
         MANAGER = "manager", "Store Manager"
         STAFF = "staff", "Staff"
         ADMIN = "admin", "Admin"
+        SERVICE_PROVIDER = "ServiceProvider", "Service Provider"
 
     username = models.CharField(max_length=150, unique=True)
-    role = models.CharField(max_length=20, choices=Role.choices, default=Role.STAFF)
+    role = models.CharField(max_length=30, choices=Role.choices, default=Role.STAFF)
     outlet = models.ForeignKey(
         "outlets.Outlet",
         null=True,
