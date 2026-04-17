@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import status
@@ -16,6 +17,30 @@ from utils.xls_parser import validate_file, parse_xls
 
 from .models import PosSnapshot, UploadLog, AuditLog
 from .serializers import UploadLogSerializer, AuditLogSerializer
+
+
+def _outlet_mismatch(parsed_outlet_name, target_outlet):
+    """
+    Return a dict describing an outlet mismatch if the file header's outlet
+    name doesn't line up with the target outlet. None when no mismatch is
+    detectable (missing header or clean match).
+    """
+    if not parsed_outlet_name or not target_outlet:
+        return None
+    parsed_norm = parsed_outlet_name.strip().upper()
+    candidates = [
+        (target_outlet.outlet_name or "").strip().upper(),
+        (target_outlet.short_code or "").strip().upper(),
+        (target_outlet.location_code or "").strip().upper(),
+        (target_outlet.file_location_name or "").strip().upper(),
+    ]
+    candidates = [c for c in candidates if c]
+    if any(c == parsed_norm or c in parsed_norm or parsed_norm in c for c in candidates):
+        return None
+    return {
+        "file_outlet": parsed_outlet_name,
+        "target_outlet": target_outlet.outlet_name,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -64,8 +89,6 @@ def validate_upload(request):
             except ValueError:
                 pass
 
-    needs_approval = snapshot_date is not None and snapshot_date != today
-
     # Check duplicate upload for that specific date
     if snapshot_date:
         duplicate = UploadLog.objects.filter(
@@ -76,10 +99,19 @@ def validate_upload(request):
     else:
         duplicate = False
 
+    # Outlet mismatch check — the file header's outlet name vs the target outlet
+    parsed_outlet_name = result["preview"].get("outlet_name") or ""
+    mismatch = _outlet_mismatch(parsed_outlet_name, outlet)
+
     result["duplicate"] = duplicate
-    result["needs_approval"] = needs_approval
     result["outlet_name"] = outlet.outlet_name
     result["today"] = str(today)
+    result["outlet_mismatch"] = mismatch
+
+    threshold = getattr(settings, "NEW_ITEMS_APPROVAL_THRESHOLD", 100)
+    new_count = 0
+    changed_count = 0
+    matched_count = 0
 
     if parsed and result["valid"]:
         # Count matched vs new vs changed items for this outlet
@@ -88,9 +120,6 @@ def validate_upload(request):
             item.item_code: item
             for item in Item.objects.filter(outlet=outlet, item_code__in=item_codes)
         }
-        new_count = 0
-        changed_count = 0
-        matched_count = 0
         for row in parsed.rows:
             existing = existing_items.get(row.item_code)
             if existing is None:
@@ -104,6 +133,20 @@ def validate_upload(request):
         result["preview"]["matched"] = matched_count
         result["preview"]["new_items"] = new_count
         result["preview"]["changed_items"] = changed_count
+
+    past_date = snapshot_date is not None and snapshot_date != today
+    exceeds_threshold = new_count >= threshold
+    needs_approval = past_date or exceeds_threshold
+
+    approval_reasons = []
+    if past_date:
+        approval_reasons.append("past_date")
+    if exceeds_threshold:
+        approval_reasons.append(f"new_items_exceeds_threshold ({new_count} >= {threshold})")
+
+    result["needs_approval"] = needs_approval
+    result["approval_reasons"] = approval_reasons
+    result["new_items_threshold"] = threshold
 
     return Response(result)
 
@@ -121,6 +164,7 @@ def confirm_upload(request):
     """
     file = request.FILES.get("file")
     overwrite = request.data.get("overwrite", "false").lower() == "true"
+    override_outlet_mismatch = request.data.get("override_outlet_mismatch", "false").lower() == "true"
     if not file:
         return Response({"detail": "No file provided."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -142,6 +186,21 @@ def confirm_upload(request):
         return Response(
             {"detail": "File validation failed.", "errors": validation["errors"]},
             status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Reject wrong-outlet uploads unless the user explicitly overrode the warning
+    parsed_outlet_name = validation["preview"].get("outlet_name") or ""
+    mismatch = _outlet_mismatch(parsed_outlet_name, outlet)
+    if mismatch and not override_outlet_mismatch:
+        return Response(
+            {
+                "detail": (
+                    f"The file header lists outlet '{mismatch['file_outlet']}' but you are uploading to "
+                    f"'{mismatch['target_outlet']}'. Re-validate and confirm override to proceed."
+                ),
+                "outlet_mismatch": mismatch,
+            },
+            status=status.HTTP_409_CONFLICT,
         )
 
     # Allow caller to override the date extracted from the XLS
@@ -173,9 +232,21 @@ def confirm_upload(request):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-    # Past-date upload → save file and create pending approval log
-    if snapshot_date != today:
+    # Dry-run count of genuinely new items — drives the threshold-based approval gate.
+    threshold = getattr(settings, "NEW_ITEMS_APPROVAL_THRESHOLD", 100)
+    parsed_codes = [r.item_code for r in parsed.rows]
+    existing_codes = set(
+        Item.objects.filter(outlet=outlet, item_code__in=parsed_codes)
+        .values_list("item_code", flat=True)
+    )
+    preview_new_items = sum(1 for c in parsed_codes if c not in existing_codes)
+    exceeds_threshold = preview_new_items >= threshold
+    past_date = snapshot_date != today
+
+    # Past-date OR threshold-triggered upload → save file and create pending approval log
+    if past_date or exceeds_threshold:
         file.seek(0)
+        reason = "past_date" if past_date else "new_items_threshold"
         log = UploadLog(
             outlet=outlet,
             snapshot_date=snapshot_date,
@@ -183,7 +254,7 @@ def confirm_upload(request):
             status=UploadLog.Status.SUCCESS,
             total_rows=len(parsed.rows),
             matched_rows=0,
-            new_items_count=0,
+            new_items_count=preview_new_items,
             changed_items_count=0,
             filename=file.name,
             approval_status=UploadLog.ApprovalStatus.PENDING,
@@ -199,20 +270,28 @@ def confirm_upload(request):
                 "outlet": outlet.outlet_name,
                 "date": str(snapshot_date),
                 "filename": file.name,
+                "reason": reason,
+                "preview_new_items": preview_new_items,
+                "threshold": threshold,
             },
         )
 
         return Response(
             {
-                "detail": "Upload submitted for admin approval.",
+                "detail": (
+                    "Upload submitted for admin approval "
+                    + ("(past date)." if past_date else f"({preview_new_items} new items exceeds threshold {threshold}).")
+                ),
                 "needs_approval": True,
+                "reason": reason,
+                "preview_new_items": preview_new_items,
                 "upload_log_id": log.id,
                 "snapshot_date": str(snapshot_date),
             },
             status=status.HTTP_202_ACCEPTED,
         )
 
-    # Same-day upload → process immediately
+    # Same-day + under threshold → process immediately
     return _process_upload(parsed, outlet, user, snapshot_date, overwrite, file.name)
 
 
@@ -312,27 +391,125 @@ def reject_upload(request, log_id):
 # ---------------------------------------------------------------------------
 # Delete an upload (manager or admin)
 # ---------------------------------------------------------------------------
+def _deletion_scope(log):
+    """Return the counts + sample codes of rows that `delete_upload` will remove."""
+    items_qs = Item.objects.filter(upload_log=log)
+    items_count = items_qs.count()
+    sample_codes = list(items_qs.values_list("item_code", flat=True)[:20])
+    new_item_ids = list(items_qs.values_list("id", flat=True))
+
+    # PendingItems explicitly tagged to this upload (NEW_CODE + DATA_CHANGED).
+    pending_tagged = PendingItem.objects.filter(upload_log=log).count()
+
+    # Cascade-orphaned PendingItems that reference the about-to-be-deleted items.
+    pending_via_item = PendingItem.objects.filter(
+        item_id__in=new_item_ids
+    ).exclude(upload_log=log).count() if new_item_ids else 0
+
+    snapshots_for_date = PosSnapshot.objects.filter(
+        outlet=log.outlet,
+        snapshot_date=log.snapshot_date,
+    ).count()
+
+    # Barcodes attached to the items this upload created (cascades on Item delete)
+    from apps.items.models import ItemBarcode
+    barcodes_cascaded = ItemBarcode.objects.filter(item_id__in=new_item_ids).count() if new_item_ids else 0
+
+    return {
+        "items": items_count,
+        "sample_codes": sample_codes,
+        "pending_items": pending_tagged + pending_via_item,
+        "barcodes": barcodes_cascaded,
+        "snapshots_same_date": snapshots_for_date,
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsManager])
+def deletion_preview(request, log_id):
+    """Report exactly what delete_upload(log_id) will remove. Read-only."""
+    try:
+        log = UploadLog.objects.select_related("outlet").get(pk=log_id)
+    except UploadLog.DoesNotExist:
+        return Response({"detail": "Upload log not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.user.role != "admin" and log.outlet != request.user.outlet:
+        return Response({"detail": "Not authorized."}, status=status.HTTP_403_FORBIDDEN)
+
+    today = date.today()
+    is_same_day = log.snapshot_date == today
+    can_delete = request.user.role == "admin" or is_same_day
+
+    return Response({
+        "log_id": log.id,
+        "outlet_name": log.outlet.outlet_name,
+        "snapshot_date": str(log.snapshot_date),
+        "filename": log.filename,
+        "status": log.status,
+        "approval_status": log.approval_status,
+        "already_deleted": log.status == UploadLog.Status.DELETED,
+        "can_delete": can_delete,
+        "requires_admin": not is_same_day,
+        "scope": _deletion_scope(log),
+    })
+
+
 @api_view(["DELETE"])
 @permission_classes([IsManager])
 def delete_upload(request, log_id):
     """
-    Delete an upload log and its associated pos_snapshots.
-    Manager can only delete own outlet. Admin can delete any.
+    Completely roll back an upload: deletes the PosSnapshots, the Items that
+    this upload introduced (cascades to their barcodes, counts, pending
+    requests, and snapshots on any date), and any PendingItem rows tagged to
+    this upload.
+
+    Permission: managers can delete same-day uploads for their own outlet;
+    older uploads require admin.
     """
     try:
-        log = UploadLog.objects.get(pk=log_id)
+        log = UploadLog.objects.select_related("outlet").get(pk=log_id)
     except UploadLog.DoesNotExist:
         return Response({"detail": "Upload log not found."}, status=status.HTTP_404_NOT_FOUND)
 
-    # Managers restricted to own outlet
-    if request.user.role != "admin" and log.outlet != request.user.outlet:
-        return Response({"detail": "Not authorized."}, status=status.HTTP_403_FORBIDDEN)
+    is_admin = request.user.role == "admin"
+    if not is_admin and log.outlet != request.user.outlet:
+        return Response({"detail": "Not authorized for this outlet."}, status=status.HTTP_403_FORBIDDEN)
+
+    if not is_admin and log.snapshot_date != date.today():
+        return Response(
+            {"detail": "Only an admin can delete uploads for dates other than today."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
 
     if log.status == UploadLog.Status.DELETED:
         return Response({"detail": "Already deleted."}, status=status.HTTP_400_BAD_REQUEST)
 
+    scope = _deletion_scope(log)
+
     with transaction.atomic():
-        deleted_count, _ = PosSnapshot.objects.filter(
+        # 1. Delete PendingItems tagged to this upload (NEW_CODE + DATA_CHANGED).
+        # Doing this *before* deleting Items keeps the FK intact for audit.
+        pending_tagged_deleted, _ = PendingItem.objects.filter(upload_log=log).delete()
+
+        # 2. Cascade-delete Items this upload introduced.
+        # Deleting an Item cascades to: PosSnapshots (all dates), PendingItems
+        # that only referenced it via SET_NULL (which become orphans we sweep below),
+        # ItemBarcodes, and StockCounts — via existing on_delete=CASCADE rules.
+        items_qs = Item.objects.filter(upload_log=log)
+        items_deleted = items_qs.count()
+        items_qs.delete()
+
+        # 3. Sweep any PendingItems whose `item` FK was NULL'd by step 2 and
+        # which belong to this outlet (stale NEW_CODE rows from SET_NULL cascade).
+        pending_orphans_deleted, _ = PendingItem.objects.filter(
+            first_seen_outlet=log.outlet,
+            item__isnull=True,
+            change_type=PendingItem.ChangeType.NEW_CODE,
+        ).delete()
+
+        # 4. Remove remaining PosSnapshots for this outlet+date — covers the
+        # case where this upload added a snapshot for a pre-existing item.
+        snapshots_deleted, _ = PosSnapshot.objects.filter(
             outlet=log.outlet,
             snapshot_date=log.snapshot_date,
         ).delete()
@@ -348,11 +525,21 @@ def delete_upload(request, log_id):
             details={
                 "outlet": log.outlet.outlet_name,
                 "date": str(log.snapshot_date),
-                "snapshots_deleted": deleted_count,
+                "filename": log.filename,
+                "items_deleted": items_deleted,
+                "pending_deleted": pending_tagged_deleted + pending_orphans_deleted,
+                "snapshots_deleted": snapshots_deleted,
+                "sample_codes": scope["sample_codes"],
             },
         )
 
-    return Response({"detail": "Upload deleted.", "snapshots_deleted": deleted_count})
+    return Response({
+        "detail": "Upload fully rolled back.",
+        "items_deleted": items_deleted,
+        "pending_deleted": pending_tagged_deleted + pending_orphans_deleted,
+        "snapshots_deleted": snapshots_deleted,
+        "sample_codes": scope["sample_codes"],
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -523,6 +710,8 @@ def _process_upload(parsed, outlet, user, snapshot_date, overwrite, filename, ex
         new_items = 0
         changed_items = 0
         snapshot_list = []
+        new_items_to_tag = []       # populate Item.upload_log FK once the UploadLog row exists
+        new_pending_to_tag = []     # same, for PendingItem
 
         # Pre-fetch all known items for this outlet in one query
         item_codes = [r.item_code for r in parsed.rows]
@@ -542,17 +731,22 @@ def _process_upload(parsed, outlet, user, snapshot_date, overwrite, filename, ex
                     item_name=row.item_name,
                     category=row.category,
                     status=Item.Status.PENDING_BARCODE,
+                    upload_log=existing_log,  # null on same-day auto path; set below
                 )
-                PendingItem.objects.get_or_create(
+                pending_new, pending_created = PendingItem.objects.get_or_create(
                     item_code=row.item_code,
                     first_seen_outlet=outlet,
                     change_type=PendingItem.ChangeType.NEW_CODE,
                     defaults={
                         "item_name": row.item_name,
                         "item": item,
+                        "upload_log": existing_log,
                     },
                 )
+                if pending_created:
+                    new_pending_to_tag.append(pending_new.id)
                 new_items += 1
+                new_items_to_tag.append(item.id)
             else:
                 changes = _build_changed_fields(item, row)
                 if changes:
@@ -564,14 +758,16 @@ def _process_upload(parsed, outlet, user, snapshot_date, overwrite, filename, ex
                         status=PendingItem.Status.PENDING,
                     ).first()
                     if not open_request:
-                        PendingItem.objects.create(
+                        pending_change = PendingItem.objects.create(
                             item_code=row.item_code,
                             item_name=row.item_name,
                             first_seen_outlet=outlet,
                             change_type=PendingItem.ChangeType.DATA_CHANGED,
                             changed_fields=changes,
                             item=item,
+                            upload_log=existing_log,
                         )
+                        new_pending_to_tag.append(pending_change.id)
                     changed_items += 1
                 else:
                     matched += 1
@@ -615,6 +811,13 @@ def _process_upload(parsed, outlet, user, snapshot_date, overwrite, filename, ex
                 filename=filename,
                 approval_status=UploadLog.ApprovalStatus.AUTO,
             )
+
+        # Tag the newly-created Items and PendingItems with this UploadLog so a
+        # future delete_upload can cascade-remove everything this upload introduced.
+        if new_items_to_tag:
+            Item.objects.filter(pk__in=new_items_to_tag).update(upload_log=log)
+        if new_pending_to_tag:
+            PendingItem.objects.filter(pk__in=new_pending_to_tag).update(upload_log=log)
 
         AuditLog.objects.create(
             user=user,

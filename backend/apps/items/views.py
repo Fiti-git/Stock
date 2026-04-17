@@ -7,6 +7,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from apps.accounts.permissions import IsAdmin, IsManager, IsStoreUser
+from apps.accounts.device_utils import touch_device, get_device_uuid
 from apps.uploads.models import AuditLog, PosSnapshot
 from .models import Item, ItemBarcode, PendingItem
 from .serializers import ItemSerializer, PendingItemSerializer, AssignBarcodeSerializer, ItemDetailSerializer, ItemUpdateSerializer
@@ -135,6 +136,9 @@ def assign_barcode(request, pending_id):
     item.barcode_assigned_by = request.user
     item.save()
 
+    device_uuid = get_device_uuid(request)
+    touch_device(request, action="assign")
+
     is_first = not item.barcodes.exists()
     ItemBarcode.objects.create(
         item=item,
@@ -142,6 +146,7 @@ def assign_barcode(request, pending_id):
         barcode=barcode,
         is_primary=is_first,
         assigned_by=request.user,
+        device_uuid=device_uuid,
     )
 
     pending.status = PendingItem.Status.ASSIGNED
@@ -251,10 +256,14 @@ def item_barcodes(request, item_id):
     if ItemBarcode.objects.filter(outlet=item.outlet, barcode=barcode).exists():
         return Response({"detail": "This barcode is already assigned in this outlet."}, status=status.HTTP_400_BAD_REQUEST)
 
+    device_uuid = get_device_uuid(request)
+    touch_device(request, action="assign")
+
     is_first = not item.barcodes.exists()
     ib = ItemBarcode.objects.create(
         item=item, outlet=item.outlet, barcode=barcode,
         is_primary=is_first, assigned_by=request.user,
+        device_uuid=device_uuid,
     )
     if is_first:
         item.status = Item.Status.ACTIVE
@@ -435,25 +444,40 @@ def catalog_list(request):
 @permission_classes([IsStoreUser])
 def item_lookup(request):
     """
-    Look up a single item by barcode for the store-user's outlet.
-    Used by the mobile barcode scan app.
+    Look up a single item for the store-user's outlet by either barcode or item_id.
+    Used by the mobile barcode scan app and the name-search flow.
 
     GET /api/items/lookup/?barcode=<value>
+    GET /api/items/lookup/?item_id=<id>
 
     Returns item details + latest POS prices + today's count status.
-    Returns 404 if barcode not found in this outlet.
+    Returns 404 if not found in this outlet.
     """
     barcode = request.query_params.get("barcode", "").strip()
-    if not barcode:
-        return Response({"detail": "barcode query param required."}, status=status.HTTP_400_BAD_REQUEST)
+    item_id = request.query_params.get("item_id", "").strip()
 
-    try:
-        item_barcode = ItemBarcode.objects.select_related('item', 'item__outlet').get(
-            barcode=barcode, outlet=request.user.outlet
+    if not barcode and not item_id:
+        return Response(
+            {"detail": "barcode or item_id query param required."},
+            status=status.HTTP_400_BAD_REQUEST,
         )
-        item = item_barcode.item
-    except ItemBarcode.DoesNotExist:
-        return Response({"detail": "Item not found for this barcode."}, status=status.HTTP_404_NOT_FOUND)
+
+    if item_id:
+        try:
+            item = Item.objects.select_related("outlet").get(
+                pk=item_id, outlet=request.user.outlet
+            )
+        except (Item.DoesNotExist, ValueError):
+            return Response({"detail": "Item not found in this outlet."}, status=status.HTTP_404_NOT_FOUND)
+        barcode = item.primary_barcode or ""
+    else:
+        try:
+            item_barcode = ItemBarcode.objects.select_related('item', 'item__outlet').get(
+                barcode=barcode, outlet=request.user.outlet
+            )
+            item = item_barcode.item
+        except ItemBarcode.DoesNotExist:
+            return Response({"detail": "Item not found for this barcode."}, status=status.HTTP_404_NOT_FOUND)
 
     # Latest POS snapshot prices
     latest_snap = PosSnapshot.objects.filter(item=item).order_by("-snapshot_date").first()
@@ -825,6 +849,9 @@ def outlet_barcode_master(request, outlet_id):
             status=status.HTTP_409_CONFLICT,
         )
 
+    device_uuid = get_device_uuid(request)
+    touch_device(request, action="assign")
+
     is_first = not item.barcodes.exists()
     if make_primary or is_first:
         item.barcodes.update(is_primary=False)
@@ -835,6 +862,7 @@ def outlet_barcode_master(request, outlet_id):
         barcode=barcode_val,
         is_primary=make_primary or is_first,
         assigned_by=request.user,
+        device_uuid=device_uuid,
     )
 
     if is_first:

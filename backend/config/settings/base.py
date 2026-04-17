@@ -95,6 +95,10 @@ REST_FRAMEWORK = {
     ),
 }
 
+# Uploads that introduce this many or more new items are routed to admin
+# approval instead of auto-processing, regardless of the upload date.
+NEW_ITEMS_APPROVAL_THRESHOLD = config("NEW_ITEMS_APPROVAL_THRESHOLD", default=100, cast=int)
+
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(
         minutes=config("JWT_ACCESS_TOKEN_LIFETIME_MINUTES", default=60, cast=int)

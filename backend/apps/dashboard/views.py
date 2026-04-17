@@ -5,7 +5,7 @@ from django.shortcuts import get_object_or_404
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from apps.accounts.models import User
+from apps.accounts.models import User, MobileDevice
 from apps.accounts.permissions import IsManager, CanCount, IsAdmin
 from apps.outlets.models import Outlet
 from apps.items.models import PendingItem
@@ -426,6 +426,7 @@ def admin_summary(request):
 def submit_count(request):
     """Submit a physical stock count for an item."""
     from .serializers import SubmitCountSerializer
+    from apps.accounts.device_utils import touch_device, get_device_uuid
 
     serializer = SubmitCountSerializer(data=request.data)
     if not serializer.is_valid():
@@ -447,6 +448,9 @@ def submit_count(request):
     except (ValueError, TypeError):
         count_date = date.today()
 
+    device_uuid = get_device_uuid(request)
+    touch_device(request, action="count")
+
     count = StockCount.objects.create(
         outlet=outlet,
         item=item,
@@ -455,6 +459,7 @@ def submit_count(request):
         location_tag=serializer.validated_data.get("location_tag", ""),
         counted_by=request.user,
         is_month_end=serializer.validated_data.get("is_month_end", False),
+        device_uuid=device_uuid,
     )
     return Response(StockCountSerializer(count).data, status=201)
 
@@ -665,3 +670,50 @@ def daily_upload_report(request):
         "to_date": str(to_date),
         "results": rows,
     })
+
+
+@api_view(["GET"])
+@permission_classes([IsAdmin])
+def mobile_devices_report(request):
+    """
+    Admin report: all mobile devices that have interacted with the system, with
+    activity counters and first/last-seen timestamps.
+
+    Query params:
+      q      — search by uuid / username / outlet name
+      outlet — filter to devices whose last_outlet matches
+    """
+    from django.db.models import Q
+    qs = MobileDevice.objects.select_related("last_user", "last_outlet").all()
+
+    q = (request.query_params.get("q") or "").strip()
+    if q:
+        qs = qs.filter(
+            Q(device_uuid__icontains=q)
+            | Q(last_user__username__icontains=q)
+            | Q(last_outlet__outlet_name__icontains=q)
+        )
+
+    outlet_id = request.query_params.get("outlet")
+    if outlet_id:
+        qs = qs.filter(last_outlet_id=outlet_id)
+
+    rows = [
+        {
+            "id": d.id,
+            "device_uuid": d.device_uuid,
+            "platform": d.platform,
+            "app_version": d.app_version,
+            "first_seen_at": d.first_seen_at.isoformat(),
+            "last_seen_at": d.last_seen_at.isoformat(),
+            "last_user_id": d.last_user_id,
+            "last_user_username": d.last_user.username if d.last_user else None,
+            "last_outlet_id": d.last_outlet_id,
+            "last_outlet_name": d.last_outlet.outlet_name if d.last_outlet else None,
+            "total_counts": d.total_counts,
+            "total_assigns": d.total_assigns,
+        }
+        for d in qs
+    ]
+
+    return Response({"count": len(rows), "results": rows})

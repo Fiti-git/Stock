@@ -23,6 +23,7 @@ class StockCount(models.Model):
     )
     counted_at = models.DateTimeField(auto_now_add=True)
     is_month_end = models.BooleanField(default=False)
+    device_uuid = models.CharField(max_length=64, blank=True, default="")
 
     class Meta:
         db_table = "stock_counts"

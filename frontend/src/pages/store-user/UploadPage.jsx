@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import * as XLSX from "xlsx";
 import {
   Card, CardContent, Typography, Stack, TextField, MenuItem, Button,
-  Alert, Box, Grid, CircularProgress, Chip,
+  Alert, Box, Grid, CircularProgress, Chip, FormControlLabel, Checkbox,
 } from "@mui/material";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
@@ -34,6 +34,7 @@ export default function UploadPage() {
   const inputRef = useRef();
   const [outlets, setOutlets] = useState([]);
   const [selectedOutlet, setSelectedOutlet] = useState(isAdmin ? null : { id: user?.outlet_id, name: user?.outlet_name });
+  const [overrideMismatch, setOverrideMismatch] = useState(false);
 
   useEffect(() => { if (isAdmin) getOutlets().then(({ data }) => setOutlets(data)).catch(() => {}); }, [isAdmin]);
 
@@ -59,6 +60,7 @@ export default function UploadPage() {
 
   const handleProceedToValidate = async () => {
     setStep(STEPS.VALIDATING);
+    setOverrideMismatch(false);
     try {
       const { data } = await validateUpload(file, uploadDate, isAdmin ? selectedOutlet?.id : null);
       setValidation(data); setStep(STEPS.PREVIEW);
@@ -68,10 +70,19 @@ export default function UploadPage() {
   const handleConfirm = async (overwrite = false) => {
     setStep(STEPS.UPLOADING); setError("");
     try {
-      const { data } = await confirmUpload(file, overwrite, uploadDate, isAdmin ? selectedOutlet?.id : null);
+      const { data } = await confirmUpload(
+        file, overwrite, uploadDate, isAdmin ? selectedOutlet?.id : null, overrideMismatch,
+      );
       setResult(data); setStep(STEPS.DONE);
     } catch (err) {
-      setError(err.response?.status === 409 ? "A successful upload already exists for this date." : err.response?.data?.detail || "Upload failed.");
+      const body = err.response?.data || {};
+      if (err.response?.status === 409 && body.outlet_mismatch) {
+        setError(body.detail || "Outlet mismatch detected — tick the override box and try again.");
+      } else if (err.response?.status === 409) {
+        setError("A successful upload already exists for this date.");
+      } else {
+        setError(body.detail || "Upload failed.");
+      }
       setStep(STEPS.PREVIEW);
     }
   };
@@ -80,6 +91,7 @@ export default function UploadPage() {
     setStep(STEPS.DATE); setUploadDate(todayISO); setFile(null); setRawRows([]); setValidation(null); setResult(null); setError("");
     if (inputRef.current) inputRef.current.value = "";
     setSelectedOutlet(isAdmin ? null : { id: user?.outlet_id, name: user?.outlet_name });
+    setOverrideMismatch(false);
   };
 
   return (
@@ -189,12 +201,19 @@ export default function UploadPage() {
               <Typography variant="h4" gutterBottom>Validation Result</Typography>
 
               {validation.outlet_mismatch && (
-                <Alert severity="error" variant="outlined" sx={{ mb: 2 }}>
-                  <Typography fontWeight={600}>Wrong outlet file — upload blocked</Typography>
-                  This file is for <b>{validation.outlet_mismatch.found}</b> but you're uploading to <b>{validation.outlet_mismatch.expected}</b>.
+                <Alert severity="warning" variant="outlined" sx={{ mb: 2 }}>
+                  <Typography fontWeight={600}>Possible wrong-outlet file</Typography>
+                  The file header says <b>{validation.outlet_mismatch.file_outlet}</b> but you're uploading to <b>{validation.outlet_mismatch.target_outlet}</b>.
+                  Double-check before continuing — wrong-outlet uploads pollute the DB and require a manual rollback.
+                  <Box sx={{ mt: 1 }}>
+                    <FormControlLabel
+                      control={<Checkbox size="small" checked={overrideMismatch} onChange={(e) => setOverrideMismatch(e.target.checked)} />}
+                      label={<Typography variant="body2">Yes, I meant to upload this file to the selected outlet.</Typography>}
+                    />
+                  </Box>
                 </Alert>
               )}
-              {!validation.valid && !validation.outlet_mismatch && (
+              {!validation.valid && (
                 <Alert severity="error" sx={{ mb: 2 }}>{validation.errors.map((e, i) => <div key={i}>{e}</div>)}</Alert>
               )}
               {validation.warnings?.length > 0 && (
@@ -202,7 +221,16 @@ export default function UploadPage() {
               )}
               {validation.needs_approval && (
                 <Alert severity="warning" sx={{ mb: 2 }}>
-                  This file is dated <b>{validation.preview?.snapshot_date}</b>. It will be submitted for admin approval before taking effect.
+                  {validation.approval_reasons?.includes("past_date") && (
+                    <div>This file is dated <b>{validation.preview?.snapshot_date}</b> — past-date uploads require admin approval.</div>
+                  )}
+                  {validation.approval_reasons?.some((r) => r.startsWith("new_items_exceeds_threshold")) && (
+                    <div>
+                      This file introduces <b>{validation.preview?.new_items}</b> new items
+                      {validation.new_items_threshold ? <> (threshold: <b>{validation.new_items_threshold}</b>)</> : null} —
+                      admin approval required.
+                    </div>
+                  )}
                 </Alert>
               )}
               {validation.duplicate && !validation.needs_approval && (
@@ -236,7 +264,11 @@ export default function UploadPage() {
             <Stack direction="row" spacing={1}>
               <Button fullWidth variant="outlined" onClick={() => { setValidation(null); setStep(STEPS.FILE_PREVIEW); }}>← Back</Button>
               {validation.valid && !(validation.duplicate && !validation.needs_approval && !isAdmin) && (
-                <Button fullWidth variant="contained" onClick={() => handleConfirm(validation.duplicate && !validation.needs_approval)}>
+                <Button
+                  fullWidth variant="contained"
+                  disabled={Boolean(validation.outlet_mismatch) && !overrideMismatch}
+                  onClick={() => handleConfirm(validation.duplicate && !validation.needs_approval)}
+                >
                   {validation.needs_approval ? "Submit for Approval" : validation.duplicate ? "Override & Import" : "Confirm Import"}
                 </Button>
               )}

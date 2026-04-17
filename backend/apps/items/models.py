@@ -27,6 +27,15 @@ class Item(models.Model):
         on_delete=models.SET_NULL,
         related_name="assigned_barcodes",
     )
+    # The UploadLog row that first introduced this item. Used to cleanly roll
+    # back wrong-outlet uploads: deleting an UploadLog cascades to its Items.
+    upload_log = models.ForeignKey(
+        "uploads.UploadLog",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_items",
+    )
 
     class Meta:
         db_table = "items"
@@ -65,6 +74,7 @@ class ItemBarcode(models.Model):
         blank=True,
         on_delete=models.SET_NULL,
     )
+    device_uuid = models.CharField(max_length=64, blank=True, default="")
 
     class Meta:
         db_table = "item_barcodes"
@@ -114,6 +124,15 @@ class PendingItem(models.Model):
         blank=True,
         on_delete=models.SET_NULL,
         related_name="change_requests",
+    )
+    # The UploadLog row that spawned this pending request. Lets delete_upload
+    # cascade-clean both NEW_CODE and DATA_CHANGED requests in one shot.
+    upload_log = models.ForeignKey(
+        "uploads.UploadLog",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_pending_items",
     )
     created_at = models.DateTimeField(auto_now_add=True)
 

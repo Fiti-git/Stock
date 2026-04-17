@@ -40,6 +40,14 @@ export const getDailyCounts = ({ outletId, countDate, search, page = 1, pageSize
     },
   });
 
+export const getMobileDevices = ({ q = "", outletId = null } = {}) =>
+  api.get("/dashboard/mobile-devices/", {
+    params: {
+      ...(q ? { q } : {}),
+      ...(outletId ? { outlet: outletId } : {}),
+    },
+  });
+
 export const getDailyUploadReport = ({ fromDate, toDate, outletId } = {}) =>
   api.get("/dashboard/daily-upload-report/", {
     params: {

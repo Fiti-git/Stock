@@ -7,6 +7,7 @@ from .views import (
     approve_upload,
     reject_upload,
     delete_upload,
+    deletion_preview,
     all_outlets_overview,
     audit_log_list,
     upload_diff,
@@ -22,5 +23,6 @@ urlpatterns = [
     path("<int:log_id>/approve/", approve_upload, name="upload-approve"),
     path("<int:log_id>/reject/", reject_upload, name="upload-reject"),
     path("<int:log_id>/delete/", delete_upload, name="upload-delete"),
+    path("<int:log_id>/deletion-preview/", deletion_preview, name="upload-deletion-preview"),
     path("<int:log_id>/diff/", upload_diff, name="upload-diff"),
 ]

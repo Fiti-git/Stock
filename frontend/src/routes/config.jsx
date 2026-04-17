@@ -17,6 +17,8 @@ import ListAltIcon from "@mui/icons-material/ListAlt";
 import StorageIcon from "@mui/icons-material/Storage";
 import WorkspacePremiumIcon from "@mui/icons-material/WorkspacePremium";
 import AssessmentIcon from "@mui/icons-material/Assessment";
+import PhoneAndroidIcon from "@mui/icons-material/PhoneAndroid";
+import SecurityIcon from "@mui/icons-material/Security";
 
 /**
  * Single source of truth for routes. Consumed by Sidebar, Breadcrumbs, CommandPalette.
@@ -52,6 +54,8 @@ export const routes = [
   { path: "/admin/audit-log", label: "Audit Log",         icon: ListAltIcon,          roles: ["admin"],            group: "Admin" },
   { path: "/admin/negative-pos", label: "Negative POS",   icon: ReportProblemIcon,    roles: ["admin"],            group: "Admin" },
   { path: "/admin/license-configuration", label: "License", icon: WorkspacePremiumIcon, roles: ["admin","ServiceProvider"], group: "Admin" },
+  { path: "/admin/mobile-devices", label: "Mobile Devices", icon: PhoneAndroidIcon, roles: ["admin"], group: "Admin" },
+  { path: "/admin/login-events", label: "Login Events", icon: SecurityIcon, roles: ["admin"], group: "Admin" },
 
   // System (all roles)
   { path: "/db-management",   label: "DB Management",     icon: StorageIcon,          roles: ["store_user","staff","manager","admin"], group: "System" },
