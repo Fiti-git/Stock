@@ -225,6 +225,92 @@ def reject_change(request, pending_id):
     return Response({"detail": "Change rejected. Item master unchanged."})
 
 
+@api_view(["GET", "POST"])
+@permission_classes([IsManager])
+def item_barcodes(request, item_id):
+    """List or add barcodes for an item. Barcodes are unique per outlet."""
+    try:
+        item = Item.objects.select_related("outlet").get(pk=item_id)
+    except Item.DoesNotExist:
+        return Response({"detail": "Item not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.user.role != "admin" and item.outlet != request.user.outlet:
+        return Response({"detail": "Not authorized for this outlet."}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == "GET":
+        data = [
+            {"id": b.id, "barcode": b.barcode, "is_primary": b.is_primary, "assigned_at": b.assigned_at.isoformat()}
+            for b in item.barcodes.all()
+        ]
+        return Response(data)
+
+    barcode = (request.data.get("barcode") or "").strip()
+    if not barcode:
+        return Response({"detail": "barcode required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if ItemBarcode.objects.filter(outlet=item.outlet, barcode=barcode).exists():
+        return Response({"detail": "This barcode is already assigned in this outlet."}, status=status.HTTP_400_BAD_REQUEST)
+
+    is_first = not item.barcodes.exists()
+    ib = ItemBarcode.objects.create(
+        item=item, outlet=item.outlet, barcode=barcode,
+        is_primary=is_first, assigned_by=request.user,
+    )
+    if is_first:
+        item.status = Item.Status.ACTIVE
+        item.barcode_assigned_at = timezone.now()
+        item.barcode_assigned_by = request.user
+        item.save(update_fields=["status", "barcode_assigned_at", "barcode_assigned_by"])
+
+    AuditLog.objects.create(
+        user=request.user, action="add_barcode", entity_type="item",
+        entity_id=str(item.id),
+        details={"item_code": item.item_code, "barcode": barcode},
+    )
+    return Response({"id": ib.id, "barcode": ib.barcode, "is_primary": ib.is_primary}, status=status.HTTP_201_CREATED)
+
+
+@api_view(["DELETE", "POST"])
+@permission_classes([IsManager])
+def item_barcode_detail(request, item_id, barcode_id):
+    """DELETE: remove a barcode. POST: set as primary (action=set_primary)."""
+    try:
+        item = Item.objects.select_related("outlet").get(pk=item_id)
+        ib = ItemBarcode.objects.get(pk=barcode_id, item=item)
+    except (Item.DoesNotExist, ItemBarcode.DoesNotExist):
+        return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.user.role != "admin" and item.outlet != request.user.outlet:
+        return Response({"detail": "Not authorized for this outlet."}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == "DELETE":
+        was_primary = ib.is_primary
+        barcode_val = ib.barcode
+        ib.delete()
+        if was_primary:
+            new_primary = item.barcodes.order_by("assigned_at").first()
+            if new_primary:
+                new_primary.is_primary = True
+                new_primary.save(update_fields=["is_primary"])
+        AuditLog.objects.create(
+            user=request.user, action="delete_barcode", entity_type="item",
+            entity_id=str(item.id),
+            details={"item_code": item.item_code, "barcode": barcode_val},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # POST = set_primary
+    item.barcodes.update(is_primary=False)
+    ib.is_primary = True
+    ib.save(update_fields=["is_primary"])
+    AuditLog.objects.create(
+        user=request.user, action="set_primary_barcode", entity_type="item",
+        entity_id=str(item.id),
+        details={"item_code": item.item_code, "barcode": ib.barcode},
+    )
+    return Response({"id": ib.id, "barcode": ib.barcode, "is_primary": True})
+
+
 @api_view(["PATCH"])
 @permission_classes([IsManager])
 def update_item(request, item_id):

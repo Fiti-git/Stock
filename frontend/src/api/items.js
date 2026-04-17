@@ -25,6 +25,18 @@ export const searchCatalog = (q, outletId) =>
 export const updateItem = (itemId, data) =>
   api.patch(`/items/${itemId}/update/`, data);
 
+export const listItemBarcodes = (itemId) =>
+  api.get(`/items/${itemId}/barcodes/`);
+
+export const addItemBarcode = (itemId, barcode) =>
+  api.post(`/items/${itemId}/barcodes/`, { barcode });
+
+export const deleteItemBarcode = (itemId, barcodeId) =>
+  api.delete(`/items/${itemId}/barcodes/${barcodeId}/`);
+
+export const setPrimaryBarcode = (itemId, barcodeId) =>
+  api.post(`/items/${itemId}/barcodes/${barcodeId}/`);
+
 export const getNegativePosReport = (date, outletId = null) =>
   api.get("/items/negative-pos/", {
     params: { date, ...(outletId ? { outlet: outletId } : {}) },

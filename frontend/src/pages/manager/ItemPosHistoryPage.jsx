@@ -127,11 +127,11 @@ export default function ItemPosHistoryPage() {
         renderInput={(params) => (
           <TextField {...params} size="small" placeholder="Search by item name, code or barcode…"
             InputProps={{
-              ...params.InputProps,
+              ...(params.InputProps || {}),
               startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>,
               endAdornment: (<>
                 {searching ? <CircularProgress size={16} /> : null}
-                {params.InputProps.endAdornment}
+                {params.InputProps?.endAdornment}
               </>),
             }} />
         )}
