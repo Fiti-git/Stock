@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { lazy, Suspense } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { OutletProvider } from "./contexts/OutletContext";
+import { LicenseProvider } from "./contexts/LicenseContext";
 import LoginPage from "./pages/auth/LoginPage";
 import UploadPage from "./pages/store-user/UploadPage";
 import HistoryPage from "./pages/store-user/HistoryPage";
@@ -21,10 +23,14 @@ import AdminDashboardPage from "./pages/admin/AdminDashboardPage";
 import ProductMasterPage from "./pages/manager/ProductMasterPage";
 import CountedStockDailyPage from "./pages/manager/CountedStockDailyPage";
 
+const LicenseSetupRequired = lazy(() => import("./pages/LicenseSetupRequired"));
+const LicenseConfiguration = lazy(() => import("./pages/admin/LicenseConfiguration"));
+
 function RoleRoute({ children, allowedRoles }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="flex h-screen items-center justify-center text-gray-500">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
+  if (user.role === "ServiceProvider" && allowedRoles?.includes("admin")) return children;
   if (allowedRoles && !allowedRoles.includes(user.role)) return <Navigate to="/" replace />;
   return children;
 }
@@ -42,10 +48,16 @@ export default function App() {
   return (
     <AuthProvider>
       <OutletProvider>
+      <LicenseProvider>
       <BrowserRouter>
+        <Suspense fallback={<div className="flex h-screen items-center justify-center text-gray-500">Loading…</div>}>
         <Routes>
           <Route path="/" element={<HomeRedirect />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/license-setup-required" element={<LicenseSetupRequired />} />
+          <Route path="/admin/license-configuration" element={
+            <RoleRoute allowedRoles={["admin"]}><LicenseConfiguration /></RoleRoute>
+          } />
 
           {/* Item detail route */}
           <Route
@@ -208,7 +220,9 @@ export default function App() {
             }
           />
         </Routes>
+        </Suspense>
       </BrowserRouter>
+      </LicenseProvider>
       </OutletProvider>
     </AuthProvider>
   );

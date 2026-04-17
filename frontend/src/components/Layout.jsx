@@ -2,6 +2,7 @@ import { Link, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useOutlet } from "../contexts/OutletContext";
+import LicenseBanner from "./LicenseBanner";
 import { getOutlets } from "../api/outlets";
 
 // ── SVG icons ──────────────────────────────────────────────────────────────
@@ -302,7 +303,10 @@ export default function Layout({ children }) {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 px-4 py-6 overflow-auto">{children}</main>
+        <main className="flex-1 px-4 py-6 overflow-auto">
+          <LicenseBanner />
+          {children}
+        </main>
       </div>
     </div>
   );

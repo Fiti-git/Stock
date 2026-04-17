@@ -33,8 +33,51 @@ class Item(models.Model):
         ordering = ["item_code"]
         unique_together = [("outlet", "item_code")]
 
+    @property
+    def primary_barcode(self):
+        bc = self.barcodes.filter(is_primary=True).first()
+        if bc:
+            return bc.barcode
+        bc = self.barcodes.first()
+        return bc.barcode if bc else None
+
     def __str__(self):
         return f"{self.item_code} — {self.item_name}"
+
+
+class ItemBarcode(models.Model):
+    item = models.ForeignKey(
+        Item,
+        on_delete=models.CASCADE,
+        related_name="barcodes",
+    )
+    outlet = models.ForeignKey(
+        "outlets.Outlet",
+        on_delete=models.CASCADE,
+        related_name="item_barcodes",
+    )
+    barcode = models.CharField(max_length=100)
+    is_primary = models.BooleanField(default=False)
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    assigned_by = models.ForeignKey(
+        "accounts.User",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+    )
+
+    class Meta:
+        db_table = "item_barcodes"
+        unique_together = [("outlet", "barcode")]
+        ordering = ["-is_primary", "assigned_at"]
+
+    def save(self, *args, **kwargs):
+        if not self.outlet_id:
+            self.outlet = self.item.outlet
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.barcode} → {self.item.item_code}"
 
 
 class PendingItem(models.Model):

@@ -8,7 +8,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from apps.accounts.permissions import IsAdmin, IsManager, IsStoreUser
 from apps.uploads.models import AuditLog, PosSnapshot
-from .models import Item, PendingItem
+from .models import Item, ItemBarcode, PendingItem
 from .serializers import ItemSerializer, PendingItemSerializer, AssignBarcodeSerializer, ItemDetailSerializer, ItemUpdateSerializer
 
 
@@ -108,14 +108,14 @@ def assign_barcode(request, pending_id):
     rack_number = serializer.validated_data.get("rack_number", "")
     shelf = serializer.validated_data.get("shelf", "")
 
-    # Check barcode not already in use across all outlets
-    if Item.objects.filter(barcode=barcode).exists():
+    outlet = pending.first_seen_outlet
+
+    # Check barcode not already in use within this outlet
+    if ItemBarcode.objects.filter(outlet=outlet, barcode=barcode).exists():
         return Response(
-            {"detail": "This barcode is already assigned to another item."},
+            {"detail": "This barcode is already assigned to another item in this outlet."},
             status=status.HTTP_400_BAD_REQUEST,
         )
-
-    outlet = pending.first_seen_outlet
 
     # Managers can only assign barcodes for their own outlet
     if request.user.role != "admin" and outlet != request.user.outlet:
@@ -127,7 +127,6 @@ def assign_barcode(request, pending_id):
         item_code=pending.item_code,
         defaults={"item_name": pending.item_name, "category": category},
     )
-    item.barcode = barcode
     item.category = category or item.category
     item.rack_number = rack_number or item.rack_number
     item.shelf = shelf or item.shelf
@@ -135,6 +134,15 @@ def assign_barcode(request, pending_id):
     item.barcode_assigned_at = timezone.now()
     item.barcode_assigned_by = request.user
     item.save()
+
+    is_first = not item.barcodes.exists()
+    ItemBarcode.objects.create(
+        item=item,
+        outlet=outlet,
+        barcode=barcode,
+        is_primary=is_first,
+        assigned_by=request.user,
+    )
 
     pending.status = PendingItem.Status.ASSIGNED
     pending.save()
@@ -233,13 +241,16 @@ def update_item(request, item_id):
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    # Check barcode uniqueness if being changed
-    new_barcode = serializer.validated_data.get("barcode")
-    if new_barcode and new_barcode != item.barcode:
-        if Item.objects.filter(barcode=new_barcode).exists():
-            return Response({"detail": "This barcode is already assigned to another item."}, status=status.HTTP_400_BAD_REQUEST)
-
+    new_barcode = serializer.validated_data.pop("barcode", None)
     updated = serializer.save()
+
+    if new_barcode:
+        if ItemBarcode.objects.filter(outlet=item.outlet, barcode=new_barcode).exclude(item=item).exists():
+            return Response({"detail": "This barcode is already assigned to another item in this outlet."}, status=status.HTTP_400_BAD_REQUEST)
+        ItemBarcode.objects.get_or_create(
+            item=item, outlet=item.outlet, barcode=new_barcode,
+            defaults={"is_primary": not item.barcodes.exists(), "assigned_by": request.user},
+        )
 
     AuditLog.objects.create(
         user=request.user,
@@ -276,8 +287,9 @@ def catalog_list(request):
 
     q = request.query_params.get("q", "").strip()
     if q:
+        barcode_item_ids = ItemBarcode.objects.filter(barcode__icontains=q).values_list('item_id', flat=True)
         qs = qs.filter(
-            Q(item_name__icontains=q) | Q(item_code__icontains=q) | Q(barcode__icontains=q)
+            Q(item_name__icontains=q) | Q(item_code__icontains=q) | Q(id__in=barcode_item_ids)
         )
 
     category = request.query_params.get("category", "").strip()
@@ -302,13 +314,20 @@ def catalog_list(request):
     total = qs.count()
     items = qs[offset: offset + page_size]
 
+    item_ids = [i.id for i in items]
+    barcode_map = {}
+    for ib in ItemBarcode.objects.filter(item_id__in=item_ids).order_by('-is_primary'):
+        barcode_map.setdefault(ib.item_id, []).append(ib.barcode)
+
     results = []
     for item in items:
+        barcodes = barcode_map.get(item.id, [])
         results.append({
             "id": item.id,
             "item_code": item.item_code,
             "item_name": item.item_name,
-            "barcode": item.barcode,
+            "barcode": barcodes[0] if barcodes else None,
+            "barcodes": barcodes,
             "category": item.category,
             "status": item.status,
             "outlet_name": item.outlet.outlet_name,
@@ -343,8 +362,11 @@ def item_lookup(request):
         return Response({"detail": "barcode query param required."}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        item = Item.objects.get(barcode=barcode, outlet=request.user.outlet)
-    except Item.DoesNotExist:
+        item_barcode = ItemBarcode.objects.select_related('item', 'item__outlet').get(
+            barcode=barcode, outlet=request.user.outlet
+        )
+        item = item_barcode.item
+    except ItemBarcode.DoesNotExist:
         return Response({"detail": "Item not found for this barcode."}, status=status.HTTP_404_NOT_FOUND)
 
     # Latest POS snapshot prices
@@ -368,11 +390,14 @@ def item_lookup(request):
         for c in today_counts_qs
     ]
 
+    all_barcodes = list(item.barcodes.values_list('barcode', flat=True))
+
     return Response({
         "item_id": item.id,
         "item_code": item.item_code,
         "item_name": item.item_name,
-        "barcode": item.barcode,
+        "barcode": barcode,
+        "barcodes": all_barcodes,
         "category": item.category,
         "sell_price": sell_price,
         "cost_price": cost_price,
@@ -458,7 +483,8 @@ def item_price_history(request, item_id):
         "item_id": item.id,
         "item_code": item.item_code,
         "item_name": item.item_name,
-        "barcode": item.barcode,
+        "barcode": item.primary_barcode,
+        "barcodes": list(item.barcodes.values_list('barcode', flat=True)),
         "category": item.category,
         "outlet_name": item.outlet.outlet_name if item.outlet else None,
         "count": total,

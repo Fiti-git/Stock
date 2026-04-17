@@ -8,15 +8,23 @@ class ItemSerializer(serializers.ModelSerializer):
     outlet_name = serializers.CharField(source="outlet.outlet_name", read_only=True)
     latest_cost_price = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True, default=None)
     latest_selling_price = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True, default=None)
+    barcodes = serializers.SerializerMethodField()
+    barcode = serializers.SerializerMethodField()
 
     class Meta:
         model = Item
         fields = [
-            "id", "outlet", "outlet_name", "item_code", "item_name", "barcode",
+            "id", "outlet", "outlet_name", "item_code", "item_name", "barcode", "barcodes",
             "category", "rack_number", "shelf", "status", "created_at", "barcode_assigned_at",
             "latest_cost_price", "latest_selling_price",
         ]
         read_only_fields = ["id", "created_at", "barcode_assigned_at"]
+
+    def get_barcodes(self, obj):
+        return list(obj.barcodes.values_list('barcode', flat=True))
+
+    def get_barcode(self, obj):
+        return obj.primary_barcode
 
 
 class PendingItemSerializer(serializers.ModelSerializer):
@@ -50,12 +58,13 @@ class PendingItemSerializer(serializers.ModelSerializer):
 
 
 class ItemUpdateSerializer(serializers.ModelSerializer):
+    barcode = serializers.CharField(max_length=100, required=False, allow_null=True, allow_blank=True)
+
     class Meta:
         model = Item
         fields = ["item_name", "barcode", "category", "rack_number", "shelf"]
         extra_kwargs = {
             "item_name": {"required": False},
-            "barcode": {"required": False, "allow_null": True, "allow_blank": True},
             "category": {"required": False, "allow_blank": True},
             "rack_number": {"required": False, "allow_blank": True},
             "shelf": {"required": False, "allow_blank": True},
@@ -94,6 +103,8 @@ class StockCountHistorySerializer(serializers.ModelSerializer):
 
 class ItemDetailSerializer(serializers.ModelSerializer):
     outlet_name = serializers.CharField(source="outlet.outlet_name", read_only=True)
+    barcodes = serializers.SerializerMethodField()
+    barcode = serializers.SerializerMethodField()
     pos_history = serializers.SerializerMethodField()
     count_history = serializers.SerializerMethodField()
     latest_pos_qty = serializers.SerializerMethodField()
@@ -104,10 +115,16 @@ class ItemDetailSerializer(serializers.ModelSerializer):
         model = Item
         fields = [
             "id", "outlet", "outlet_name", "item_code", "item_name",
-            "barcode", "category", "rack_number", "shelf", "status", "created_at", "barcode_assigned_at",
+            "barcode", "barcodes", "category", "rack_number", "shelf", "status", "created_at", "barcode_assigned_at",
             "latest_pos_qty", "latest_actual_qty", "variance",
             "pos_history", "count_history",
         ]
+
+    def get_barcodes(self, obj):
+        return list(obj.barcodes.values_list('barcode', flat=True))
+
+    def get_barcode(self, obj):
+        return obj.primary_barcode
 
     def _latest_pos(self, obj):
         return PosSnapshot.objects.filter(item=obj).order_by("-snapshot_date").first()
