@@ -6,7 +6,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from apps.accounts.models import User
-from apps.accounts.permissions import IsManager, CanCount
+from apps.accounts.permissions import IsManager, CanCount, IsAdmin
 from apps.outlets.models import Outlet
 from apps.items.models import PendingItem
 from apps.uploads.models import PosSnapshot, UploadLog
@@ -533,4 +533,135 @@ def daily_counts(request):
         "total_pages": max(1, (total + page_size - 1) // page_size),
         "count_date": str(count_date),
         "results": results,
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAdmin])
+def daily_upload_report(request):
+    """
+    Per-outlet-per-date aggregation of daily uploads.
+
+    Query params:
+      from_date — YYYY-MM-DD (default: 7 days ago)
+      to_date   — YYYY-MM-DD (default: today)
+      outlet    — outlet id (optional, filter to one outlet)
+
+    Response: one row per (outlet, snapshot_date) with totals and a negative-items block.
+    """
+    from datetime import datetime
+    from decimal import Decimal
+    from django.db.models import Q, DecimalField, ExpressionWrapper
+    from django.db.models.functions import Coalesce
+
+    def _parse_date(raw, default):
+        try:
+            return datetime.strptime(raw, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return default
+
+    today = date.today()
+    from_date = _parse_date(request.query_params.get("from_date"), today - timedelta(days=7))
+    to_date = _parse_date(request.query_params.get("to_date"), today)
+    outlet_filter = request.query_params.get("outlet")
+
+    # Aggregate PosSnapshot rows by (outlet, snapshot_date) in a single query.
+    snap_qs = PosSnapshot.objects.filter(snapshot_date__gte=from_date, snapshot_date__lte=to_date)
+    if outlet_filter:
+        snap_qs = snap_qs.filter(outlet_id=outlet_filter)
+
+    line_value = ExpressionWrapper(
+        F("pos_quantity") * Coalesce(F("cost_price"), Decimal("0")),
+        output_field=DecimalField(max_digits=18, decimal_places=4),
+    )
+    line_sell = ExpressionWrapper(
+        F("pos_quantity") * Coalesce(F("selling_price"), Decimal("0")),
+        output_field=DecimalField(max_digits=18, decimal_places=4),
+    )
+
+    # All-items aggregation
+    all_agg = (
+        snap_qs
+        .values("outlet_id", "snapshot_date")
+        .annotate(
+            total_items=Count("id"),
+            total_cost_value=Sum(line_value),
+            total_selling_value=Sum(line_sell),
+        )
+    )
+
+    # Negative-items aggregation (pos_quantity < 0)
+    neg_agg = (
+        snap_qs.filter(pos_quantity__lt=0)
+        .values("outlet_id", "snapshot_date")
+        .annotate(
+            negative_items_count=Count("id"),
+            negative_cost_value=Sum(line_value),
+            negative_selling_value=Sum(line_sell),
+        )
+    )
+    neg_map = {(r["outlet_id"], r["snapshot_date"]): r for r in neg_agg}
+
+    # UploadLog for new_items_count
+    upload_qs = UploadLog.objects.filter(
+        snapshot_date__gte=from_date, snapshot_date__lte=to_date,
+        status=UploadLog.Status.SUCCESS,
+    )
+    if outlet_filter:
+        upload_qs = upload_qs.filter(outlet_id=outlet_filter)
+    upload_map = {}
+    for u in upload_qs.values("outlet_id", "snapshot_date").annotate(
+        new_items_count=Sum("new_items_count"),
+        filenames=Max("filename"),
+        uploaded_at=Max("uploaded_at"),
+    ):
+        upload_map[(u["outlet_id"], u["snapshot_date"])] = u
+
+    # Outlet name lookup
+    outlet_names = dict(Outlet.objects.values_list("id", "outlet_name"))
+
+    def _pct(profit, sell):
+        if sell is None or sell == 0:
+            return None
+        return float(profit) / float(sell) * 100.0
+
+    rows = []
+    for a in all_agg:
+        key = (a["outlet_id"], a["snapshot_date"])
+        total_cost = a["total_cost_value"] or Decimal("0")
+        total_sell = a["total_selling_value"] or Decimal("0")
+        gp_value = total_sell - total_cost
+
+        neg = neg_map.get(key, {})
+        neg_cost = neg.get("negative_cost_value") or Decimal("0")
+        neg_sell = neg.get("negative_selling_value") or Decimal("0")
+        neg_gp_value = neg_sell - neg_cost
+
+        upload = upload_map.get(key, {})
+
+        rows.append({
+            "outlet_id": a["outlet_id"],
+            "outlet_name": outlet_names.get(a["outlet_id"], ""),
+            "upload_date": str(a["snapshot_date"]),
+            "new_items_count": upload.get("new_items_count") or 0,
+            "total_items": a["total_items"],
+            "total_cost_value": float(total_cost),
+            "total_selling_value": float(total_sell),
+            "gross_profit_value": float(gp_value),
+            "gross_profit_pct": _pct(gp_value, total_sell),
+            "negative_items_count": neg.get("negative_items_count") or 0,
+            "negative_cost_value": float(neg_cost),
+            "negative_selling_value": float(neg_sell),
+            "negative_gross_profit_value": float(neg_gp_value),
+            "negative_gross_profit_pct": _pct(neg_gp_value, neg_sell),
+            "filename": upload.get("filenames") or "",
+            "uploaded_at": upload.get("uploaded_at").isoformat() if upload.get("uploaded_at") else None,
+        })
+
+    rows.sort(key=lambda r: (r["upload_date"], r["outlet_name"]), reverse=True)
+
+    return Response({
+        "from_date": str(from_date),
+        "to_date": str(to_date),
+        "results": rows,
     })

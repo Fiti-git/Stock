@@ -41,3 +41,19 @@ export const getNegativePosReport = (date, outletId = null) =>
   api.get("/items/negative-pos/", {
     params: { date, ...(outletId ? { outlet: outletId } : {}) },
   });
+
+export const getItemHistory = (itemId) =>
+  api.get(`/items/${itemId}/history/`);
+
+export const listOutletBarcodes = (outletId, { q = "", isPrimary = null, page = 1, pageSize = 50 } = {}) =>
+  api.get(`/outlets/${outletId}/barcodes/`, {
+    params: {
+      page,
+      page_size: pageSize,
+      ...(q ? { q } : {}),
+      ...(isPrimary === null ? {} : { is_primary: isPrimary ? "true" : "false" }),
+    },
+  });
+
+export const createOutletBarcode = (outletId, payload) =>
+  api.post(`/outlets/${outletId}/barcodes/`, payload);

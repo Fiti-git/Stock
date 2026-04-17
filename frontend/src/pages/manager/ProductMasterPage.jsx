@@ -1,24 +1,26 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  Stack, TextField, MenuItem, IconButton, Tooltip, Chip, InputAdornment, Grid, Typography, Box, Button, Divider, CircularProgress,
+  Stack, TextField, MenuItem, IconButton, Tooltip, Chip, InputAdornment, Grid, Typography, Box, Button, Divider,
 } from "@mui/material";
 import EditNoteIcon from "@mui/icons-material/EditNote";
 import EditIcon from "@mui/icons-material/Edit";
 import SearchIcon from "@mui/icons-material/Search";
-import DeleteIcon from "@mui/icons-material/Delete";
-import StarIcon from "@mui/icons-material/Star";
-import StarBorderIcon from "@mui/icons-material/StarBorder";
-import AddIcon from "@mui/icons-material/Add";
+import QrCodeScannerIcon from "@mui/icons-material/QrCodeScanner";
+import HistoryIcon from "@mui/icons-material/History";
 import Layout from "../../components/Layout";
 import { PageHeader, DataTable, FormDialog } from "../../components/ui";
 import { useNotify } from "../../providers/NotificationProvider";
 import { useAuth } from "../../contexts/AuthContext";
+import { useOutlet } from "../../contexts/OutletContext";
 import { getOutlets } from "../../api/outlets";
-import { updateItem, listItemBarcodes, addItemBarcode, deleteItemBarcode, setPrimaryBarcode } from "../../api/items";
+import { updateItem } from "../../api/items";
 import api from "../../api/client";
 
 export default function ProductMasterPage() {
   const { user } = useAuth();
+  const { setSelectedOutlet } = useOutlet();
+  const navigate = useNavigate();
   const notify = useNotify();
   const isAdmin = user?.role === "admin";
   const [items, setItems] = useState([]);
@@ -26,14 +28,10 @@ export default function ProductMasterPage() {
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [outlets, setOutlets] = useState([]);
-  const [selectedOutlet, setSelectedOutlet] = useState("");
+  const [selectedOutletId, setSelectedOutletId] = useState("");
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [barcodes, setBarcodes] = useState([]);
-  const [barcodesLoading, setBarcodesLoading] = useState(false);
-  const [newBarcode, setNewBarcode] = useState("");
-  const [addingBarcode, setAddingBarcode] = useState(false);
   const searchTimer = useRef(null);
   const PAGE_SIZE = 50;
 
@@ -50,61 +48,23 @@ export default function ProductMasterPage() {
       setTotalCount(data.count ?? results.length);
     }).finally(() => setLoading(false));
   };
-  useEffect(() => { fetchItems(page, selectedOutlet, search); }, [page, selectedOutlet]); // eslint-disable-line
+  useEffect(() => { fetchItems(page, selectedOutletId, search); }, [page, selectedOutletId]); // eslint-disable-line
 
   const onSearchChange = (e) => {
     const v = e.target.value; setSearch(v);
     clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => { setPage(1); fetchItems(1, selectedOutlet, v); }, 300);
+    searchTimer.current = setTimeout(() => { setPage(1); fetchItems(1, selectedOutletId, v); }, 300);
   };
 
-  const openEdit = (row) => {
-    setEditing({ ...row });
-    setBarcodes([]);
-    setNewBarcode("");
-    setBarcodesLoading(true);
-    listItemBarcodes(row.id)
-      .then(({ data }) => setBarcodes(Array.isArray(data) ? data : []))
-      .catch(() => setBarcodes([]))
-      .finally(() => setBarcodesLoading(false));
-  };
+  const openEdit = (row) => setEditing({ ...row });
 
-  const reloadBarcodesIntoRow = (itemId, list) => {
-    const primary = list.find((b) => b.is_primary)?.barcode || list[0]?.barcode || null;
-    setItems((prev) => prev.map((it) => it.id === itemId ? { ...it, barcode: primary, barcodes: list.map((b) => b.barcode) } : it));
-  };
-
-  const handleAddBarcode = async () => {
-    const v = newBarcode.trim();
-    if (!v) return;
-    setAddingBarcode(true);
-    try {
-      await addItemBarcode(editing.id, v);
-      const { data } = await listItemBarcodes(editing.id);
-      setBarcodes(data);
-      reloadBarcodesIntoRow(editing.id, data);
-      setNewBarcode("");
-      notify.success("Barcode added.");
-    } catch (err) { notify.error(err.response?.data?.detail || "Failed to add barcode."); }
-    finally { setAddingBarcode(false); }
-  };
-
-  const handleDeleteBarcode = async (barcodeId) => {
-    try {
-      await deleteItemBarcode(editing.id, barcodeId);
-      const { data } = await listItemBarcodes(editing.id);
-      setBarcodes(data);
-      reloadBarcodesIntoRow(editing.id, data);
-    } catch (err) { notify.error(err.response?.data?.detail || "Failed to delete barcode."); }
-  };
-
-  const handleSetPrimary = async (barcodeId) => {
-    try {
-      await setPrimaryBarcode(editing.id, barcodeId);
-      const { data } = await listItemBarcodes(editing.id);
-      setBarcodes(data);
-      reloadBarcodesIntoRow(editing.id, data);
-    } catch (err) { notify.error(err.response?.data?.detail || "Failed to set primary."); }
+  const goToBarcodeMaster = (row) => {
+    const outletId = row.outlet ?? row.outlet_id;
+    const outletName = row.outlet_name;
+    if (outletId) {
+      setSelectedOutlet({ id: outletId, outlet_name: outletName });
+    }
+    navigate("/admin/barcode-master");
   };
 
   const handleSave = async () => {
@@ -152,11 +112,21 @@ export default function ProductMasterPage() {
         : <Chip size="small" label="Pending" color="warning" variant="outlined" />,
     },
     {
-      field: "edit", headerName: "", width: 60, sortable: false, filterable: false,
+      field: "actions", headerName: "", width: 140, sortable: false, filterable: false,
       renderCell: (p) => (
-        <Tooltip title="Edit"><IconButton size="small" onClick={() => openEdit(p.row)}>
-          <EditIcon fontSize="small" />
-        </IconButton></Tooltip>
+        <Stack direction="row" spacing={0.25}>
+          <Tooltip title="Edit"><IconButton size="small" onClick={() => openEdit(p.row)}>
+            <EditIcon fontSize="small" />
+          </IconButton></Tooltip>
+          <Tooltip title="View history"><IconButton size="small" onClick={() => navigate(`/admin/products/${p.row.id}/history`)}>
+            <HistoryIcon fontSize="small" />
+          </IconButton></Tooltip>
+          {isAdmin && (
+            <Tooltip title="Manage barcodes"><IconButton size="small" onClick={() => goToBarcodeMaster(p.row)}>
+              <QrCodeScannerIcon fontSize="small" />
+            </IconButton></Tooltip>
+          )}
+        </Stack>
       ),
     },
   ];
@@ -165,12 +135,12 @@ export default function ProductMasterPage() {
     <Layout>
       <PageHeader
         title="Product Master"
-        subtitle="Edit item details: name, barcode, category, rack, shelf"
+        subtitle="Edit item details: name, category, rack, shelf. Barcodes are managed in Barcode Master."
         icon={<EditNoteIcon />}
         actions={
           <Stack direction="row" spacing={1.5} alignItems="center">
             {isAdmin && outlets.length > 0 && (
-              <TextField size="small" select value={selectedOutlet} onChange={(e) => { setSelectedOutlet(e.target.value); setPage(1); }} sx={{ minWidth: 160 }} label="Outlet">
+              <TextField size="small" select value={selectedOutletId} onChange={(e) => { setSelectedOutletId(e.target.value); setPage(1); }} sx={{ minWidth: 160 }} label="Outlet">
                 <MenuItem value="">All Outlets</MenuItem>
                 {outlets.map((o) => <MenuItem key={o.id} value={o.id}>{o.outlet_name}</MenuItem>)}
               </TextField>
@@ -208,33 +178,29 @@ export default function ProductMasterPage() {
 
           <Box>
             <Typography variant="subtitle2" sx={{ mb: 1 }}>Barcodes</Typography>
-            {barcodesLoading ? (
-              <Box sx={{ display: "flex", justifyContent: "center", py: 1 }}><CircularProgress size={20} /></Box>
+            {(editing?.barcodes?.length ?? 0) === 0 ? (
+              <Typography variant="caption" color="text.secondary">No barcodes assigned.</Typography>
             ) : (
-              <Stack spacing={0.75} sx={{ mb: 1 }}>
-                {barcodes.length === 0 && <Typography variant="caption" color="text.secondary">No barcodes yet. Add one below.</Typography>}
-                {barcodes.map((b) => (
-                  <Stack key={b.id} direction="row" spacing={1} alignItems="center" sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1, px: 1, py: 0.5 }}>
-                    <Tooltip title={b.is_primary ? "Primary" : "Set as primary"}>
-                      <IconButton size="small" onClick={() => !b.is_primary && handleSetPrimary(b.id)} color={b.is_primary ? "warning" : "default"}>
-                        {b.is_primary ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
-                      </IconButton>
-                    </Tooltip>
-                    <Typography variant="body2" sx={{ flex: 1, fontFamily: "monospace" }}>{b.barcode}</Typography>
-                    {b.is_primary && <Chip size="small" label="Primary" color="warning" variant="outlined" />}
-                    <Tooltip title="Remove">
-                      <IconButton size="small" onClick={() => handleDeleteBarcode(b.id)}><DeleteIcon fontSize="small" /></IconButton>
-                    </Tooltip>
-                  </Stack>
+              <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                {editing.barcodes.map((bc) => (
+                  <Chip
+                    key={bc} size="small"
+                    label={bc}
+                    color={bc === editing.barcode ? "warning" : "default"}
+                    variant={bc === editing.barcode ? "outlined" : "filled"}
+                    sx={{ fontFamily: "monospace" }}
+                  />
                 ))}
               </Stack>
             )}
-            <Stack direction="row" spacing={1}>
-              <TextField size="small" fullWidth placeholder="Add barcode…" value={newBarcode}
-                onChange={(e) => setNewBarcode(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddBarcode(); } }} />
-              <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={handleAddBarcode} disabled={addingBarcode || !newBarcode.trim()}>Add</Button>
-            </Stack>
+            {isAdmin && (
+              <Button
+                size="small" sx={{ mt: 1 }} startIcon={<QrCodeScannerIcon />}
+                onClick={() => { setEditing(null); goToBarcodeMaster(editing); }}
+              >
+                Manage in Barcode Master
+              </Button>
+            )}
           </Box>
 
           <Divider />

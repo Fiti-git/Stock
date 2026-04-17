@@ -39,3 +39,12 @@ export const getDailyCounts = ({ outletId, countDate, search, page = 1, pageSize
       page_size: pageSize,
     },
   });
+
+export const getDailyUploadReport = ({ fromDate, toDate, outletId } = {}) =>
+  api.get("/dashboard/daily-upload-report/", {
+    params: {
+      ...(fromDate ? { from_date: fromDate } : {}),
+      ...(toDate ? { to_date: toDate } : {}),
+      ...(outletId ? { outlet: outletId } : {}),
+    },
+  });

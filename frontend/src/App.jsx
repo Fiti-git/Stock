@@ -25,6 +25,9 @@ import NegativePosReportPage from "./pages/admin/NegativePosReportPage";
 import AdminDashboardPage from "./pages/admin/AdminDashboardPage";
 import ProductMasterPage from "./pages/manager/ProductMasterPage";
 import CountedStockDailyPage from "./pages/manager/CountedStockDailyPage";
+import BarcodeMasterPage from "./pages/admin/BarcodeMasterPage";
+import ProductHistoryPage from "./pages/admin/ProductHistoryPage";
+import DailyUploadReportPage from "./pages/admin/DailyUploadReportPage";
 
 const LicenseSetupRequired = lazy(() => import("./pages/LicenseSetupRequired"));
 const LicenseConfiguration = lazy(() => import("./pages/admin/LicenseConfiguration"));
@@ -85,6 +88,9 @@ export default function App() {
                     <Route path="/admin/dashboard" element={<RoleRoute allowedRoles={["admin"]}><AdminDashboardPage /></RoleRoute>} />
                     <Route path="/admin/audit-log" element={<RoleRoute allowedRoles={["admin"]}><AuditLogPage /></RoleRoute>} />
                     <Route path="/admin/negative-pos" element={<RoleRoute allowedRoles={["admin"]}><NegativePosReportPage /></RoleRoute>} />
+                    <Route path="/admin/barcode-master" element={<RoleRoute allowedRoles={["admin"]}><BarcodeMasterPage /></RoleRoute>} />
+                    <Route path="/admin/products/:itemId/history" element={<RoleRoute allowedRoles={["manager","admin"]}><ProductHistoryPage /></RoleRoute>} />
+                    <Route path="/admin/reports/daily-upload" element={<RoleRoute allowedRoles={["admin"]}><DailyUploadReportPage /></RoleRoute>} />
 
                     <Route path="/dashboard" element={<RoleRoute allowedRoles={["manager","admin"]}><DashboardPage /></RoleRoute>} />
                     <Route path="/dashboard/pending" element={<RoleRoute allowedRoles={["manager","admin"]}><PendingItemsPage /></RoleRoute>} />

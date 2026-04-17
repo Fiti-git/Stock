@@ -16,6 +16,7 @@ import ChecklistIcon from "@mui/icons-material/Checklist";
 import ListAltIcon from "@mui/icons-material/ListAlt";
 import StorageIcon from "@mui/icons-material/Storage";
 import WorkspacePremiumIcon from "@mui/icons-material/WorkspacePremium";
+import AssessmentIcon from "@mui/icons-material/Assessment";
 
 /**
  * Single source of truth for routes. Consumed by Sidebar, Breadcrumbs, CommandPalette.
@@ -37,10 +38,12 @@ export const routes = [
   { path: "/shrinkage",       label: "Shrinkage",         icon: TrendingDownIcon,     roles: ["manager","admin"],  group: "Insights" },
   { path: "/daily-counts",    label: "Counted Stock Daily",icon: ChecklistIcon,       roles: ["manager","admin"],  group: "Insights" },
   { path: "/items/history",   label: "POS History",       icon: QueryStatsIcon,       roles: ["manager","admin"],  group: "Insights" },
+  { path: "/admin/reports/daily-upload", label: "Daily Upload Report", icon: AssessmentIcon, roles: ["admin"],      group: "Insights" },
 
   // Catalog
   { path: "/catalog",         label: "Product Catalog",   icon: Inventory2Icon,       roles: ["manager","admin"],  group: "Catalog" },
   { path: "/product-master",  label: "Product Master",    icon: EditNoteIcon,         roles: ["manager","admin"],  group: "Catalog" },
+  { path: "/admin/barcode-master", label: "Barcode Master", icon: QrCodeScannerIcon,  roles: ["admin"],            group: "Catalog" },
 
   // Admin
   { path: "/admin/upload-approvals", label: "Upload Approvals", icon: AssignmentTurnedInIcon, roles: ["admin"],   group: "Admin" },
@@ -55,6 +58,7 @@ export const routes = [
 
   // Hidden routes (not in nav)
   { path: "/items/:id",       label: "Item Detail",       roles: ["store_user","staff","manager","admin"], showInNav: false },
+  { path: "/admin/products/:itemId/history", label: "Product History", roles: ["manager","admin"], showInNav: false },
   { path: "/login",           label: "Login",             roles: ["public"], showInNav: false },
   { path: "/license-setup-required", label: "License Setup Required", roles: ["public"], showInNav: false },
 ];

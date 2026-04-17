@@ -13,7 +13,7 @@ class Item(models.Model):
     )
     item_code = models.CharField(max_length=50)
     item_name = models.CharField(max_length=300)
-    barcode = models.CharField(max_length=100, blank=True, null=True, unique=True)
+    barcode = models.CharField(max_length=100, blank=True, null=True)
     category = models.CharField(max_length=200, blank=True)
     rack_number = models.CharField(max_length=50, blank=True, default='')
     shelf = models.CharField(max_length=50, blank=True, default='')

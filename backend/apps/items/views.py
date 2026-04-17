@@ -582,6 +582,291 @@ def item_price_history(request, item_id):
 
 
 @api_view(["GET"])
+@permission_classes([IsManager])
+def item_history(request, item_id):
+    """
+    Merged per-product timeline — POS snapshots, item field edits, barcode events,
+    physical counts, and the creation event. Newest first.
+
+    Managers: only their own outlet's items. Admins: any item.
+    """
+    from apps.dashboard.models import StockCount
+    user = request.user
+    try:
+        item = Item.objects.select_related("outlet").get(pk=item_id)
+    except Item.DoesNotExist:
+        return Response({"detail": "Item not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if user.role != "admin" and item.outlet != user.outlet:
+        return Response({"detail": "Not authorized."}, status=status.HTTP_403_FORBIDDEN)
+
+    events = []
+
+    # 1. Creation event
+    events.append({
+        "event_type": "created",
+        "ts": item.created_at.isoformat(),
+        "payload": {
+            "item_code": item.item_code,
+            "item_name": item.item_name,
+            "outlet": item.outlet.outlet_name if item.outlet else None,
+        },
+        "user": None,
+    })
+
+    # 2. POS snapshots (oldest-to-newest for delta computation, then sorted desc at the end)
+    snaps = list(PosSnapshot.objects.filter(item=item).order_by("snapshot_date"))
+    prev = None
+    for snap in snaps:
+        delta = {}
+        if prev:
+            if snap.pos_quantity != prev.pos_quantity:
+                delta["pos_quantity"] = {"old": float(prev.pos_quantity), "new": float(snap.pos_quantity)}
+            if snap.cost_price != prev.cost_price:
+                delta["cost_price"] = {
+                    "old": float(prev.cost_price) if prev.cost_price is not None else None,
+                    "new": float(snap.cost_price) if snap.cost_price is not None else None,
+                }
+            if snap.selling_price != prev.selling_price:
+                delta["selling_price"] = {
+                    "old": float(prev.selling_price) if prev.selling_price is not None else None,
+                    "new": float(snap.selling_price) if snap.selling_price is not None else None,
+                }
+        events.append({
+            "event_type": "pos_snapshot",
+            "ts": snap.uploaded_at.isoformat(),
+            "date": str(snap.snapshot_date),
+            "payload": {
+                "snapshot_date": str(snap.snapshot_date),
+                "pos_quantity": float(snap.pos_quantity),
+                "cost_price": float(snap.cost_price) if snap.cost_price is not None else None,
+                "selling_price": float(snap.selling_price) if snap.selling_price is not None else None,
+                "delta": delta,
+            },
+            "user": snap.uploaded_by.username if snap.uploaded_by else None,
+        })
+        prev = snap
+
+    # 3. Pending-item changes that were acted on (ASSIGNED or REJECTED)
+    changes = PendingItem.objects.filter(item=item).exclude(status=PendingItem.Status.PENDING)
+    for ch in changes:
+        events.append({
+            "event_type": "item_change",
+            "ts": ch.created_at.isoformat(),
+            "payload": {
+                "change_type": ch.change_type,
+                "status": ch.status,
+                "changed_fields": ch.changed_fields,
+                "staff_note": ch.staff_note,
+            },
+            "user": None,
+        })
+
+    # 4. Audit log entries for this item
+    audits = AuditLog.objects.filter(entity_type="item", entity_id=str(item.id)).select_related("user")
+    for a in audits:
+        events.append({
+            "event_type": "audit",
+            "ts": a.created_at.isoformat(),
+            "payload": {
+                "action": a.action,
+                "details": a.details,
+            },
+            "user": a.user.username if a.user else None,
+        })
+
+    # 5. Barcode events
+    for b in item.barcodes.select_related("assigned_by").all():
+        events.append({
+            "event_type": "barcode",
+            "ts": b.assigned_at.isoformat(),
+            "payload": {
+                "barcode": b.barcode,
+                "is_primary": b.is_primary,
+            },
+            "user": b.assigned_by.username if b.assigned_by else None,
+        })
+
+    # 6. Physical stock counts
+    for c in StockCount.objects.filter(item=item).select_related("counted_by"):
+        events.append({
+            "event_type": "physical_count",
+            "ts": c.counted_at.isoformat() if c.counted_at else None,
+            "date": str(c.count_date),
+            "payload": {
+                "count_date": str(c.count_date),
+                "actual_qty": float(c.actual_qty),
+                "location_tag": c.location_tag or "",
+            },
+            "user": c.counted_by.username if c.counted_by else None,
+        })
+
+    events.sort(key=lambda e: e["ts"] or "", reverse=True)
+
+    return Response({
+        "item_id": item.id,
+        "item_code": item.item_code,
+        "item_name": item.item_name,
+        "outlet_id": item.outlet_id,
+        "outlet_name": item.outlet.outlet_name if item.outlet else None,
+        "primary_barcode": item.primary_barcode,
+        "barcodes": list(item.barcodes.values_list("barcode", flat=True)),
+        "category": item.category,
+        "status": item.status,
+        "created_at": item.created_at.isoformat(),
+        "events": events,
+    })
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAdmin])
+def outlet_barcode_master(request, outlet_id):
+    """
+    Outlet-scoped barcode master.
+
+    GET  /api/outlets/{outlet_id}/barcodes/  — list all barcodes for the outlet.
+         Query params: q (barcode/item_code/item_name search), is_primary (true|false),
+         page, page_size.
+    POST /api/outlets/{outlet_id}/barcodes/  — create a barcode.
+         Body: { item_id, barcode, is_primary }. Enforces per-outlet uniqueness.
+         On conflict returns 409 with the conflicting item_code.
+    """
+    from apps.outlets.models import Outlet
+    try:
+        outlet = Outlet.objects.get(pk=outlet_id)
+    except Outlet.DoesNotExist:
+        return Response({"detail": "Outlet not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "GET":
+        qs = (
+            ItemBarcode.objects
+            .filter(outlet=outlet)
+            .select_related("item", "assigned_by")
+            .order_by("-is_primary", "item__item_code", "assigned_at")
+        )
+
+        q = (request.query_params.get("q") or "").strip()
+        if q:
+            qs = qs.filter(
+                Q(barcode__icontains=q)
+                | Q(item__item_code__icontains=q)
+                | Q(item__item_name__icontains=q)
+            )
+
+        is_primary = request.query_params.get("is_primary")
+        if is_primary in ("true", "1"):
+            qs = qs.filter(is_primary=True)
+        elif is_primary in ("false", "0"):
+            qs = qs.filter(is_primary=False)
+
+        try:
+            page = max(1, int(request.query_params.get("page", 1)))
+        except (ValueError, TypeError):
+            page = 1
+        try:
+            page_size = min(max(1, int(request.query_params.get("page_size", 50))), 200)
+        except (ValueError, TypeError):
+            page_size = 50
+
+        total = qs.count()
+        offset = (page - 1) * page_size
+        rows = qs[offset: offset + page_size]
+
+        return Response({
+            "count": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": max(1, (total + page_size - 1) // page_size),
+            "results": [
+                {
+                    "id": b.id,
+                    "barcode": b.barcode,
+                    "is_primary": b.is_primary,
+                    "item_id": b.item_id,
+                    "item_code": b.item.item_code,
+                    "item_name": b.item.item_name,
+                    "assigned_at": b.assigned_at.isoformat(),
+                    "assigned_by_username": b.assigned_by.username if b.assigned_by else None,
+                }
+                for b in rows
+            ],
+        })
+
+    # POST — create a barcode
+    item_id = request.data.get("item_id")
+    barcode_val = (request.data.get("barcode") or "").strip()
+    make_primary = bool(request.data.get("is_primary"))
+
+    if not item_id or not barcode_val:
+        return Response(
+            {"detail": "item_id and barcode are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        item = Item.objects.get(pk=item_id, outlet=outlet)
+    except Item.DoesNotExist:
+        return Response(
+            {"detail": "Item not found in this outlet."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    existing = ItemBarcode.objects.filter(outlet=outlet, barcode=barcode_val).select_related("item").first()
+    if existing:
+        return Response(
+            {
+                "detail": "This barcode is already assigned in this outlet.",
+                "conflict": {
+                    "item_id": existing.item_id,
+                    "item_code": existing.item.item_code,
+                    "item_name": existing.item.item_name,
+                },
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    is_first = not item.barcodes.exists()
+    if make_primary or is_first:
+        item.barcodes.update(is_primary=False)
+
+    ib = ItemBarcode.objects.create(
+        item=item,
+        outlet=outlet,
+        barcode=barcode_val,
+        is_primary=make_primary or is_first,
+        assigned_by=request.user,
+    )
+
+    if is_first:
+        item.status = Item.Status.ACTIVE
+        item.barcode_assigned_at = timezone.now()
+        item.barcode_assigned_by = request.user
+        item.save(update_fields=["status", "barcode_assigned_at", "barcode_assigned_by"])
+
+    AuditLog.objects.create(
+        user=request.user,
+        action="add_barcode",
+        entity_type="item",
+        entity_id=str(item.id),
+        details={"item_code": item.item_code, "barcode": barcode_val, "outlet": outlet.outlet_name},
+    )
+
+    return Response(
+        {
+            "id": ib.id,
+            "barcode": ib.barcode,
+            "is_primary": ib.is_primary,
+            "item_id": item.id,
+            "item_code": item.item_code,
+            "item_name": item.item_name,
+            "assigned_at": ib.assigned_at.isoformat(),
+            "assigned_by_username": request.user.username,
+        },
+        status=status.HTTP_201_CREATED,
+    )
+
+
+@api_view(["GET"])
 @permission_classes([IsAdmin])
 def negative_pos_report(request):
     """
