@@ -1,6 +1,11 @@
 /** @type {import('tailwindcss').Config} */
+// Tailwind is retained for layout/spacing utilities only.
+// Colors, typography, and component styling come from the MUI theme (src/theme/).
 export default {
   content: ["./index.html", "./src/**/*.{js,jsx,ts,tsx}"],
+  corePlugins: {
+    preflight: false, // let MUI CssBaseline handle base resets
+  },
   theme: {
     extend: {
       colors: {

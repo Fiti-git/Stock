@@ -1,5 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { lazy, Suspense } from "react";
+import { Box, CircularProgress } from "@mui/material";
+import { ThemeModeProvider } from "./theme/ThemeModeContext";
+import { NotificationProvider } from "./providers/NotificationProvider";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { OutletProvider } from "./contexts/OutletContext";
 import { LicenseProvider } from "./contexts/LicenseContext";
@@ -27,9 +30,15 @@ const LicenseSetupRequired = lazy(() => import("./pages/LicenseSetupRequired"));
 const LicenseConfiguration = lazy(() => import("./pages/admin/LicenseConfiguration"));
 const DbManagement = lazy(() => import("./pages/DbManagement"));
 
+const FullScreenLoader = () => (
+  <Box sx={{ display: "grid", placeItems: "center", minHeight: "100vh" }}>
+    <CircularProgress size={28} />
+  </Box>
+);
+
 function RoleRoute({ children, allowedRoles }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="flex h-screen items-center justify-center text-gray-500">Loading…</div>;
+  if (loading) return <FullScreenLoader />;
   if (!user) return <Navigate to="/login" replace />;
   if (user.role === "ServiceProvider" && allowedRoles?.includes("admin")) return children;
   if (allowedRoles && !allowedRoles.includes(user.role)) return <Navigate to="/" replace />;
@@ -48,194 +57,49 @@ function HomeRedirect() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <OutletProvider>
-      <LicenseProvider>
-      <BrowserRouter>
-        <Suspense fallback={<div className="flex h-screen items-center justify-center text-gray-500">Loading…</div>}>
-        <Routes>
-          <Route path="/" element={<HomeRedirect />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/license-setup-required" element={<LicenseSetupRequired />} />
-          <Route path="/admin/license-configuration" element={
-            <RoleRoute allowedRoles={["admin"]}><LicenseConfiguration /></RoleRoute>
-          } />
+    <ThemeModeProvider>
+      <NotificationProvider>
+        <AuthProvider>
+          <OutletProvider>
+            <LicenseProvider>
+              <BrowserRouter>
+                <Suspense fallback={<FullScreenLoader />}>
+                  <Routes>
+                    <Route path="/" element={<HomeRedirect />} />
+                    <Route path="/login" element={<LoginPage />} />
+                    <Route path="/license-setup-required" element={<LicenseSetupRequired />} />
+                    <Route path="/admin/license-configuration" element={<RoleRoute allowedRoles={["admin"]}><LicenseConfiguration /></RoleRoute>} />
 
-          {/* DB management — accessible to every authenticated role */}
-          <Route
-            path="/db-management"
-            element={
-              <RoleRoute allowedRoles={["store_user", "staff", "manager", "admin"]}>
-                <DbManagement />
-              </RoleRoute>
-            }
-          />
+                    <Route path="/db-management" element={<RoleRoute allowedRoles={["store_user","staff","manager","admin"]}><DbManagement /></RoleRoute>} />
+                    <Route path="/items/:id" element={<RoleRoute allowedRoles={["store_user","staff","manager","admin"]}><ItemDetailPage /></RoleRoute>} />
+                    <Route path="/count" element={<RoleRoute allowedRoles={["store_user","staff","manager","admin"]}><StockCountPage /></RoleRoute>} />
 
-          {/* Item detail route */}
-          <Route
-            path="/items/:id"
-            element={
-              <RoleRoute allowedRoles={["store_user", "staff", "manager", "admin"]}>
-                <ItemDetailPage />
-              </RoleRoute>
-            }
-          />
+                    <Route path="/upload" element={<RoleRoute allowedRoles={["store_user","manager","admin"]}><UploadPage /></RoleRoute>} />
+                    <Route path="/upload/history" element={<RoleRoute allowedRoles={["store_user","manager","admin"]}><HistoryPage /></RoleRoute>} />
 
-          {/* Count entry route */}
-          <Route
-            path="/count"
-            element={
-              <RoleRoute allowedRoles={["store_user", "staff", "manager", "admin"]}>
-                <StockCountPage />
-              </RoleRoute>
-            }
-          />
+                    <Route path="/overview" element={<RoleRoute allowedRoles={["manager","admin"]}><OutletsOverviewPage /></RoleRoute>} />
 
-          {/* Store user routes */}
-          <Route
-            path="/upload"
-            element={
-              <RoleRoute allowedRoles={["store_user", "manager", "admin"]}>
-                <UploadPage />
-              </RoleRoute>
-            }
-          />
-          <Route
-            path="/upload/history"
-            element={
-              <RoleRoute allowedRoles={["store_user", "manager", "admin"]}>
-                <HistoryPage />
-              </RoleRoute>
-            }
-          />
+                    <Route path="/admin/upload-approvals" element={<RoleRoute allowedRoles={["admin"]}><UploadApprovalsPage /></RoleRoute>} />
+                    <Route path="/admin/outlets" element={<RoleRoute allowedRoles={["admin"]}><OutletsPage /></RoleRoute>} />
+                    <Route path="/admin/users" element={<RoleRoute allowedRoles={["admin"]}><UsersPage /></RoleRoute>} />
+                    <Route path="/admin/dashboard" element={<RoleRoute allowedRoles={["admin"]}><AdminDashboardPage /></RoleRoute>} />
+                    <Route path="/admin/audit-log" element={<RoleRoute allowedRoles={["admin"]}><AuditLogPage /></RoleRoute>} />
+                    <Route path="/admin/negative-pos" element={<RoleRoute allowedRoles={["admin"]}><NegativePosReportPage /></RoleRoute>} />
 
-          {/* Overview — manager + admin */}
-          <Route
-            path="/overview"
-            element={
-              <RoleRoute allowedRoles={["manager", "admin"]}>
-                <OutletsOverviewPage />
-              </RoleRoute>
-            }
-          />
-
-          {/* Admin routes */}
-          <Route
-            path="/admin/upload-approvals"
-            element={
-              <RoleRoute allowedRoles={["admin"]}>
-                <UploadApprovalsPage />
-              </RoleRoute>
-            }
-          />
-          <Route
-            path="/admin/outlets"
-            element={
-              <RoleRoute allowedRoles={["admin"]}>
-                <OutletsPage />
-              </RoleRoute>
-            }
-          />
-          <Route
-            path="/admin/users"
-            element={
-              <RoleRoute allowedRoles={["admin"]}>
-                <UsersPage />
-              </RoleRoute>
-            }
-          />
-          <Route
-            path="/admin/dashboard"
-            element={
-              <RoleRoute allowedRoles={["admin"]}>
-                <AdminDashboardPage />
-              </RoleRoute>
-            }
-          />
-          <Route
-            path="/admin/audit-log"
-            element={
-              <RoleRoute allowedRoles={["admin"]}>
-                <AuditLogPage />
-              </RoleRoute>
-            }
-          />
-          <Route
-            path="/admin/negative-pos"
-            element={
-              <RoleRoute allowedRoles={["admin"]}>
-                <NegativePosReportPage />
-              </RoleRoute>
-            }
-          />
-
-          {/* Manager routes */}
-          <Route
-            path="/dashboard"
-            element={
-              <RoleRoute allowedRoles={["manager", "admin"]}>
-                <DashboardPage />
-              </RoleRoute>
-            }
-          />
-          <Route
-            path="/dashboard/pending"
-            element={
-              <RoleRoute allowedRoles={["manager", "admin"]}>
-                <PendingItemsPage />
-              </RoleRoute>
-            }
-          />
-          {/* Shrinkage analytics */}
-          <Route
-            path="/shrinkage"
-            element={
-              <RoleRoute allowedRoles={["manager", "admin"]}>
-                <ShrinkagePage />
-              </RoleRoute>
-            }
-          />
-          {/* Product catalog */}
-          <Route
-            path="/catalog"
-            element={
-              <RoleRoute allowedRoles={["manager", "admin"]}>
-                <CatalogPage />
-              </RoleRoute>
-            }
-          />
-          {/* Product POS history */}
-          <Route
-            path="/items/history"
-            element={
-              <RoleRoute allowedRoles={["manager", "admin"]}>
-                <ItemPosHistoryPage />
-              </RoleRoute>
-            }
-          />
-          {/* Product Master CRUD */}
-          <Route
-            path="/product-master"
-            element={
-              <RoleRoute allowedRoles={["manager", "admin"]}>
-                <ProductMasterPage />
-              </RoleRoute>
-            }
-          />
-          {/* Counted Stock Daily */}
-          <Route
-            path="/daily-counts"
-            element={
-              <RoleRoute allowedRoles={["manager", "admin"]}>
-                <CountedStockDailyPage />
-              </RoleRoute>
-            }
-          />
-        </Routes>
-        </Suspense>
-      </BrowserRouter>
-      </LicenseProvider>
-      </OutletProvider>
-    </AuthProvider>
+                    <Route path="/dashboard" element={<RoleRoute allowedRoles={["manager","admin"]}><DashboardPage /></RoleRoute>} />
+                    <Route path="/dashboard/pending" element={<RoleRoute allowedRoles={["manager","admin"]}><PendingItemsPage /></RoleRoute>} />
+                    <Route path="/shrinkage" element={<RoleRoute allowedRoles={["manager","admin"]}><ShrinkagePage /></RoleRoute>} />
+                    <Route path="/catalog" element={<RoleRoute allowedRoles={["manager","admin"]}><CatalogPage /></RoleRoute>} />
+                    <Route path="/items/history" element={<RoleRoute allowedRoles={["manager","admin"]}><ItemPosHistoryPage /></RoleRoute>} />
+                    <Route path="/product-master" element={<RoleRoute allowedRoles={["manager","admin"]}><ProductMasterPage /></RoleRoute>} />
+                    <Route path="/daily-counts" element={<RoleRoute allowedRoles={["manager","admin"]}><CountedStockDailyPage /></RoleRoute>} />
+                  </Routes>
+                </Suspense>
+              </BrowserRouter>
+            </LicenseProvider>
+          </OutletProvider>
+        </AuthProvider>
+      </NotificationProvider>
+    </ThemeModeProvider>
   );
 }

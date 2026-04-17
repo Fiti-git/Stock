@@ -1,13 +1,12 @@
-export default function Alert({ type = "error", children }) {
-  const styles = {
-    error: "bg-red-50 border-red-300 text-red-800",
-    warning: "bg-amber-50 border-amber-300 text-amber-800",
-    success: "bg-green-50 border-green-300 text-green-800",
-    info: "bg-blue-50 border-blue-300 text-blue-800",
-  };
+// Backward-compat shim over MUI Alert. Preserves existing <Alert type="error">...</Alert> usage.
+import { Alert as MuiAlert } from "@mui/material";
+
+const MAP = { error: "error", success: "success", warning: "warning", info: "info" };
+
+export default function Alert({ type = "info", children, onClose, ...rest }) {
   return (
-    <div className={`border rounded-lg px-4 py-3 text-sm ${styles[type]}`}>
+    <MuiAlert severity={MAP[type] || "info"} variant="outlined" onClose={onClose} {...rest}>
       {children}
-    </div>
+    </MuiAlert>
   );
 }

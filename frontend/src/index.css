@@ -2,8 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  body {
-    @apply bg-gray-50 text-gray-900 antialiased;
-  }
-}
+/* Tailwind base is kept for layout/spacing utilities; MUI CssBaseline handles colors/typography. */
+html, body, #root { height: 100%; }
+body { margin: 0; font-family: 'Inter', system-ui, -apple-system, sans-serif; }

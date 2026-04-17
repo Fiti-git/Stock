@@ -1,42 +1,38 @@
 import { useNavigate } from "react-router-dom";
+import { Box, Card, CardContent, Typography, Button, Stack } from "@mui/material";
+import SettingsIcon from "@mui/icons-material/Settings";
 import { useAuth } from "../contexts/AuthContext";
 
 export default function LicenseSetupRequired() {
   const navigate = useNavigate();
   const { user } = useAuth();
-
   const isServiceProvider = user?.role === "ServiceProvider";
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      <div className="bg-white rounded-xl shadow-lg p-8 max-w-md text-center">
-        <div className="text-6xl mb-4">&#9881;</div>
-        <h1 className="text-2xl font-bold text-gray-800 mb-2">License Setup Required</h1>
-        <p className="text-gray-500 mb-6">
-          This system has not been configured with a license yet.
-          A ServiceProvider administrator needs to complete the initial setup.
-        </p>
-
-        {user && isServiceProvider ? (
-          <button
-            onClick={() => navigate("/admin/license-configuration")}
-            className="px-6 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors"
-          >
-            Go to License Setup
-          </button>
-        ) : user ? (
-          <p className="text-sm text-gray-400">
-            You do not have permission to configure the license. Contact your service provider.
-          </p>
-        ) : (
-          <button
-            onClick={() => navigate("/login")}
-            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            Go to Login
-          </button>
-        )}
-      </div>
-    </div>
+    <Box sx={{ minHeight: "100vh", display: "grid", placeItems: "center", p: 2, bgcolor: "background.default" }}>
+      <Card variant="outlined" sx={{ maxWidth: 460, width: "100%" }}>
+        <CardContent sx={{ textAlign: "center", p: 4 }}>
+          <Box sx={{ width: 64, height: 64, borderRadius: "50%", bgcolor: "action.hover", display: "grid", placeItems: "center", mx: "auto", mb: 2 }}>
+            <SettingsIcon sx={{ fontSize: 36, color: "text.secondary" }} />
+          </Box>
+          <Typography variant="h3" gutterBottom>License Setup Required</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            This system has not been configured with a license yet.
+            A ServiceProvider administrator needs to complete the initial setup.
+          </Typography>
+          <Stack direction="row" justifyContent="center">
+            {user && isServiceProvider ? (
+              <Button variant="contained" size="large" onClick={() => navigate("/admin/license-configuration")}>Go to License Setup</Button>
+            ) : user ? (
+              <Typography variant="caption" color="text.secondary">
+                You do not have permission to configure the license. Contact your service provider.
+              </Typography>
+            ) : (
+              <Button variant="outlined" size="large" onClick={() => navigate("/login")}>Go to Login</Button>
+            )}
+          </Stack>
+        </CardContent>
+      </Card>
+    </Box>
   );
 }

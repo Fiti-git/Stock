@@ -1,20 +1,20 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import {
+  Box, Card, CardContent, Typography, Stack, Chip, Grid, Button, Alert, CircularProgress,
+} from "@mui/material";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import Inventory2Icon from "@mui/icons-material/Inventory2";
 import Layout from "../../components/Layout";
-import Alert from "../../components/Alert";
+import { PageHeader, DataTable } from "../../components/ui";
 import { getItemDetail } from "../../api/items";
 
-function varianceColor(v) {
-  if (v === null) return "text-gray-400";
-  if (v < 0) return "text-red-600 font-semibold";
-  if (v > 0) return "text-green-600 font-semibold";
-  return "text-gray-700";
+function VarianceText({ v }) {
+  if (v === null || v === undefined) return <Typography component="span" sx={{ opacity: 0.4 }}>—</Typography>;
+  if (v < 0) return <Typography component="span" color="error.main" fontWeight={600}>{v}</Typography>;
+  if (v > 0) return <Typography component="span" color="success.main" fontWeight={600}>+{v}</Typography>;
+  return <Typography component="span">0</Typography>;
 }
-
-const STATUS_BADGE = {
-  active: "bg-green-100 text-green-700",
-  pending_barcode: "bg-amber-100 text-amber-700",
-};
 
 export default function ItemDetailPage() {
   const { id } = useParams();
@@ -24,166 +24,97 @@ export default function ItemDetailPage() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    getItemDetail(id)
-      .then((res) => setItem(res.data))
-      .catch(() => setError("Item not found or you do not have access."))
-      .finally(() => setLoading(false));
+    getItemDetail(id).then((res) => setItem(res.data)).catch(() => setError("Item not found or you do not have access.")).finally(() => setLoading(false));
   }, [id]);
 
-  if (loading) {
-    return (
-      <Layout>
-        <div className="flex items-center justify-center h-64 text-gray-400">Loading…</div>
-      </Layout>
-    );
-  }
+  if (loading) return <Layout><Box sx={{ display: "grid", placeItems: "center", py: 8 }}><CircularProgress /></Box></Layout>;
+  if (error || !item) return <Layout><Alert severity="error">{error || "Item not found."}</Alert></Layout>;
 
-  if (error || !item) {
-    return (
-      <Layout>
-        <Alert type="error">{error || "Item not found."}</Alert>
-      </Layout>
-    );
-  }
+  const posCols = [
+    { field: "snapshot_date", headerName: "Date", flex: 0.9, minWidth: 110 },
+    {
+      field: "pos_quantity", headerName: "Qty", type: "number", flex: 0.6, minWidth: 80,
+      renderCell: (p) => <Box sx={{ color: p.value < 0 ? "error.main" : "text.primary", fontWeight: p.value < 0 ? 600 : 400 }}>{p.value}</Box>,
+    },
+    { field: "cost_price", headerName: "Cost", flex: 0.6, minWidth: 80, valueGetter: (v) => v ?? "—" },
+    { field: "selling_price", headerName: "Price", flex: 0.6, minWidth: 80, valueGetter: (v) => v ?? "—" },
+    { field: "uploaded_by_username", headerName: "By", flex: 0.8, minWidth: 100, valueGetter: (v) => v || "—" },
+  ];
+
+  const countCols = [
+    { field: "count_date", headerName: "Date", flex: 0.9, minWidth: 110 },
+    { field: "actual_qty", headerName: "Qty", type: "number", flex: 0.6, minWidth: 80 },
+    { field: "location_tag", headerName: "Location", flex: 0.8, minWidth: 110, valueGetter: (v) => v || "—" },
+    { field: "counted_by_username", headerName: "By", flex: 0.8, minWidth: 100, valueGetter: (v) => v || "—" },
+    {
+      field: "is_month_end", headerName: "M/E", flex: 0.4, minWidth: 60,
+      renderCell: (p) => p.value ? <Chip size="small" label="✓" color="info" variant="outlined" /> : "",
+    },
+  ];
 
   return (
     <Layout>
-      <div className="max-w-5xl">
-        {/* Back link */}
-        <button
-          onClick={() => navigate(-1)}
-          className="text-sm text-brand-700 hover:underline mb-4 inline-block"
-        >
-          ← Back
-        </button>
+      <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(-1)} sx={{ mb: 2 }}>Back</Button>
 
-        {/* Item header */}
-        <div className="bg-white border rounded-lg p-5 mb-6">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h1 className="text-xl font-bold text-gray-900 mb-1">{item.item_name}</h1>
-              <div className="flex flex-wrap gap-2 text-sm text-gray-500">
-                <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">{item.item_code}</span>
-                {item.barcode && <span>Barcode: <span className="font-mono">{item.barcode}</span></span>}
-                {item.category && <span>{item.category}</span>}
-                <span>{item.outlet_name}</span>
-                <span className={`px-2 py-0.5 rounded text-xs font-medium ${STATUS_BADGE[item.status] || "bg-gray-100 text-gray-600"}`}>
-                  {item.status === "pending_barcode" ? "Pending Barcode" : "Active"}
-                </span>
-              </div>
-            </div>
-            <div className="text-xs text-gray-400">
-              Added {item.created_at?.slice(0, 10)}
-              {item.barcode_assigned_at && (
-                <div>Barcode assigned {item.barcode_assigned_at?.slice(0, 10)}</div>
-              )}
-            </div>
-          </div>
+      <PageHeader
+        title={item.item_name}
+        subtitle={
+          <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 0.5 }}>
+            <Chip size="small" variant="outlined" label={item.item_code} sx={{ fontFamily: "monospace" }} />
+            {item.barcode && <Chip size="small" variant="outlined" label={`Barcode: ${item.barcode}`} />}
+            {item.category && <Chip size="small" variant="outlined" label={item.category} />}
+            <Chip size="small" variant="outlined" label={item.outlet_name} />
+            <Chip size="small" color={item.status === "active" ? "success" : "warning"} label={item.status === "pending_barcode" ? "Pending Barcode" : "Active"} />
+          </Stack>
+        }
+        icon={<Inventory2Icon />}
+      />
 
-          {/* Variance summary */}
-          <div className="mt-4 grid grid-cols-3 gap-4 border-t pt-4">
-            <div>
-              <div className="text-xs text-gray-500 mb-1">Latest POS Qty</div>
-              <div className="text-lg font-mono font-semibold">
-                {item.latest_pos_qty !== null ? item.latest_pos_qty : <span className="text-gray-300">—</span>}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-gray-500 mb-1">Latest Actual Qty</div>
-              <div className="text-lg font-mono font-semibold">
-                {item.latest_actual_qty !== null ? item.latest_actual_qty : <span className="text-gray-300">—</span>}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-gray-500 mb-1">Variance</div>
-              <div className={`text-lg font-mono ${varianceColor(item.variance)}`}>
-                {item.variance !== null
-                  ? (item.variance > 0 ? `+${item.variance}` : item.variance)
-                  : <span className="text-gray-300">—</span>}
-              </div>
-            </div>
-          </div>
-        </div>
+      <Card variant="outlined" sx={{ mb: 3 }}>
+        <CardContent>
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={4}>
+              <Typography variant="overline" color="text.secondary">Latest POS Qty</Typography>
+              <Typography variant="h3" sx={{ fontFamily: "monospace" }}>{item.latest_pos_qty ?? "—"}</Typography>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Typography variant="overline" color="text.secondary">Latest Actual Qty</Typography>
+              <Typography variant="h3" sx={{ fontFamily: "monospace" }}>{item.latest_actual_qty ?? "—"}</Typography>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Typography variant="overline" color="text.secondary">Variance</Typography>
+              <Typography variant="h3" sx={{ fontFamily: "monospace" }}>
+                <VarianceText v={item.variance} />
+              </Typography>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
 
-        {/* Two-column history */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* POS Snapshot History */}
-          <div className="bg-white border rounded-lg overflow-hidden">
-            <div className="px-4 py-3 border-b bg-gray-50">
-              <h2 className="font-semibold text-sm text-gray-700">POS Snapshot History</h2>
-              <p className="text-xs text-gray-400">Last 30 uploads</p>
-            </div>
-            {item.pos_history.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-gray-400">No snapshots yet.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-xs">
-                  <thead className="text-gray-500 border-b">
-                    <tr>
-                      <th className="px-3 py-2 text-left">Date</th>
-                      <th className="px-3 py-2 text-right">Qty</th>
-                      <th className="px-3 py-2 text-right">Cost</th>
-                      <th className="px-3 py-2 text-right">Price</th>
-                      <th className="px-3 py-2 text-left">By</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {item.pos_history.map((snap) => (
-                      <tr key={snap.id} className="hover:bg-gray-50">
-                        <td className="px-3 py-2 font-mono">{snap.snapshot_date}</td>
-                        <td className={`px-3 py-2 text-right font-mono ${snap.pos_quantity < 0 ? "text-red-600" : ""}`}>
-                          {snap.pos_quantity}
-                        </td>
-                        <td className="px-3 py-2 text-right text-gray-500">{snap.cost_price ?? "—"}</td>
-                        <td className="px-3 py-2 text-right text-gray-500">{snap.selling_price ?? "—"}</td>
-                        <td className="px-3 py-2 text-gray-400">{snap.uploaded_by_username || "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* Physical Count History */}
-          <div className="bg-white border rounded-lg overflow-hidden">
-            <div className="px-4 py-3 border-b bg-gray-50">
-              <h2 className="font-semibold text-sm text-gray-700">Physical Count History</h2>
-              <p className="text-xs text-gray-400">Last 30 counts</p>
-            </div>
-            {item.count_history.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-gray-400">No counts recorded yet.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-xs">
-                  <thead className="text-gray-500 border-b">
-                    <tr>
-                      <th className="px-3 py-2 text-left">Date</th>
-                      <th className="px-3 py-2 text-right">Qty</th>
-                      <th className="px-3 py-2 text-left">Location</th>
-                      <th className="px-3 py-2 text-left">By</th>
-                      <th className="px-3 py-2 text-center">M/E</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {item.count_history.map((sc) => (
-                      <tr key={sc.id} className="hover:bg-gray-50">
-                        <td className="px-3 py-2 font-mono">{sc.count_date}</td>
-                        <td className="px-3 py-2 text-right font-mono font-medium">{sc.actual_qty}</td>
-                        <td className="px-3 py-2 text-gray-500">{sc.location_tag || "—"}</td>
-                        <td className="px-3 py-2 text-gray-400">{sc.counted_by_username || "—"}</td>
-                        <td className="px-3 py-2 text-center">
-                          {sc.is_month_end ? <span className="text-blue-600 font-bold">✓</span> : ""}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      <Grid container spacing={2}>
+        <Grid item xs={12} md={6}>
+          <Card variant="outlined">
+            <CardContent sx={{ pb: 1 }}>
+              <Typography variant="h4">POS Snapshot History</Typography>
+              <Typography variant="caption" color="text.secondary">Last 30 uploads</Typography>
+            </CardContent>
+            <Box sx={{ px: 2, pb: 2 }}>
+              <DataTable rows={item.pos_history} columns={posCols} toolbar={false} height={400} initialPageSize={10} emptyText="No snapshots yet" />
+            </Box>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <Card variant="outlined">
+            <CardContent sx={{ pb: 1 }}>
+              <Typography variant="h4">Physical Count History</Typography>
+              <Typography variant="caption" color="text.secondary">Last 30 counts</Typography>
+            </CardContent>
+            <Box sx={{ px: 2, pb: 2 }}>
+              <DataTable rows={item.count_history} columns={countCols} toolbar={false} height={400} initialPageSize={10} emptyText="No counts recorded" />
+            </Box>
+          </Card>
+        </Grid>
+      </Grid>
     </Layout>
   );
 }

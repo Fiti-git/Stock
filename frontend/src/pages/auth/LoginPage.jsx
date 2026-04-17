@@ -1,11 +1,19 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  Box, Paper, TextField, Button, Typography, Stack, Alert, InputAdornment, IconButton, CircularProgress,
+} from "@mui/material";
+import InventoryIcon from "@mui/icons-material/Inventory";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
+import LoginIcon from "@mui/icons-material/Login";
 import { useAuth } from "../../contexts/AuthContext";
 
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ username: "", password: "" });
+  const [show, setShow] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -15,83 +23,89 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const user = await login(form.username, form.password);
-      if (user.role === "ServiceProvider") {
-        navigate("/admin/license-configuration");
-      } else if (user.role === "store_user") {
-        navigate("/upload");
-      } else if (user.role === "admin") {
-        navigate("/admin/dashboard");
-      } else {
-        navigate("/dashboard");
-      }
+      if (user.role === "ServiceProvider") navigate("/admin/license-configuration");
+      else if (user.role === "store_user") navigate("/upload");
+      else if (user.role === "admin") navigate("/admin/dashboard");
+      else navigate("/dashboard");
     } catch (err) {
-      setError(
-        err.response?.data?.detail || "Login failed. Check your username and password."
-      );
+      setError(err.response?.data?.detail || "Login failed. Check your username and password.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-700 to-brand-500">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
-        {/* Logo / title */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-brand-100 mb-3">
-            <svg className="w-7 h-7 text-brand-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900">Stock Count</h1>
-          <p className="text-sm text-gray-500 mt-1">Arunalu Super Mart</p>
-        </div>
+    <Box
+      sx={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        p: 2,
+        background: (t) =>
+          t.palette.mode === "dark"
+            ? "radial-gradient(circle at 20% 0%, #164534 0%, #0b1220 50%, #0b1220 100%)"
+            : "radial-gradient(circle at 20% 0%, #dcfce7 0%, #f7f8fa 50%, #f7f8fa 100%)",
+      }}
+    >
+      <Paper elevation={6} sx={{ width: "100%", maxWidth: 420, p: 4, borderRadius: 4 }}>
+        <Stack spacing={3}>
+          <Stack alignItems="center" spacing={1}>
+            <Box sx={{ width: 56, height: 56, borderRadius: 3, bgcolor: "primary.main", color: "primary.contrastText", display: "grid", placeItems: "center" }}>
+              <InventoryIcon />
+            </Box>
+            <Typography variant="h2" component="h1">Stock Count</Typography>
+            <Typography variant="body2" color="text.secondary">Arunalu Super Mart</Typography>
+          </Stack>
 
-        {error && (
-          <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-            {error}
-          </div>
-        )}
+          {error && <Alert severity="error" variant="outlined">{error}</Alert>}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Username
-            </label>
-            <input
-              type="text"
-              autoComplete="username"
-              required
-              value={form.username}
-              onChange={(e) => setForm({ ...form, username: e.target.value })}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-              placeholder="Enter your username"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Password
-            </label>
-            <input
-              type="password"
-              autoComplete="current-password"
-              required
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-              placeholder="Enter your password"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-50"
-          >
-            {loading ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
-      </div>
-    </div>
+          <form onSubmit={handleSubmit}>
+            <Stack spacing={2}>
+              <TextField
+                label="Username"
+                autoFocus
+                fullWidth
+                autoComplete="username"
+                value={form.username}
+                onChange={(e) => setForm({ ...form, username: e.target.value })}
+                required
+              />
+              <TextField
+                label="Password"
+                fullWidth
+                type={show ? "text" : "password"}
+                autoComplete="current-password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                required
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton edge="end" onClick={() => setShow((s) => !s)} tabIndex={-1}>
+                        {show ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <Button
+                type="submit"
+                variant="contained"
+                size="large"
+                disabled={loading || !form.username || !form.password}
+                startIcon={loading ? <CircularProgress size={18} color="inherit" /> : <LoginIcon />}
+                fullWidth
+              >
+                {loading ? "Signing in…" : "Sign in"}
+              </Button>
+            </Stack>
+          </form>
+
+          <Typography variant="caption" color="text.secondary" align="center">
+            © {new Date().getFullYear()} Arunalu Super Mart · Stock Count System
+          </Typography>
+        </Stack>
+      </Paper>
+    </Box>
   );
 }

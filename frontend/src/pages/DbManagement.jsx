@@ -1,48 +1,45 @@
 import { useEffect, useRef, useState } from "react";
-import Layout from "../components/Layout";
-import Alert from "../components/Alert";
 import {
-  createBackup,
-  deleteBackup,
-  downloadBackup,
-  getDbStatus,
-  listBackups,
-  restoreBackup,
-  uploadBackup,
+  Box, Card, CardContent, Typography, Button, Stack, Grid, Chip, Alert, IconButton, Tooltip,
+} from "@mui/material";
+import StorageIcon from "@mui/icons-material/Storage";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import BackupIcon from "@mui/icons-material/Backup";
+import UploadIcon from "@mui/icons-material/Upload";
+import DownloadIcon from "@mui/icons-material/Download";
+import RestoreIcon from "@mui/icons-material/Restore";
+import DeleteIcon from "@mui/icons-material/Delete";
+import Layout from "../components/Layout";
+import { PageHeader, DataTable, ConfirmDialog } from "../components/ui";
+import { useNotify } from "../providers/NotificationProvider";
+import {
+  createBackup, deleteBackup, downloadBackup, getDbStatus, listBackups, restoreBackup, uploadBackup,
 } from "../api/dbops";
 
 function formatBytes(n) {
-  if (n === null || n === undefined) return "—";
+  if (n == null) return "—";
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
   return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-function fmtDate(iso) {
-  try {
-    return new Date(iso).toLocaleString();
-  } catch {
-    return iso;
-  }
-}
-
 function LogBox({ lines }) {
   const ref = useRef(null);
-  useEffect(() => {
-    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
-  }, [lines]);
+  useEffect(() => { if (ref.current) ref.current.scrollTop = ref.current.scrollHeight; }, [lines]);
   return (
-    <pre
-      ref={ref}
-      className="bg-gray-900 text-green-200 text-xs font-mono rounded-lg p-3 h-56 overflow-auto whitespace-pre-wrap"
-    >
+    <Box ref={ref} component="pre" sx={{
+      bgcolor: "#0b1220", color: "#a6f4a6", fontSize: "0.72rem",
+      fontFamily: "ui-monospace, monospace", borderRadius: 1, p: 1.5, height: 220,
+      overflow: "auto", whiteSpace: "pre-wrap", m: 0,
+    }}>
       {lines.length ? lines.join("\n") : "(no activity yet)"}
-    </pre>
+    </Box>
   );
 }
 
 export default function DbManagement() {
+  const notify = useNotify();
   const [status, setStatus] = useState({ loading: true });
   const [backups, setBackups] = useState([]);
   const [backupLog, setBackupLog] = useState([]);
@@ -51,41 +48,17 @@ export default function DbManagement() {
   const [restoring, setRestoring] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [confirm, setConfirm] = useState(null);
-  const [feedback, setFeedback] = useState(null);
   const fileInputRef = useRef(null);
-
-  function flash(type, message) {
-    setFeedback({ type, message });
-    setTimeout(() => setFeedback(null), 4000);
-  }
 
   async function refreshStatus() {
     setStatus({ loading: true });
-    try {
-      const { data } = await getDbStatus();
-      setStatus({ loading: false, ...data });
-    } catch (err) {
-      setStatus({
-        loading: false,
-        connected: false,
-        error: err.response?.data?.error || err.message || "Unable to reach the database.",
-      });
-    }
+    try { const { data } = await getDbStatus(); setStatus({ loading: false, ...data }); }
+    catch (err) { setStatus({ loading: false, connected: false, error: err.response?.data?.error || err.message || "Unable to reach database." }); }
   }
-
   async function refreshBackups() {
-    try {
-      const { data } = await listBackups();
-      setBackups(data.backups || []);
-    } catch {
-      setBackups([]);
-    }
+    try { const { data } = await listBackups(); setBackups(data.backups || []); } catch { setBackups([]); }
   }
-
-  useEffect(() => {
-    refreshStatus();
-    refreshBackups();
-  }, []);
+  useEffect(() => { refreshStatus(); refreshBackups(); }, []);
 
   async function handleBackup() {
     setBacking(true);
@@ -93,33 +66,26 @@ export default function DbManagement() {
     try {
       const { data } = await createBackup();
       setBackupLog((l) => [...l, data.log || "Backup complete."]);
-      flash("success", `Backup created: ${data.filename}`);
+      notify.success(`Backup created: ${data.filename}`);
       refreshBackups();
     } catch (err) {
-      const log = err.response?.data?.log || err.message || "Backup failed.";
-      setBackupLog((l) => [...l, log]);
-      flash("error", "Backup failed. See log.");
-    } finally {
-      setBacking(false);
-    }
+      setBackupLog((l) => [...l, err.response?.data?.log || err.message || "Backup failed."]);
+      notify.error("Backup failed.");
+    } finally { setBacking(false); }
   }
 
   async function handleRestore(filename) {
-    setConfirm(null);
-    setRestoring(true);
+    setConfirm(null); setRestoring(true);
     setRestoreLog((l) => [...l, `[${new Date().toLocaleTimeString()}] Restoring ${filename}…`]);
     try {
       const { data } = await restoreBackup(filename);
       setRestoreLog((l) => [...l, data.log || "Restore complete."]);
-      flash("success", "Restore complete.");
+      notify.success("Restore complete.");
       refreshStatus();
     } catch (err) {
-      const log = err.response?.data?.log || err.message || "Restore failed.";
-      setRestoreLog((l) => [...l, log]);
-      flash("error", "Restore failed. See log.");
-    } finally {
-      setRestoring(false);
-    }
+      setRestoreLog((l) => [...l, err.response?.data?.log || err.message || "Restore failed."]);
+      notify.error("Restore failed.");
+    } finally { setRestoring(false); }
   }
 
   async function handleDownload(filename) {
@@ -127,241 +93,134 @@ export default function DbManagement() {
       const res = await downloadBackup(filename);
       const url = URL.createObjectURL(res.data);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch {
-      flash("error", "Download failed.");
-    }
+    } catch { notify.error("Download failed."); }
   }
 
   async function handleUpload(file) {
     if (!file) return;
-    if (!/\.sql(\.gz)?$/i.test(file.name)) {
-      flash("error", "File must end in .sql or .sql.gz");
-      return;
-    }
+    if (!/\.sql(\.gz)?$/i.test(file.name)) { notify.error("File must end in .sql or .sql.gz"); return; }
     setUploading(true);
-    try {
-      const { data } = await uploadBackup(file);
-      flash("success", `Uploaded: ${data.filename}`);
-      refreshBackups();
-    } catch (err) {
-      flash("error", err.response?.data?.error || "Upload failed.");
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
+    try { const { data } = await uploadBackup(file); notify.success(`Uploaded: ${data.filename}`); refreshBackups(); }
+    catch (err) { notify.error(err.response?.data?.error || "Upload failed."); }
+    finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
   }
 
   async function handleDelete(filename) {
-    try {
-      await deleteBackup(filename);
-      flash("success", `Deleted ${filename}`);
-      refreshBackups();
-    } catch {
-      flash("error", "Failed to delete backup file.");
-    }
+    setConfirm(null);
+    try { await deleteBackup(filename); notify.success(`Deleted ${filename}`); refreshBackups(); }
+    catch { notify.error("Failed to delete backup."); }
   }
 
   const connected = status.connected;
 
+  const columns = [
+    { field: "filename", headerName: "Filename", flex: 1.6, minWidth: 200 },
+    { field: "size_bytes", headerName: "Size", flex: 0.6, minWidth: 90, valueGetter: (v) => formatBytes(v) },
+    { field: "created_at", headerName: "Created", flex: 1, minWidth: 160, valueGetter: (v) => new Date(v).toLocaleString() },
+    {
+      field: "actions", headerName: "Actions", width: 160, sortable: false, filterable: false,
+      renderCell: (p) => (
+        <Stack direction="row" spacing={0.5}>
+          <Tooltip title="Download"><IconButton size="small" onClick={() => handleDownload(p.row.filename)}><DownloadIcon fontSize="small" /></IconButton></Tooltip>
+          <Tooltip title="Restore"><IconButton size="small" color="warning" disabled={restoring} onClick={() => setConfirm({ action: "restore", filename: p.row.filename })}><RestoreIcon fontSize="small" /></IconButton></Tooltip>
+          <Tooltip title="Delete"><IconButton size="small" color="error" onClick={() => setConfirm({ action: "delete", filename: p.row.filename })}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+        </Stack>
+      ),
+    },
+  ];
+
   return (
     <Layout>
-      <div className="max-w-5xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Database Management</h1>
-          <p className="text-sm text-gray-500">
-            View connection status, create backups, and restore the database from a previous dump.
-          </p>
-        </div>
+      <PageHeader title="Database Management" subtitle="View connection status, create backups, and restore from a previous dump." icon={<StorageIcon />} />
 
-        {feedback && <Alert type={feedback.type} message={feedback.message} />}
-
-        {/* Status */}
-        <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-800">Connection Status</h2>
-            <button
-              onClick={refreshStatus}
-              className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
-            >
-              Refresh
-            </button>
-          </div>
-          {status.loading ? (
-            <p className="text-sm text-gray-500">Checking…</p>
-          ) : (
-            <div className="flex items-start gap-3">
-              <span
-                className={`inline-flex h-3 w-3 rounded-full mt-1.5 ${
-                  connected ? "bg-green-500" : "bg-red-500"
-                }`}
-              />
-              <div className="flex-1 text-sm">
-                <div className={`font-medium ${connected ? "text-green-700" : "text-red-700"}`}>
-                  {connected ? "Connected" : "Disconnected"}
-                </div>
+      <Card variant="outlined" sx={{ mb: 3 }}>
+        <CardContent>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+            <Typography variant="h4">Connection Status</Typography>
+            <Button size="small" startIcon={<RefreshIcon />} onClick={refreshStatus}>Refresh</Button>
+          </Stack>
+          {status.loading ? <Typography variant="body2" color="text.secondary">Checking…</Typography> : (
+            <Stack direction="row" spacing={2} alignItems="flex-start">
+              <Chip label={connected ? "Connected" : "Disconnected"} color={connected ? "success" : "error"} size="small" />
+              <Box sx={{ flex: 1 }}>
                 {connected ? (
-                  <dl className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-y-1 gap-x-6 text-gray-600">
-                    <div><dt className="inline text-gray-400">Database: </dt><dd className="inline">{status.database}</dd></div>
-                    <div><dt className="inline text-gray-400">Size: </dt><dd className="inline">{formatBytes(status.size_bytes)}</dd></div>
-                    <div><dt className="inline text-gray-400">Latency: </dt><dd className="inline">{status.latency_ms} ms</dd></div>
-                    <div className="sm:col-span-2 truncate"><dt className="inline text-gray-400">Server: </dt><dd className="inline">{status.server_version}</dd></div>
-                  </dl>
-                ) : (
-                  <p className="mt-1 text-gray-600">{status.error}</p>
-                )}
-              </div>
-            </div>
+                  <Grid container spacing={1}>
+                    <Grid item xs={6} md={3}><Typography variant="caption" color="text.secondary">Database</Typography><Typography variant="body2">{status.database}</Typography></Grid>
+                    <Grid item xs={6} md={3}><Typography variant="caption" color="text.secondary">Size</Typography><Typography variant="body2">{formatBytes(status.size_bytes)}</Typography></Grid>
+                    <Grid item xs={6} md={3}><Typography variant="caption" color="text.secondary">Latency</Typography><Typography variant="body2">{status.latency_ms} ms</Typography></Grid>
+                    <Grid item xs={12} md={12}><Typography variant="caption" color="text.secondary">Server</Typography><Typography variant="body2" noWrap>{status.server_version}</Typography></Grid>
+                  </Grid>
+                ) : <Typography variant="body2" color="error">{status.error}</Typography>}
+              </Box>
+            </Stack>
           )}
-        </section>
+        </CardContent>
+      </Card>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Backup */}
-          <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-800">Backup</h2>
-              <button
-                onClick={handleBackup}
-                disabled={backing || !connected}
-                className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm hover:bg-brand-700 disabled:opacity-50"
-              >
-                {backing ? "Backing up…" : "Create Backup"}
-              </button>
-            </div>
-            <LogBox lines={backupLog} />
-          </section>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} md={6}>
+          <Card variant="outlined">
+            <CardContent>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+                <Typography variant="h4">Backup</Typography>
+                <Button variant="contained" startIcon={<BackupIcon />} disabled={backing || !connected} onClick={handleBackup}>
+                  {backing ? "Backing up…" : "Create Backup"}
+                </Button>
+              </Stack>
+              <LogBox lines={backupLog} />
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <Card variant="outlined">
+            <CardContent>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+                <Typography variant="h4">Restore</Typography>
+                <Typography variant="caption" color="warning.main">Overwrites current data</Typography>
+              </Stack>
+              <LogBox lines={restoreLog} />
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
 
-          {/* Restore */}
-          <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-800">Restore</h2>
-              <span className="text-xs text-gray-400">Overwrites current data</span>
-            </div>
-            <LogBox lines={restoreLog} />
-          </section>
-        </div>
+      <Card variant="outlined">
+        <CardContent sx={{ pb: 1 }}>
+          <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "center" }} spacing={1}>
+            <Typography variant="h4">Available Backups</Typography>
+            <Stack direction="row" spacing={1}>
+              <input ref={fileInputRef} type="file" accept=".sql,.gz,.sql.gz" hidden onChange={(e) => handleUpload(e.target.files?.[0])} />
+              <Button size="small" variant="contained" startIcon={<UploadIcon />} disabled={uploading} onClick={() => fileInputRef.current?.click()}>
+                {uploading ? "Uploading…" : "Upload"}
+              </Button>
+              <Button size="small" startIcon={<RefreshIcon />} onClick={refreshBackups}>Refresh</Button>
+            </Stack>
+          </Stack>
+        </CardContent>
+        <Box sx={{ px: 2, pb: 2 }}>
+          <DataTable rows={backups} columns={columns} getRowId={(r) => r.filename} toolbar={false} height={420} initialPageSize={10} emptyText="No backups yet" />
+        </Box>
+      </Card>
 
-        {/* Backup list */}
-        <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-          <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
-            <h2 className="text-lg font-semibold text-gray-800">Available Backups</h2>
-            <div className="flex items-center gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".sql,.gz,.sql.gz"
-                className="hidden"
-                onChange={(e) => handleUpload(e.target.files?.[0])}
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-                className="text-xs px-3 py-1.5 rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
-              >
-                {uploading ? "Uploading…" : "Upload Backup"}
-              </button>
-              <button
-                onClick={refreshBackups}
-                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
-              >
-                Refresh
-              </button>
-            </div>
-          </div>
-
-          {backups.length === 0 ? (
-            <p className="text-sm text-gray-500">No backups yet. Click "Create Backup" to make one.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="text-xs text-gray-500 text-left border-b border-gray-100">
-                  <tr>
-                    <th className="py-2 pr-4 font-medium">Filename</th>
-                    <th className="py-2 pr-4 font-medium">Size</th>
-                    <th className="py-2 pr-4 font-medium">Created</th>
-                    <th className="py-2 pr-4 font-medium text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {backups.map((b) => (
-                    <tr key={b.filename} className="border-b border-gray-50 last:border-0">
-                      <td className="py-2 pr-4 font-mono text-xs text-gray-700">{b.filename}</td>
-                      <td className="py-2 pr-4 text-gray-600">{formatBytes(b.size_bytes)}</td>
-                      <td className="py-2 pr-4 text-gray-600">{fmtDate(b.created_at)}</td>
-                      <td className="py-2 pr-4 text-right space-x-2 whitespace-nowrap">
-                        <button
-                          onClick={() => handleDownload(b.filename)}
-                          className="inline-block px-2.5 py-1 rounded border border-gray-200 text-xs text-gray-700 hover:bg-gray-50"
-                        >
-                          Download
-                        </button>
-                        <button
-                          onClick={() => setConfirm({ action: "restore", filename: b.filename })}
-                          disabled={restoring}
-                          className="px-2.5 py-1 rounded bg-amber-500 text-white text-xs hover:bg-amber-600 disabled:opacity-50"
-                        >
-                          Restore
-                        </button>
-                        <button
-                          onClick={() => setConfirm({ action: "delete", filename: b.filename })}
-                          className="px-2.5 py-1 rounded bg-red-500 text-white text-xs hover:bg-red-600"
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      </div>
-
-      {/* Confirm dialog */}
-      {confirm && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-lg p-6 max-w-md w-full">
-            <h3 className="text-lg font-semibold text-gray-800 mb-2">
-              {confirm.action === "restore" ? "Restore database?" : "Delete backup?"}
-            </h3>
-            <p className="text-sm text-gray-600 mb-4">
-              {confirm.action === "restore"
-                ? "This will OVERWRITE the current database with the selected backup. This cannot be undone."
-                : "The backup file will be permanently removed."}
-              <br />
-              <span className="font-mono text-xs text-gray-500">{confirm.filename}</span>
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setConfirm(null)}
-                className="px-4 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() =>
-                  confirm.action === "restore"
-                    ? handleRestore(confirm.filename)
-                    : handleDelete(confirm.filename) || setConfirm(null)
-                }
-                className={`px-4 py-2 rounded-lg text-white text-sm ${
-                  confirm.action === "restore"
-                    ? "bg-amber-500 hover:bg-amber-600"
-                    : "bg-red-500 hover:bg-red-600"
-                }`}
-              >
-                {confirm.action === "restore" ? "Yes, Restore" : "Yes, Delete"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={Boolean(confirm)}
+        onClose={() => setConfirm(null)}
+        onConfirm={() => confirm?.action === "restore" ? handleRestore(confirm.filename) : handleDelete(confirm.filename)}
+        loading={restoring}
+        title={confirm?.action === "restore" ? "Restore database?" : "Delete backup?"}
+        color={confirm?.action === "restore" ? "warning" : "error"}
+        confirmLabel={confirm?.action === "restore" ? "Yes, Restore" : "Yes, Delete"}
+        message={
+          <>
+            {confirm?.action === "restore"
+              ? "This will OVERWRITE the current database with the selected backup. This cannot be undone."
+              : "The backup file will be permanently removed."}
+            <Box component="code" sx={{ display: "block", mt: 1, fontFamily: "monospace", fontSize: "0.75rem", opacity: 0.7 }}>{confirm?.filename}</Box>
+          </>
+        }
+      />
     </Layout>
   );
 }

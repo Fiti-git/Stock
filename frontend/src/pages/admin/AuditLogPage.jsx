@@ -1,11 +1,18 @@
 import { useState, useEffect } from "react";
+import {
+  Stack, TextField, MenuItem, Box, Card, CardContent, IconButton, Collapse, Typography,
+} from "@mui/material";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import ListAltIcon from "@mui/icons-material/ListAlt";
 import Layout from "../../components/Layout";
-import Alert from "../../components/Alert";
+import { PageHeader, DataTable } from "../../components/ui";
+import { useNotify } from "../../providers/NotificationProvider";
 import { getAuditLog } from "../../api/uploads";
 
 const ACTION_LABELS = {
   xls_upload: "XLS Upload",
-  xls_upload_pending_approval: "Upload (Pending Approval)",
+  xls_upload_pending_approval: "Upload (Pending)",
   approve_upload: "Approve Upload",
   reject_upload: "Reject Upload",
   delete_upload: "Delete Upload",
@@ -15,185 +22,107 @@ const ACTION_LABELS = {
 };
 
 export default function AuditLogPage() {
+  const notify = useNotify();
   const [records, setRecords] = useState([]);
   const [meta, setMeta] = useState({ count: 0, page: 1, total_pages: 1 });
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [expanded, setExpanded] = useState({}); // { [id]: true }
-
-  const [filters, setFilters] = useState({
-    entity_type: "",
-    user: "",
-    from_date: "",
-    to_date: "",
-    page: 1,
-  });
+  const [expanded, setExpanded] = useState({});
+  const [filters, setFilters] = useState({ entity_type: "", user: "", from_date: "", to_date: "", page: 1 });
 
   useEffect(() => {
     setLoading(true);
-    setError(null);
-    const params = {};
+    const params = { page: filters.page };
     if (filters.entity_type) params.entity_type = filters.entity_type;
     if (filters.user) params.user = filters.user;
     if (filters.from_date) params.from_date = filters.from_date;
     if (filters.to_date) params.to_date = filters.to_date;
-    params.page = filters.page;
-
     getAuditLog(params)
       .then((res) => {
         setRecords(res.data.results);
-        setMeta({
-          count: res.data.count,
-          page: res.data.page,
-          total_pages: res.data.total_pages,
-        });
+        setMeta({ count: res.data.count, page: res.data.page, total_pages: res.data.total_pages });
       })
-      .catch(() => setError("Failed to load audit log."))
+      .catch(() => notify.error("Failed to load audit log."))
       .finally(() => setLoading(false));
-  }, [filters]);
+  }, [filters]); // eslint-disable-line
 
-  function setFilter(key, value) {
-    setFilters((prev) => ({ ...prev, [key]: value, page: 1 }));
-  }
+  const setFilter = (key, value) => setFilters((p) => ({ ...p, [key]: value, page: 1 }));
 
-  function toggleExpand(id) {
-    setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
-  }
+  const columns = [
+    {
+      field: "created_at", headerName: "Timestamp", flex: 1, minWidth: 160,
+      valueGetter: (v) => new Date(v).toLocaleString(),
+    },
+    { field: "username", headerName: "User", flex: 0.8, minWidth: 120 },
+    {
+      field: "action", headerName: "Action", flex: 1, minWidth: 160,
+      valueGetter: (v) => ACTION_LABELS[v] ?? v,
+    },
+    {
+      field: "entity", headerName: "Entity", flex: 0.9, minWidth: 140,
+      valueGetter: (_, r) => `${r.entity_type} #${r.entity_id}`,
+    },
+    {
+      field: "actions", headerName: "Details", width: 90, sortable: false, filterable: false,
+      renderCell: (p) => (
+        <IconButton size="small" onClick={(e) => {
+          e.stopPropagation();
+          setExpanded((prev) => ({ ...prev, [p.row.id]: !prev[p.row.id] }));
+        }}>
+          {expanded[p.row.id] ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+        </IconButton>
+      ),
+    },
+  ];
+
+  const expandedRecord = records.find((r) => expanded[r.id]);
 
   return (
     <Layout>
-      <div className="max-w-5xl">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-gray-900">Audit Log</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {meta.count} records total
-          </p>
-        </div>
+      <PageHeader
+        title="Audit Log"
+        subtitle={`${meta.count} records total`}
+        icon={<ListAltIcon />}
+      />
 
-        {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-2 mb-5">
-          <input
-            type="text"
-            placeholder="Username…"
-            value={filters.user}
-            onChange={(e) => setFilter("user", e.target.value)}
-            className="border rounded px-3 py-2 text-sm flex-1"
-          />
-          <select
-            value={filters.entity_type}
-            onChange={(e) => setFilter("entity_type", e.target.value)}
-            className="border rounded px-3 py-2 text-sm"
-          >
-            <option value="">All entity types</option>
-            <option value="upload_log">Upload Log</option>
-            <option value="item">Item</option>
-            <option value="pending_item">Pending Item</option>
-          </select>
-          <input
-            type="date"
-            value={filters.from_date}
-            onChange={(e) => setFilter("from_date", e.target.value)}
-            className="border rounded px-3 py-2 text-sm"
-            placeholder="From date"
-          />
-          <input
-            type="date"
-            value={filters.to_date}
-            onChange={(e) => setFilter("to_date", e.target.value)}
-            className="border rounded px-3 py-2 text-sm"
-            placeholder="To date"
-          />
-        </div>
+      <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} sx={{ mb: 2 }}>
+        <TextField size="small" placeholder="Username…" value={filters.user} onChange={(e) => setFilter("user", e.target.value)} sx={{ flex: 1, minWidth: 160 }} />
+        <TextField size="small" select value={filters.entity_type} onChange={(e) => setFilter("entity_type", e.target.value)} sx={{ minWidth: 180 }} label="Entity type">
+          <MenuItem value="">All</MenuItem>
+          <MenuItem value="upload_log">Upload Log</MenuItem>
+          <MenuItem value="item">Item</MenuItem>
+          <MenuItem value="pending_item">Pending Item</MenuItem>
+        </TextField>
+        <TextField size="small" type="date" label="From" InputLabelProps={{ shrink: true }} value={filters.from_date} onChange={(e) => setFilter("from_date", e.target.value)} />
+        <TextField size="small" type="date" label="To" InputLabelProps={{ shrink: true }} value={filters.to_date} onChange={(e) => setFilter("to_date", e.target.value)} />
+      </Stack>
 
-        {error && <Alert type="error">{error}</Alert>}
+      <DataTable
+        rows={records}
+        columns={columns}
+        loading={loading}
+        toolbar={false}
+        height={560}
+        paginationMode="server"
+        rowCount={meta.count}
+        paginationModel={{ page: meta.page - 1, pageSize: 20 }}
+        onPaginationModelChange={(m) => setFilters((p) => ({ ...p, page: m.page + 1 }))}
+        pageSizeOptions={[20]}
+        emptyText="No audit records"
+      />
 
-        {loading ? (
-          <p className="text-gray-500 text-sm">Loading…</p>
-        ) : records.length === 0 ? (
-          <p className="text-gray-500 text-sm">No audit records found.</p>
-        ) : (
-          <>
-            <div className="bg-white border rounded-lg overflow-hidden mb-4">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b">
-                    <tr>
-                      <th className="text-left px-4 py-3 font-medium text-gray-600 whitespace-nowrap">Timestamp</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">User</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">Action</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-600 hidden sm:table-cell">Entity</th>
-                      <th className="px-4 py-3 font-medium text-gray-600">Details</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {records.map((rec) => (
-                      <>
-                        <tr key={rec.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-gray-500 whitespace-nowrap text-xs">
-                            {new Date(rec.created_at).toLocaleString("en-US", {
-                              month: "short",
-                              day: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </td>
-                          <td className="px-4 py-3 font-medium text-gray-900">{rec.username}</td>
-                          <td className="px-4 py-3 text-gray-700">
-                            {ACTION_LABELS[rec.action] ?? rec.action}
-                          </td>
-                          <td className="px-4 py-3 text-gray-500 hidden sm:table-cell text-xs">
-                            {rec.entity_type} #{rec.entity_id}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <button
-                              onClick={() => toggleExpand(rec.id)}
-                              className="text-xs text-brand-700 hover:underline"
-                            >
-                              {expanded[rec.id] ? "Hide" : "Show"}
-                            </button>
-                          </td>
-                        </tr>
-                        {expanded[rec.id] && (
-                          <tr key={`${rec.id}-detail`} className="bg-gray-50">
-                            <td colSpan={5} className="px-4 py-3">
-                              <pre className="text-xs text-gray-600 whitespace-pre-wrap font-mono bg-gray-100 rounded p-3 overflow-x-auto">
-                                {JSON.stringify(rec.details, null, 2)}
-                              </pre>
-                            </td>
-                          </tr>
-                        )}
-                      </>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Pagination */}
-            <div className="flex items-center justify-between text-sm text-gray-500">
-              <span>
-                Page {meta.page} of {meta.total_pages}
-              </span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setFilters((p) => ({ ...p, page: p.page - 1 }))}
-                  disabled={meta.page <= 1}
-                  className="px-3 py-1 border rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Previous
-                </button>
-                <button
-                  onClick={() => setFilters((p) => ({ ...p, page: p.page + 1 }))}
-                  disabled={meta.page >= meta.total_pages}
-                  className="px-3 py-1 border rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+      {expandedRecord && (
+        <Card variant="outlined" sx={{ mt: 2 }}>
+          <CardContent>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+              <Typography variant="subtitle2">Details for record #{expandedRecord.id}</Typography>
+              <IconButton size="small" onClick={() => setExpanded({})}><ExpandLessIcon /></IconButton>
+            </Stack>
+            <Box component="pre" sx={{ fontSize: "0.75rem", bgcolor: "action.hover", p: 2, borderRadius: 1, overflow: "auto", m: 0 }}>
+              {JSON.stringify(expandedRecord.details, null, 2)}
+            </Box>
+          </CardContent>
+        </Card>
+      )}
     </Layout>
   );
 }
