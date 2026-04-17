@@ -4,7 +4,7 @@ import Alert from "../components/Alert";
 import {
   createBackup,
   deleteBackup,
-  downloadBackupUrl,
+  downloadBackup,
   getDbStatus,
   listBackups,
   restoreBackup,
@@ -116,6 +116,22 @@ export default function DbManagement() {
       flash("error", "Restore failed. See log.");
     } finally {
       setRestoring(false);
+    }
+  }
+
+  async function handleDownload(filename) {
+    try {
+      const res = await downloadBackup(filename);
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      flash("error", "Download failed.");
     }
   }
 
@@ -240,12 +256,12 @@ export default function DbManagement() {
                       <td className="py-2 pr-4 text-gray-600">{formatBytes(b.size_bytes)}</td>
                       <td className="py-2 pr-4 text-gray-600">{fmtDate(b.created_at)}</td>
                       <td className="py-2 pr-4 text-right space-x-2 whitespace-nowrap">
-                        <a
-                          href={downloadBackupUrl(b.filename)}
+                        <button
+                          onClick={() => handleDownload(b.filename)}
                           className="inline-block px-2.5 py-1 rounded border border-gray-200 text-xs text-gray-700 hover:bg-gray-50"
                         >
                           Download
-                        </a>
+                        </button>
                         <button
                           onClick={() => setConfirm({ action: "restore", filename: b.filename })}
                           disabled={restoring}
