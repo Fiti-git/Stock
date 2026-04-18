@@ -19,6 +19,7 @@ import WorkspacePremiumIcon from "@mui/icons-material/WorkspacePremium";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 import PhoneAndroidIcon from "@mui/icons-material/PhoneAndroid";
 import SecurityIcon from "@mui/icons-material/Security";
+import CleaningServicesIcon from "@mui/icons-material/CleaningServices";
 
 /**
  * Single source of truth for routes. Consumed by Sidebar, Breadcrumbs, CommandPalette.
@@ -56,6 +57,7 @@ export const routes = [
   { path: "/admin/license-configuration", label: "License", icon: WorkspacePremiumIcon, roles: ["admin","ServiceProvider"], group: "Admin" },
   { path: "/admin/mobile-devices", label: "Mobile Devices", icon: PhoneAndroidIcon, roles: ["admin"], group: "Admin" },
   { path: "/admin/login-events", label: "Login Events", icon: SecurityIcon, roles: ["admin"], group: "Admin" },
+  { path: "/admin/orphan-cleanup", label: "Orphan Cleanup", icon: CleaningServicesIcon, roles: ["admin"], group: "Admin" },
 
   // System (all roles)
   { path: "/db-management",   label: "DB Management",     icon: StorageIcon,          roles: ["store_user","staff","manager","admin"], group: "System" },

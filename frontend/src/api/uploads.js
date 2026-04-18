@@ -29,6 +29,19 @@ export const deleteUpload = (logId) => api.delete(`/uploads/${logId}/delete/`);
 
 export const getDeletionPreview = (logId) => api.get(`/uploads/${logId}/deletion-preview/`);
 
+export const listOrphans = ({ outletId, fromDate, toDate, type = "both" } = {}) =>
+  api.get("/uploads/orphans/", {
+    params: {
+      ...(outletId ? { outlet: outletId } : {}),
+      ...(fromDate ? { from_date: fromDate } : {}),
+      ...(toDate ? { to_date: toDate } : {}),
+      type,
+    },
+  });
+
+export const purgeOrphans = ({ itemIds = [], pendingIds = [] } = {}) =>
+  api.post("/uploads/orphans/purge/", { item_ids: itemIds, pending_ids: pendingIds });
+
 export const getPendingApprovals = () => api.get("/uploads/pending-approvals/");
 
 export const approveUpload = (logId) => api.post(`/uploads/${logId}/approve/`);

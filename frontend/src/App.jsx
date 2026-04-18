@@ -30,6 +30,7 @@ import ProductHistoryPage from "./pages/admin/ProductHistoryPage";
 import DailyUploadReportPage from "./pages/admin/DailyUploadReportPage";
 import MobileDevicesPage from "./pages/admin/MobileDevicesPage";
 import LoginEventsPage from "./pages/admin/LoginEventsPage";
+import OrphanCleanupPage from "./pages/admin/OrphanCleanupPage";
 
 const LicenseSetupRequired = lazy(() => import("./pages/LicenseSetupRequired"));
 const LicenseConfiguration = lazy(() => import("./pages/admin/LicenseConfiguration"));
@@ -95,6 +96,7 @@ export default function App() {
                     <Route path="/admin/reports/daily-upload" element={<RoleRoute allowedRoles={["admin"]}><DailyUploadReportPage /></RoleRoute>} />
                     <Route path="/admin/mobile-devices" element={<RoleRoute allowedRoles={["admin"]}><MobileDevicesPage /></RoleRoute>} />
                     <Route path="/admin/login-events" element={<RoleRoute allowedRoles={["admin"]}><LoginEventsPage /></RoleRoute>} />
+                    <Route path="/admin/orphan-cleanup" element={<RoleRoute allowedRoles={["admin"]}><OrphanCleanupPage /></RoleRoute>} />
 
                     <Route path="/dashboard" element={<RoleRoute allowedRoles={["manager","admin"]}><DashboardPage /></RoleRoute>} />
                     <Route path="/dashboard/pending" element={<RoleRoute allowedRoles={["manager","admin"]}><PendingItemsPage /></RoleRoute>} />

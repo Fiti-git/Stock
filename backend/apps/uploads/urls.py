@@ -11,6 +11,8 @@ from .views import (
     all_outlets_overview,
     audit_log_list,
     upload_diff,
+    orphan_list,
+    orphan_purge,
 )
 
 urlpatterns = [
@@ -25,4 +27,6 @@ urlpatterns = [
     path("<int:log_id>/delete/", delete_upload, name="upload-delete"),
     path("<int:log_id>/deletion-preview/", deletion_preview, name="upload-deletion-preview"),
     path("<int:log_id>/diff/", upload_diff, name="upload-diff"),
+    path("orphans/", orphan_list, name="orphan-list"),
+    path("orphans/purge/", orphan_purge, name="orphan-purge"),
 ]

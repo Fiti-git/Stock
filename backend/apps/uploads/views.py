@@ -391,6 +391,187 @@ def reject_upload(request, log_id):
 # ---------------------------------------------------------------------------
 # Delete an upload (manager or admin)
 # ---------------------------------------------------------------------------
+@api_view(["GET"])
+@permission_classes([IsAdmin])
+def orphan_list(request):
+    """
+    List Items and PendingItems whose upload_log is NULL or points to a DELETED
+    UploadLog. These are legacy/ghost rows that delete_upload couldn't reach.
+
+    Query params:
+      outlet      — filter by outlet id (optional)
+      from_date   — YYYY-MM-DD, inclusive (uses Item.created_at / PendingItem.created_at)
+      to_date     — YYYY-MM-DD, inclusive
+      type        — "items" | "pending" | "both" (default both)
+    """
+    from datetime import datetime
+    from django.db.models import Q, Count
+    from apps.items.models import ItemBarcode
+
+    outlet_id = request.query_params.get("outlet")
+    type_filter = (request.query_params.get("type") or "both").lower()
+
+    def _parse(d):
+        try:
+            return datetime.strptime(d, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return None
+
+    from_date = _parse(request.query_params.get("from_date", ""))
+    to_date = _parse(request.query_params.get("to_date", ""))
+
+    # "Orphan" = upload_log NULL OR tied to a DELETED UploadLog
+    orphan_filter = Q(upload_log__isnull=True) | Q(upload_log__status=UploadLog.Status.DELETED)
+
+    items_payload = []
+    pending_payload = []
+
+    if type_filter in ("items", "both"):
+        iqs = Item.objects.filter(orphan_filter).select_related("outlet", "upload_log")
+        if outlet_id:
+            iqs = iqs.filter(outlet_id=outlet_id)
+        if from_date:
+            iqs = iqs.filter(created_at__date__gte=from_date)
+        if to_date:
+            iqs = iqs.filter(created_at__date__lte=to_date)
+        iqs = iqs.annotate(
+            barcode_count=Count("barcodes", distinct=True),
+            snapshot_count=Count("pos_snapshots", distinct=True),
+            count_count=Count("stock_counts", distinct=True),
+        ).order_by("-created_at")[:500]
+
+        for it in iqs:
+            items_payload.append({
+                "id": it.id,
+                "item_code": it.item_code,
+                "item_name": it.item_name,
+                "category": it.category,
+                "status": it.status,
+                "outlet_id": it.outlet_id,
+                "outlet_name": it.outlet.outlet_name if it.outlet else "",
+                "created_at": it.created_at.isoformat(),
+                "barcode_count": it.barcode_count,
+                "snapshot_count": it.snapshot_count,
+                "count_count": it.count_count,
+                "upload_log_id": it.upload_log_id,
+                "upload_log_status": it.upload_log.status if it.upload_log else None,
+            })
+
+    if type_filter in ("pending", "both"):
+        pqs = PendingItem.objects.filter(orphan_filter).select_related(
+            "first_seen_outlet", "upload_log", "item",
+        )
+        if outlet_id:
+            pqs = pqs.filter(first_seen_outlet_id=outlet_id)
+        if from_date:
+            pqs = pqs.filter(created_at__date__gte=from_date)
+        if to_date:
+            pqs = pqs.filter(created_at__date__lte=to_date)
+        pqs = pqs.order_by("-created_at")[:500]
+
+        for p in pqs:
+            pending_payload.append({
+                "id": p.id,
+                "item_code": p.item_code,
+                "item_name": p.item_name,
+                "change_type": p.change_type,
+                "status": p.status,
+                "first_seen_outlet_id": p.first_seen_outlet_id,
+                "first_seen_outlet_name": p.first_seen_outlet.outlet_name if p.first_seen_outlet else "",
+                "first_seen_date": str(p.first_seen_date) if p.first_seen_date else None,
+                "created_at": p.created_at.isoformat(),
+                "item_id": p.item_id,
+                "item_exists": bool(p.item_id),
+                "upload_log_id": p.upload_log_id,
+                "upload_log_status": p.upload_log.status if p.upload_log else None,
+            })
+
+    return Response({
+        "items": items_payload,
+        "pending": pending_payload,
+        "items_truncated": len(items_payload) >= 500,
+        "pending_truncated": len(pending_payload) >= 500,
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAdmin])
+def orphan_purge(request):
+    """
+    Bulk-delete orphan Items and PendingItems by id. Each id is validated
+    server-side — rows that fail the orphan criteria are skipped (not deleted)
+    and reported in the response.
+
+    Body: { "item_ids": [int, ...], "pending_ids": [int, ...] }
+    """
+    from django.db.models import Q
+
+    item_ids = request.data.get("item_ids") or []
+    pending_ids = request.data.get("pending_ids") or []
+    if not isinstance(item_ids, list) or not isinstance(pending_ids, list):
+        return Response({"detail": "item_ids and pending_ids must be arrays."}, status=400)
+
+    orphan_filter = Q(upload_log__isnull=True) | Q(upload_log__status=UploadLog.Status.DELETED)
+
+    with transaction.atomic():
+        # Re-validate each item is still an orphan before deleting
+        deletable_items = list(
+            Item.objects.filter(orphan_filter, pk__in=item_ids).values_list("id", "item_code", "outlet__outlet_name")
+        )
+        deletable_item_ids = [i[0] for i in deletable_items]
+        skipped_items = [i for i in item_ids if i not in deletable_item_ids]
+
+        # Deleting an Item cascades to PosSnapshots, ItemBarcodes, StockCounts
+        # and SET_NULL on PendingItem.item (which we also then sweep below).
+        items_deleted = len(deletable_item_ids)
+        Item.objects.filter(pk__in=deletable_item_ids).delete()
+
+        # Now validate pending ids — after item deletion, some may have item_id nulled.
+        deletable_pending = list(
+            PendingItem.objects.filter(orphan_filter, pk__in=pending_ids).values_list("id", "item_code")
+        )
+        deletable_pending_ids = [p[0] for p in deletable_pending]
+        skipped_pending = [p for p in pending_ids if p not in deletable_pending_ids]
+
+        pending_deleted = len(deletable_pending_ids)
+        PendingItem.objects.filter(pk__in=deletable_pending_ids).delete()
+
+        # Sweep any NEW_CODE pending with NULL item FK that was created by the
+        # item cascade above (in case caller didn't pass them explicitly).
+        sweep_deleted = 0
+        if items_deleted:
+            sweep_qs = PendingItem.objects.filter(
+                item__isnull=True,
+                change_type=PendingItem.ChangeType.NEW_CODE,
+            )
+            sweep_deleted = sweep_qs.count()
+            sweep_qs.delete()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action="orphan_purge",
+            entity_type="orphan",
+            entity_id="",
+            details={
+                "items_deleted": items_deleted,
+                "pending_deleted": pending_deleted,
+                "sweep_deleted": sweep_deleted,
+                "skipped_items": skipped_items,
+                "skipped_pending": skipped_pending,
+                "sample_item_codes": [i[1] for i in deletable_items[:20]],
+                "sample_pending_codes": [p[1] for p in deletable_pending[:20]],
+            },
+        )
+
+    return Response({
+        "items_deleted": items_deleted,
+        "pending_deleted": pending_deleted,
+        "sweep_deleted": sweep_deleted,
+        "skipped_items": skipped_items,
+        "skipped_pending": skipped_pending,
+    })
+
+
 def _deletion_scope(log):
     """Return the counts + sample codes of rows that `delete_upload` will remove."""
     items_qs = Item.objects.filter(upload_log=log)
