@@ -6,11 +6,12 @@ import {
 } from "@mui/material";
 import CleaningServicesIcon from "@mui/icons-material/CleaningServices";
 import DeleteIcon from "@mui/icons-material/Delete";
+import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import Layout from "../../components/Layout";
 import { PageHeader, ConfirmDialog } from "../../components/ui";
 import { useNotify } from "../../providers/NotificationProvider";
 import { getOutlets } from "../../api/outlets";
-import { listOrphans, purgeOrphans } from "../../api/uploads";
+import { listOrphans, purgeOrphans, purgeAllOrphans } from "../../api/uploads";
 
 function isoDaysAgo(n) {
   const d = new Date();
@@ -141,6 +142,8 @@ export default function OrphanCleanupPage() {
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [purgeAllOpen, setPurgeAllOpen] = useState(false);
+  const [purgingAll, setPurgingAll] = useState(false);
 
   useEffect(() => {
     getOutlets().then(({ data }) => setOutlets(Array.isArray(data) ? data : []));
@@ -174,11 +177,6 @@ export default function OrphanCleanupPage() {
     {
       field: "created_at", headerName: "Created",
       render: (r) => r.created_at ? new Date(r.created_at).toLocaleString() : "—",
-    },
-    {
-      field: "barcode_count", headerName: "Barcodes",
-      render: (r) => r.barcode_count > 0
-        ? <Chip size="small" color="warning" label={r.barcode_count} variant="outlined" /> : "0",
     },
     {
       field: "snapshot_count", headerName: "Snaps",
@@ -226,6 +224,28 @@ export default function OrphanCleanupPage() {
   ];
 
   const selectionCount = tab === 0 ? selectedItemIds.length : selectedPendingIds.length;
+
+  const handlePurgeAll = async () => {
+    setPurgingAll(true);
+    try {
+      const { data } = await purgeAllOrphans({
+        outletId,
+        fromDate: fromDate || undefined,
+        toDate: toDate || undefined,
+      });
+      notify.success(
+        `Purged ${data.items_deleted} item${data.items_deleted === 1 ? "" : "s"} and ${data.pending_deleted} pending (${data.sweep_deleted} orphan sweep).`
+      );
+      setSelectedItemIds([]);
+      setSelectedPendingIds([]);
+      setPurgeAllOpen(false);
+      fetchOrphans();
+    } catch (err) {
+      notify.error(err.response?.data?.detail || "Purge failed.");
+    } finally {
+      setPurgingAll(false);
+    }
+  };
 
   const handlePurge = async () => {
     setDeleting(true);
@@ -283,8 +303,28 @@ export default function OrphanCleanupPage() {
       </Stack>
 
       <Alert severity="info" sx={{ mb: 2 }}>
-        These rows have either <b>no upload link</b> (created before FK tracking) or point to a <b>DELETED upload</b>. Deleting is permanent.
+        These rows have either <b>no upload link</b> (created before FK tracking) or point to a <b>DELETED upload</b>.
+        Items that already have a barcode are automatically excluded from this list. Deleting is permanent.
       </Alert>
+
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+          {outletId
+            ? <>Purge every matching row for the selected outlet &amp; date range in one step.</>
+            : <>Choose an outlet above to enable Purge All for that outlet.</>}
+        </Typography>
+        <Tooltip title={!outletId ? "Select an outlet first" : "Deletes all orphans matching the current filter"}>
+          <span>
+            <Button
+              color="error" variant="outlined" size="small" startIcon={<DeleteSweepIcon />}
+              disabled={!outletId || (items.length === 0 && pending.length === 0)}
+              onClick={() => setPurgeAllOpen(true)}
+            >
+              Purge all matching
+            </Button>
+          </span>
+        </Tooltip>
+      </Stack>
 
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
         <Tabs value={tab} onChange={(_, v) => setTab(v)}>
@@ -333,6 +373,33 @@ export default function OrphanCleanupPage() {
           emptyText="No orphan pending rows"
         />
       </Box>
+
+      <ConfirmDialog
+        open={purgeAllOpen}
+        onClose={() => setPurgeAllOpen(false)}
+        onConfirm={handlePurgeAll}
+        loading={purgingAll}
+        title="Purge all matching orphans"
+        confirmLabel={`Purge ${items.length + pending.length}`}
+        maxWidth="sm"
+        message={
+          <Box>
+            <Typography variant="body2" sx={{ mb: 1 }}>
+              This will permanently delete every orphan for the selected filter:
+            </Typography>
+            <Box component="ul" sx={{ m: 0, pl: 3, "& li": { py: 0.25 } }}>
+              <li>Outlet: <b>{outlets.find((o) => o.id === Number(outletId))?.outlet_name || outletId}</b></li>
+              <li>Date range: <b>{fromDate || "—"}</b> to <b>{toDate || "—"}</b></li>
+              <li><b>{items.length}</b> item{items.length === 1 ? "" : "s"} (none with barcodes)</li>
+              <li><b>{pending.length}</b> pending row{pending.length === 1 ? "" : "s"}</li>
+            </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+              Cascades to snapshots, counts, and pending rows. Items that have any barcode assigned are skipped automatically.
+            </Typography>
+            <Alert severity="warning" sx={{ mt: 2 }}>This cannot be undone.</Alert>
+          </Box>
+        }
+      />
 
       <ConfirmDialog
         open={confirmOpen}

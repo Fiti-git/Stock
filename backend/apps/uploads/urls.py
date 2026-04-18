@@ -13,6 +13,7 @@ from .views import (
     upload_diff,
     orphan_list,
     orphan_purge,
+    orphan_purge_all,
 )
 
 urlpatterns = [
@@ -29,4 +30,5 @@ urlpatterns = [
     path("<int:log_id>/diff/", upload_diff, name="upload-diff"),
     path("orphans/", orphan_list, name="orphan-list"),
     path("orphans/purge/", orphan_purge, name="orphan-purge"),
+    path("orphans/purge-all/", orphan_purge_all, name="orphan-purge-all"),
 ]

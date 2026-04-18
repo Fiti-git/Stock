@@ -438,7 +438,9 @@ def orphan_list(request):
             barcode_count=Count("barcodes", distinct=True),
             snapshot_count=Count("pos_snapshots", distinct=True),
             count_count=Count("stock_counts", distinct=True),
-        ).order_by("-created_at")[:500]
+        # Items with an assigned barcode are treated as "real" items someone
+        # has curated — never surface them in the purge list.
+        ).filter(barcode_count=0).order_by("-created_at")[:500]
 
         for it in iqs:
             items_payload.append({
@@ -467,7 +469,11 @@ def orphan_list(request):
             pqs = pqs.filter(created_at__date__gte=from_date)
         if to_date:
             pqs = pqs.filter(created_at__date__lte=to_date)
-        pqs = pqs.order_by("-created_at")[:500]
+        # If the pending row's linked item has been given a barcode,
+        # someone already processed it — exclude from the purge list.
+        pqs = pqs.annotate(
+            linked_barcode_count=Count("item__barcodes", distinct=True),
+        ).filter(linked_barcode_count=0).order_by("-created_at")[:500]
 
         for p in pqs:
             pending_payload.append({
@@ -491,6 +497,108 @@ def orphan_list(request):
         "pending": pending_payload,
         "items_truncated": len(items_payload) >= 500,
         "pending_truncated": len(pending_payload) >= 500,
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAdmin])
+def orphan_purge_all(request):
+    """
+    Bulk-delete every orphan Item and PendingItem matching an outlet + date range.
+    Complementary to orphan_purge(item_ids, pending_ids) — this one operates on
+    the filter rather than an explicit id list.
+
+    Body: { "outlet": int (REQUIRED), "from_date": "YYYY-MM-DD", "to_date": "YYYY-MM-DD" }
+
+    Safety rules (same as orphan_list):
+    - outlet is required (prevents accidental cross-outlet wipes)
+    - only Items with upload_log NULL or DELETED are touched
+    - only Items with **no barcodes** are deleted
+    - only PendingItems whose linked item has no barcodes are deleted
+    """
+    from datetime import datetime
+    from django.db.models import Q, Count
+
+    outlet_id = request.data.get("outlet")
+    if not outlet_id:
+        return Response(
+            {"detail": "outlet is required. Purging across all outlets is not allowed."},
+            status=400,
+        )
+
+    def _parse(d):
+        try:
+            return datetime.strptime(d, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return None
+
+    from_date = _parse(request.data.get("from_date", ""))
+    to_date = _parse(request.data.get("to_date", ""))
+
+    orphan_filter = Q(upload_log__isnull=True) | Q(upload_log__status=UploadLog.Status.DELETED)
+
+    with transaction.atomic():
+        iqs = Item.objects.filter(orphan_filter, outlet_id=outlet_id)
+        if from_date:
+            iqs = iqs.filter(created_at__date__gte=from_date)
+        if to_date:
+            iqs = iqs.filter(created_at__date__lte=to_date)
+        iqs = iqs.annotate(barcode_count=Count("barcodes", distinct=True)).filter(barcode_count=0)
+
+        sample_items = list(iqs.values_list("id", "item_code")[:20])
+        item_ids_to_delete = list(iqs.values_list("id", flat=True))
+        items_deleted = len(item_ids_to_delete)
+
+        # Pending rows whose linked item has no barcodes.
+        pqs = PendingItem.objects.filter(orphan_filter, first_seen_outlet_id=outlet_id)
+        if from_date:
+            pqs = pqs.filter(created_at__date__gte=from_date)
+        if to_date:
+            pqs = pqs.filter(created_at__date__lte=to_date)
+        pqs = pqs.annotate(
+            linked_barcode_count=Count("item__barcodes", distinct=True),
+        ).filter(linked_barcode_count=0)
+
+        sample_pending = list(pqs.values_list("id", "item_code")[:20])
+        pending_ids_to_delete = list(pqs.values_list("id", flat=True))
+        pending_deleted = len(pending_ids_to_delete)
+
+        # Delete pending first so their item FK stays intact for any audit hooks.
+        PendingItem.objects.filter(pk__in=pending_ids_to_delete).delete()
+        Item.objects.filter(pk__in=item_ids_to_delete).delete()
+
+        # Sweep any orphan NEW_CODE pending left with NULL item FK by the cascade.
+        sweep_qs = PendingItem.objects.filter(
+            first_seen_outlet_id=outlet_id,
+            item__isnull=True,
+            change_type=PendingItem.ChangeType.NEW_CODE,
+        )
+        sweep_deleted = sweep_qs.count()
+        sweep_qs.delete()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action="orphan_purge_all",
+            entity_type="orphan",
+            entity_id="",
+            details={
+                "outlet_id": outlet_id,
+                "from_date": str(from_date) if from_date else None,
+                "to_date": str(to_date) if to_date else None,
+                "items_deleted": items_deleted,
+                "pending_deleted": pending_deleted,
+                "sweep_deleted": sweep_deleted,
+                "sample_item_codes": [i[1] for i in sample_items],
+                "sample_pending_codes": [p[1] for p in sample_pending],
+            },
+        )
+
+    return Response({
+        "items_deleted": items_deleted,
+        "pending_deleted": pending_deleted,
+        "sweep_deleted": sweep_deleted,
+        "sample_item_codes": [i[1] for i in sample_items],
+        "sample_pending_codes": [p[1] for p in sample_pending],
     })
 
 
