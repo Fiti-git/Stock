@@ -26,40 +26,44 @@ import CleaningServicesIcon from "@mui/icons-material/CleaningServices";
  * Hidden routes (no label / showInNav=false) are reachable but not listed in nav.
  */
 export const routes = [
-  // Store / Staff
+  // Daily work — always visible at the top
   { path: "/count",           label: "Stock Count",       icon: QrCodeScannerIcon,    roles: ["store_user","staff","manager","admin"], group: "Operations" },
-
-  // Uploads
   { path: "/upload",          label: "Upload XLS",        icon: UploadFileIcon,       roles: ["store_user","manager","admin"],         group: "Operations" },
   { path: "/upload/history",  label: "Upload History",    icon: HistoryIcon,          roles: ["store_user","manager","admin"],         group: "Operations" },
 
-  // Overview / Dashboards
-  { path: "/admin/dashboard", label: "Admin Dashboard",   icon: DashboardIcon,        roles: ["admin"],            group: "Insights" },
-  { path: "/dashboard",       label: "Dashboard",         icon: DashboardIcon,        roles: ["manager","admin"],  group: "Insights" },
-  { path: "/overview",        label: "Outlets Overview",  icon: GridViewIcon,         roles: ["manager","admin"],  group: "Insights" },
-  { path: "/dashboard/pending", label: "Pending Items",   icon: ChecklistIcon,        roles: ["manager","admin"],  group: "Insights" },
-  { path: "/shrinkage",       label: "Shrinkage",         icon: TrendingDownIcon,     roles: ["manager","admin"],  group: "Insights" },
-  { path: "/daily-counts",    label: "Counted Stock Daily",icon: ChecklistIcon,       roles: ["manager","admin"],  group: "Insights" },
-  { path: "/items/history",   label: "POS History",       icon: QueryStatsIcon,       roles: ["manager","admin"],  group: "Insights" },
-  { path: "/admin/reports/daily-upload", label: "Daily Upload Report", icon: AssessmentIcon, roles: ["admin"],      group: "Insights" },
+  // Dashboards — the "at a glance" views
+  { path: "/admin/dashboard", label: "Admin Dashboard",   icon: DashboardIcon,        roles: ["admin"],            group: "Dashboards" },
+  { path: "/dashboard",       label: "Dashboard",         icon: DashboardIcon,        roles: ["manager"],          group: "Dashboards" },
+  { path: "/overview",        label: "Outlets Overview",  icon: GridViewIcon,         roles: ["manager","admin"],  group: "Dashboards" },
 
-  // Catalog
-  { path: "/catalog",         label: "Product Catalog",   icon: Inventory2Icon,       roles: ["manager","admin"],  group: "Catalog" },
-  { path: "/product-master",  label: "Product Master",    icon: EditNoteIcon,         roles: ["manager","admin"],  group: "Catalog" },
-  { path: "/admin/barcode-master", label: "Barcode Master", icon: QrCodeScannerIcon,  roles: ["admin"],            group: "Catalog" },
+  // Review — things awaiting action
+  { path: "/dashboard/pending", label: "Pending Items",      icon: ChecklistIcon,         roles: ["manager","admin"], group: "Review" },
+  { path: "/admin/upload-approvals", label: "Upload Approvals", icon: AssignmentTurnedInIcon, roles: ["admin"],        group: "Review" },
+  { path: "/daily-counts",      label: "Counted Stock Daily", icon: FactCheckIcon,         roles: ["manager","admin"], group: "Review" },
 
-  // Admin
-  { path: "/admin/upload-approvals", label: "Upload Approvals", icon: AssignmentTurnedInIcon, roles: ["admin"],   group: "Admin" },
-  { path: "/admin/outlets",   label: "Outlets",           icon: StorefrontIcon,       roles: ["admin"],            group: "Admin" },
-  { path: "/admin/users",     label: "Users",             icon: PeopleAltIcon,        roles: ["admin"],            group: "Admin" },
-  { path: "/admin/audit-log", label: "Audit Log",         icon: ListAltIcon,          roles: ["admin"],            group: "Admin" },
-  { path: "/admin/negative-pos", label: "Negative POS",   icon: ReportProblemIcon,    roles: ["admin"],            group: "Admin" },
-  { path: "/admin/license-configuration", label: "License", icon: WorkspacePremiumIcon, roles: ["admin","ServiceProvider"], group: "Admin" },
-  { path: "/admin/mobile-devices", label: "Mobile Devices", icon: PhoneAndroidIcon, roles: ["admin"], group: "Admin" },
-  { path: "/admin/login-events", label: "Login Events", icon: SecurityIcon, roles: ["admin"], group: "Admin" },
-  { path: "/admin/orphan-cleanup", label: "Orphan Cleanup", icon: CleaningServicesIcon, roles: ["admin"], group: "Admin" },
+  // Reports — historical analysis
+  { path: "/shrinkage",       label: "Shrinkage",         icon: TrendingDownIcon,     roles: ["manager","admin"],  group: "Reports" },
+  { path: "/items/history",   label: "POS History",       icon: QueryStatsIcon,       roles: ["manager","admin"],  group: "Reports" },
+  { path: "/admin/reports/daily-upload", label: "Daily Upload Report", icon: AssessmentIcon, roles: ["admin"],      group: "Reports" },
+  { path: "/admin/negative-pos", label: "Negative POS",   icon: ReportProblemIcon,    roles: ["admin"],            group: "Reports" },
 
-  // System (all roles)
+  // Catalog — item management
+  { path: "/catalog",              label: "Product Catalog", icon: Inventory2Icon,    roles: ["manager","admin"],           group: "Catalog" },
+  { path: "/product-master",       label: "Product Master",  icon: EditNoteIcon,      roles: ["manager","admin"],           group: "Catalog" },
+  { path: "/admin/barcode-master", label: "Barcode Master",  icon: QrCodeScannerIcon, roles: ["manager","admin"],           group: "Catalog" },
+
+  // Administration — setup / config
+  { path: "/admin/outlets",     label: "Outlets", icon: StorefrontIcon,         roles: ["admin"],                   group: "Administration" },
+  { path: "/admin/users",       label: "Users",   icon: PeopleAltIcon,          roles: ["admin"],                   group: "Administration" },
+  { path: "/admin/license-configuration", label: "License", icon: WorkspacePremiumIcon, roles: ["admin","ServiceProvider"], group: "Administration" },
+
+  // Audit & Security — trails, devices, cleanup
+  { path: "/admin/audit-log",       label: "Audit Log",      icon: ListAltIcon,            roles: ["admin"], group: "Audit & Security" },
+  { path: "/admin/mobile-devices",  label: "Mobile Devices", icon: PhoneAndroidIcon,       roles: ["admin"], group: "Audit & Security" },
+  { path: "/admin/login-events",    label: "Login Events",   icon: SecurityIcon,           roles: ["admin"], group: "Audit & Security" },
+  { path: "/admin/orphan-cleanup",  label: "Orphan Cleanup", icon: CleaningServicesIcon,   roles: ["admin"], group: "Audit & Security" },
+
+  // System — infra ops
   { path: "/db-management",   label: "DB Management",     icon: StorageIcon,          roles: ["store_user","staff","manager","admin"], group: "System" },
 
   // Hidden routes (not in nav)
@@ -86,4 +90,22 @@ export function findRoute(pathname) {
   });
 }
 
-export const GROUP_ORDER = ["Operations", "Insights", "Catalog", "Admin", "System"];
+export const GROUP_ORDER = [
+  "Operations",
+  "Dashboards",
+  "Review",
+  "Reports",
+  "Catalog",
+  "Administration",
+  "Audit & Security",
+  "System",
+];
+
+// Groups in this set start expanded; others start collapsed. User's toggle
+// state is persisted per-group in localStorage and overrides these defaults.
+export const DEFAULT_EXPANDED_GROUPS = new Set([
+  "Operations",
+  "Dashboards",
+  "Review",
+  "Catalog",
+]);

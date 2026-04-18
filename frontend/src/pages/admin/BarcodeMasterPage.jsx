@@ -11,6 +11,7 @@ import AddIcon from "@mui/icons-material/Add";
 import Layout from "../../components/Layout";
 import { PageHeader, DataTable, FormDialog } from "../../components/ui";
 import { useNotify } from "../../providers/NotificationProvider";
+import { useAuth } from "../../contexts/AuthContext";
 import { useOutlet } from "../../contexts/OutletContext";
 import { getOutlets } from "../../api/outlets";
 import {
@@ -23,10 +24,15 @@ import {
 
 export default function BarcodeMasterPage() {
   const notify = useNotify();
+  const { user } = useAuth();
   const { selectedOutlet, setSelectedOutlet } = useOutlet();
+  const isAdmin = user?.role === "admin";
 
   const [outlets, setOutlets] = useState([]);
-  const [outletId, setOutletId] = useState(selectedOutlet?.id || "");
+  // Managers are locked to their own outlet; admins can pick any.
+  const [outletId, setOutletId] = useState(
+    isAdmin ? (selectedOutlet?.id || "") : (user?.outlet_id || "")
+  );
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -47,12 +53,17 @@ export default function BarcodeMasterPage() {
   const PAGE_SIZE = 50;
 
   useEffect(() => {
-    getOutlets().then(({ data }) => setOutlets(Array.isArray(data) ? data : []));
-  }, []);
+    if (isAdmin) {
+      getOutlets().then(({ data }) => setOutlets(Array.isArray(data) ? data : []));
+    } else if (user?.outlet_id) {
+      setOutlets([{ id: user.outlet_id, outlet_name: user.outlet_name || "My outlet" }]);
+    }
+  }, [isAdmin, user?.outlet_id, user?.outlet_name]);
 
   useEffect(() => {
+    if (!isAdmin) return;
     if (selectedOutlet?.id && !outletId) setOutletId(selectedOutlet.id);
-  }, [selectedOutlet, outletId]);
+  }, [isAdmin, selectedOutlet, outletId]);
 
   const fetchBarcodes = (p = 1, q = "") => {
     if (!outletId) return;
@@ -231,9 +242,10 @@ export default function BarcodeMasterPage() {
           <Stack direction="row" spacing={1.5} alignItems="center">
             <TextField
               size="small" select label="Outlet" value={outletId} onChange={onOutletChange}
+              disabled={!isAdmin}
               sx={{ minWidth: 220 }}
             >
-              <MenuItem value=""><em>Select an outlet…</em></MenuItem>
+              {isAdmin && <MenuItem value=""><em>Select an outlet…</em></MenuItem>}
               {outlets.map((o) => (
                 <MenuItem key={o.id} value={o.id}>{o.outlet_name}</MenuItem>
               ))}

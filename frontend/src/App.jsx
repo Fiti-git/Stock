@@ -91,7 +91,7 @@ export default function App() {
                     <Route path="/admin/dashboard" element={<RoleRoute allowedRoles={["admin"]}><AdminDashboardPage /></RoleRoute>} />
                     <Route path="/admin/audit-log" element={<RoleRoute allowedRoles={["admin"]}><AuditLogPage /></RoleRoute>} />
                     <Route path="/admin/negative-pos" element={<RoleRoute allowedRoles={["admin"]}><NegativePosReportPage /></RoleRoute>} />
-                    <Route path="/admin/barcode-master" element={<RoleRoute allowedRoles={["admin"]}><BarcodeMasterPage /></RoleRoute>} />
+                    <Route path="/admin/barcode-master" element={<RoleRoute allowedRoles={["manager","admin"]}><BarcodeMasterPage /></RoleRoute>} />
                     <Route path="/admin/products/:itemId/history" element={<RoleRoute allowedRoles={["manager","admin"]}><ProductHistoryPage /></RoleRoute>} />
                     <Route path="/admin/reports/daily-upload" element={<RoleRoute allowedRoles={["admin"]}><DailyUploadReportPage /></RoleRoute>} />
                     <Route path="/admin/mobile-devices" element={<RoleRoute allowedRoles={["admin"]}><MobileDevicesPage /></RoleRoute>} />

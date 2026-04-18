@@ -743,7 +743,7 @@ def item_history(request, item_id):
 
 
 @api_view(["GET", "POST"])
-@permission_classes([IsAdmin])
+@permission_classes([IsManager])
 def outlet_barcode_master(request, outlet_id):
     """
     Outlet-scoped barcode master.
@@ -754,12 +754,17 @@ def outlet_barcode_master(request, outlet_id):
     POST /api/outlets/{outlet_id}/barcodes/  — create a barcode.
          Body: { item_id, barcode, is_primary }. Enforces per-outlet uniqueness.
          On conflict returns 409 with the conflicting item_code.
+
+    Managers are scoped to their own outlet; admins may access any outlet.
     """
     from apps.outlets.models import Outlet
     try:
         outlet = Outlet.objects.get(pk=outlet_id)
     except Outlet.DoesNotExist:
         return Response({"detail": "Outlet not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.user.role != "admin" and request.user.outlet_id != outlet.id:
+        return Response({"detail": "Not authorized for this outlet."}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == "GET":
         qs = (
