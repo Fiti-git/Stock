@@ -6,7 +6,7 @@ import {
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import { useAuth } from "../../contexts/AuthContext";
-import { routesForRole } from "../../routes/config";
+import { routesForPermissions } from "../../routes/config";
 
 export default function CommandPalette({ open, onClose }) {
   const navigate = useNavigate();
@@ -14,7 +14,7 @@ export default function CommandPalette({ open, onClose }) {
   const [query, setQuery] = useState("");
   const [hover, setHover] = useState(0);
 
-  const all = useMemo(() => routesForRole(user?.role), [user?.role]);
+  const all = useMemo(() => routesForPermissions(user?.permissions), [user?.permissions]);
   const results = useMemo(() => {
     if (!query) return all.slice(0, 10);
     const q = query.toLowerCase();

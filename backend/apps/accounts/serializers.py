@@ -2,6 +2,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.exceptions import AuthenticationFailed
 from rest_framework import serializers
 from .models import User
+from .permission_registry import effective_permissions_for, ALL_CODES_SET
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -23,10 +24,21 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     outlet_name = serializers.CharField(source="outlet.outlet_name", read_only=True)
+    permissions = serializers.SerializerMethodField()
+    permissions_overridden = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "username", "role", "outlet_id", "outlet_name", "is_active"]
+        fields = [
+            "id", "username", "role", "outlet_id", "outlet_name",
+            "is_active", "permissions", "permissions_overridden",
+        ]
+
+    def get_permissions(self, obj):
+        return effective_permissions_for(obj)
+
+    def get_permissions_overridden(self, obj):
+        return obj.permissions_override is not None
 
 
 class UserCreateSerializer(serializers.ModelSerializer):
@@ -59,3 +71,31 @@ class UserUpdateSerializer(serializers.ModelSerializer):
             instance.set_password(password)
         instance.save()
         return instance
+
+
+class PermissionsOverrideSerializer(serializers.Serializer):
+    """Payload for PATCH /auth/user-permissions/<id>/."""
+    # None (or missing) clears the override, empty list means "no permissions",
+    # otherwise an explicit list of known codes.
+    permissions_override = serializers.ListField(
+        child=serializers.CharField(),
+        allow_null=True,
+        required=True,
+    )
+
+    def validate_permissions_override(self, value):
+        if value is None:
+            return None
+        unknown = [c for c in value if c not in ALL_CODES_SET]
+        if unknown:
+            raise serializers.ValidationError(
+                f"Unknown permission codes: {', '.join(unknown)}"
+            )
+        # De-dupe while preserving order.
+        seen = set()
+        cleaned = []
+        for c in value:
+            if c not in seen:
+                seen.add(c)
+                cleaned.append(c)
+        return cleaned

@@ -10,15 +10,17 @@ import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
 import Layout from "../../components/Layout";
 import { PageHeader, DataTable, FormDialog, ConfirmDialog, StatusChip } from "../../components/ui";
 import { useNotify } from "../../providers/NotificationProvider";
+import { useAuth } from "../../contexts/AuthContext";
 import { getUsers, createUser, updateUser, deleteUser } from "../../api/users";
 import { getOutlets } from "../../api/outlets";
 
-const ROLES = [
+const BASE_ROLES = [
   { value: "store_user", label: "Store User" },
   { value: "staff", label: "Staff" },
   { value: "manager", label: "Store Manager" },
   { value: "admin", label: "Admin" },
 ];
+const SUPER_ADMIN_ROLE = { value: "super_admin", label: "Super Admin" };
 
 const EMPTY = { username: "", password: "", role: "store_user", outlet: "", is_active: true };
 
@@ -31,6 +33,11 @@ function errMsg(err, fallback) {
 
 export default function UsersPage() {
   const notify = useNotify();
+  const { user: currentUser } = useAuth();
+  const isSuperAdmin = currentUser?.role === "super_admin";
+  // Only Super Admins can create or see the super_admin role in the dropdown;
+  // regular admins never see it and can't grant/revoke it.
+  const ROLES = isSuperAdmin ? [...BASE_ROLES, SUPER_ADMIN_ROLE] : BASE_ROLES;
   const [users, setUsers] = useState([]);
   const [outlets, setOutlets] = useState([]);
   const [loading, setLoading] = useState(true);

@@ -20,62 +20,76 @@ import AssessmentIcon from "@mui/icons-material/Assessment";
 import PhoneAndroidIcon from "@mui/icons-material/PhoneAndroid";
 import SecurityIcon from "@mui/icons-material/Security";
 import CleaningServicesIcon from "@mui/icons-material/CleaningServices";
+import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 
 /**
  * Single source of truth for routes. Consumed by Sidebar, Breadcrumbs, CommandPalette.
  * Hidden routes (no label / showInNav=false) are reachable but not listed in nav.
+ *
+ * Each route carries a `code` matching an entry in the backend permission
+ * registry (apps/accounts/permission_registry.py). The Sidebar and route
+ * guards use `code` — not `roles` — for access control. The `roles` field is
+ * kept as a convenience for pages that still inspect `user.role` directly.
  */
 export const routes = [
   // Daily work — always visible at the top
-  { path: "/count",           label: "Stock Count",       icon: QrCodeScannerIcon,    roles: ["store_user","staff","manager","admin"], group: "Operations" },
-  { path: "/upload",          label: "Upload XLS",        icon: UploadFileIcon,       roles: ["store_user","manager","admin"],         group: "Operations" },
-  { path: "/upload/history",  label: "Upload History",    icon: HistoryIcon,          roles: ["store_user","manager","admin"],         group: "Operations" },
+  { path: "/count",           code: "nav.count",            label: "Stock Count",       icon: QrCodeScannerIcon,    roles: ["store_user","staff","manager","admin","super_admin"], group: "Operations" },
+  { path: "/upload",          code: "nav.upload",           label: "Upload XLS",        icon: UploadFileIcon,       roles: ["store_user","manager","admin","super_admin"],         group: "Operations" },
+  { path: "/upload/history",  code: "nav.upload_history",   label: "Upload History",    icon: HistoryIcon,          roles: ["store_user","manager","admin","super_admin"],         group: "Operations" },
 
   // Dashboards — the "at a glance" views
-  { path: "/admin/dashboard", label: "Admin Dashboard",   icon: DashboardIcon,        roles: ["admin"],            group: "Dashboards" },
-  { path: "/dashboard",       label: "Dashboard",         icon: DashboardIcon,        roles: ["manager"],          group: "Dashboards" },
-  { path: "/overview",        label: "Outlets Overview",  icon: GridViewIcon,         roles: ["manager","admin"],  group: "Dashboards" },
+  { path: "/admin/dashboard", code: "nav.admin_dashboard",  label: "Admin Dashboard",   icon: DashboardIcon,        roles: ["admin","super_admin"],            group: "Dashboards" },
+  { path: "/dashboard",       code: "nav.manager_dashboard",label: "Dashboard",         icon: DashboardIcon,        roles: ["manager"],                         group: "Dashboards" },
+  { path: "/overview",        code: "nav.overview",         label: "Outlets Overview",  icon: GridViewIcon,         roles: ["manager","admin","super_admin"],  group: "Dashboards" },
 
   // Review — things awaiting action
-  { path: "/dashboard/pending", label: "Pending Items",      icon: ChecklistIcon,         roles: ["manager","admin"], group: "Review" },
-  { path: "/admin/upload-approvals", label: "Upload Approvals", icon: AssignmentTurnedInIcon, roles: ["admin"],        group: "Review" },
-  { path: "/daily-counts",      label: "Counted Stock Daily", icon: FactCheckIcon,         roles: ["manager","admin"], group: "Review" },
+  { path: "/dashboard/pending",      code: "nav.pending",          label: "Pending Items",      icon: ChecklistIcon,          roles: ["manager","admin","super_admin"], group: "Review" },
+  { path: "/admin/upload-approvals", code: "nav.upload_approvals", label: "Upload Approvals",   icon: AssignmentTurnedInIcon, roles: ["admin","super_admin"],            group: "Review" },
+  { path: "/daily-counts",           code: "nav.daily_counts",     label: "Counted Stock Daily",icon: FactCheckIcon,          roles: ["manager","admin","super_admin"], group: "Review" },
 
   // Reports — historical analysis
-  { path: "/shrinkage",       label: "Shrinkage",         icon: TrendingDownIcon,     roles: ["manager","admin"],  group: "Reports" },
-  { path: "/items/history",   label: "POS History",       icon: QueryStatsIcon,       roles: ["manager","admin"],  group: "Reports" },
-  { path: "/admin/reports/daily-upload", label: "Daily Upload Report", icon: AssessmentIcon, roles: ["admin"],      group: "Reports" },
-  { path: "/admin/negative-pos", label: "Negative POS",   icon: ReportProblemIcon,    roles: ["admin"],            group: "Reports" },
+  { path: "/shrinkage",                  code: "nav.shrinkage",            label: "Shrinkage",           icon: TrendingDownIcon, roles: ["manager","admin","super_admin"],  group: "Reports" },
+  { path: "/items/history",              code: "nav.item_pos_history",     label: "POS History",         icon: QueryStatsIcon,   roles: ["manager","admin","super_admin"],  group: "Reports" },
+  { path: "/admin/reports/daily-upload", code: "nav.daily_upload_report",  label: "Daily Upload Report", icon: AssessmentIcon,   roles: ["admin","super_admin"],             group: "Reports" },
+  { path: "/admin/negative-pos",         code: "nav.negative_pos",         label: "Negative POS",        icon: ReportProblemIcon,roles: ["admin","super_admin"],             group: "Reports" },
 
   // Catalog — item management
-  { path: "/catalog",              label: "Product Catalog", icon: Inventory2Icon,    roles: ["manager","admin"],           group: "Catalog" },
-  { path: "/product-master",       label: "Product Master",  icon: EditNoteIcon,      roles: ["manager","admin"],           group: "Catalog" },
-  { path: "/admin/barcode-master", label: "Barcode Master",  icon: QrCodeScannerIcon, roles: ["manager","admin"],           group: "Catalog" },
+  { path: "/catalog",              code: "nav.catalog",        label: "Product Catalog", icon: Inventory2Icon,    roles: ["manager","admin","super_admin"], group: "Catalog" },
+  { path: "/product-master",       code: "nav.product_master", label: "Product Master",  icon: EditNoteIcon,      roles: ["manager","admin","super_admin"], group: "Catalog" },
+  { path: "/admin/barcode-master", code: "nav.barcode_master", label: "Barcode Master",  icon: QrCodeScannerIcon, roles: ["manager","admin","super_admin"], group: "Catalog" },
 
   // Administration — setup / config
-  { path: "/admin/outlets",     label: "Outlets", icon: StorefrontIcon,         roles: ["admin"],                   group: "Administration" },
-  { path: "/admin/users",       label: "Users",   icon: PeopleAltIcon,          roles: ["admin"],                   group: "Administration" },
-  { path: "/admin/license-configuration", label: "License", icon: WorkspacePremiumIcon, roles: ["admin","ServiceProvider"], group: "Administration" },
+  { path: "/admin/outlets",               code: "nav.outlets",          label: "Outlets",          icon: StorefrontIcon,       roles: ["admin","super_admin"],                   group: "Administration" },
+  { path: "/admin/users",                 code: "nav.users",            label: "Users",            icon: PeopleAltIcon,        roles: ["admin","super_admin"],                   group: "Administration" },
+  { path: "/admin/license-configuration", code: "nav.license",          label: "License",          icon: WorkspacePremiumIcon, roles: ["admin","super_admin","ServiceProvider"], group: "Administration" },
+  { path: "/super-admin/user-permissions",code: "nav.user_permissions", label: "User Permissions", icon: AdminPanelSettingsIcon,roles: ["super_admin"],                          group: "Administration" },
 
   // Audit & Security — trails, devices, cleanup
-  { path: "/admin/audit-log",       label: "Audit Log",      icon: ListAltIcon,            roles: ["admin"], group: "Audit & Security" },
-  { path: "/admin/mobile-devices",  label: "Mobile Devices", icon: PhoneAndroidIcon,       roles: ["admin"], group: "Audit & Security" },
-  { path: "/admin/login-events",    label: "Login Events",   icon: SecurityIcon,           roles: ["admin"], group: "Audit & Security" },
-  { path: "/admin/orphan-cleanup",  label: "Orphan Cleanup", icon: CleaningServicesIcon,   roles: ["admin"], group: "Audit & Security" },
+  { path: "/admin/audit-log",       code: "nav.audit_log",       label: "Audit Log",      icon: ListAltIcon,          roles: ["admin","super_admin"], group: "Audit & Security" },
+  { path: "/admin/mobile-devices",  code: "nav.mobile_devices",  label: "Mobile Devices", icon: PhoneAndroidIcon,     roles: ["admin","super_admin"], group: "Audit & Security" },
+  { path: "/admin/login-events",    code: "nav.login_events",    label: "Login Events",   icon: SecurityIcon,         roles: ["admin","super_admin"], group: "Audit & Security" },
+  { path: "/admin/orphan-cleanup",  code: "nav.orphan_cleanup",  label: "Orphan Cleanup", icon: CleaningServicesIcon, roles: ["admin","super_admin"], group: "Audit & Security" },
 
   // System — infra ops
-  { path: "/db-management",   label: "DB Management",     icon: StorageIcon,          roles: ["store_user","staff","manager","admin"], group: "System" },
+  { path: "/db-management",   code: "nav.db_management",    label: "DB Management",     icon: StorageIcon, roles: ["store_user","staff","manager","admin","super_admin"], group: "System" },
 
-  // Hidden routes (not in nav)
-  { path: "/items/:id",       label: "Item Detail",       roles: ["store_user","staff","manager","admin"], showInNav: false },
-  { path: "/admin/products/:itemId/history", label: "Product History", roles: ["manager","admin"], showInNav: false },
+  // Hidden routes (not in nav) — no permission gate required, they inherit
+  // from their parent page. Sidebar ignores these.
+  { path: "/items/:id",       label: "Item Detail",       roles: ["store_user","staff","manager","admin","super_admin"], showInNav: false },
+  { path: "/admin/products/:itemId/history", label: "Product History", roles: ["manager","admin","super_admin"], showInNav: false },
   { path: "/login",           label: "Login",             roles: ["public"], showInNav: false },
   { path: "/license-setup-required", label: "License Setup Required", roles: ["public"], showInNav: false },
 ];
 
-export function routesForRole(role) {
-  if (!role) return [];
-  return routes.filter((r) => r.showInNav !== false && r.roles.includes(role));
+/**
+ * Return visible nav items for the given set of effective permission codes.
+ * A route is shown when its `code` is in the user's permission set.
+ */
+export function routesForPermissions(permissions) {
+  const set = permissions instanceof Set ? permissions : new Set(permissions || []);
+  return routes.filter(
+    (r) => r.showInNav !== false && r.code && set.has(r.code)
+  );
 }
 
 export function findRoute(pathname) {

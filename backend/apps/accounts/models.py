@@ -24,6 +24,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         MANAGER = "manager", "Store Manager"
         STAFF = "staff", "Staff"
         ADMIN = "admin", "Admin"
+        SUPER_ADMIN = "super_admin", "Super Admin"
         SERVICE_PROVIDER = "ServiceProvider", "Service Provider"
 
     username = models.CharField(max_length=150, unique=True)
@@ -38,6 +39,12 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    # Per-user permission override. When None, the user inherits role defaults
+    # from apps.accounts.permission_registry.ROLE_DEFAULTS. When set to a list
+    # of codes it replaces the defaults exactly — empty list means "no perms".
+    # Editable only by Super Admin via /api/auth/user-permissions/.
+    permissions_override = models.JSONField(null=True, blank=True, default=None)
 
     objects = UserManager()
 

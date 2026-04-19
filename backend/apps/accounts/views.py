@@ -5,8 +5,14 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.views import TokenObtainPairView
 from apps.uploads.models import AuditLog
 from .models import User, LoginEvent
-from .permissions import IsAdmin
-from .serializers import UserSerializer, UserCreateSerializer, UserUpdateSerializer
+from .permissions import IsAdmin, IsSuperAdmin
+from .permission_registry import registry_as_dicts, effective_permissions_for
+from .serializers import (
+    UserSerializer,
+    UserCreateSerializer,
+    UserUpdateSerializer,
+    PermissionsOverrideSerializer,
+)
 
 
 def _client_ip(request):
@@ -204,3 +210,75 @@ class UserDetailView(APIView):
         )
         user.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class PermissionRegistryView(APIView):
+    """GET the catalog of permission codes (Super Admin only)."""
+    permission_classes = [IsSuperAdmin]
+
+    def get(self, request):
+        return Response({"permissions": registry_as_dicts()})
+
+
+class UserPermissionsDetailView(APIView):
+    """
+    GET  /auth/user-permissions/<id>/  — return the user's effective + override.
+    PATCH /auth/user-permissions/<id>/ — update the override.
+        body: {"permissions_override": null | [code, ...]}
+    Super Admin only.
+    """
+    permission_classes = [IsSuperAdmin]
+
+    def get(self, request, pk):
+        try:
+            user = User.objects.get(pk=pk)
+        except User.DoesNotExist:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response({
+            "id": user.id,
+            "username": user.username,
+            "role": user.role,
+            "permissions_override": user.permissions_override,
+            "effective_permissions": effective_permissions_for(user),
+        })
+
+    def patch(self, request, pk):
+        try:
+            user = User.objects.get(pk=pk)
+        except User.DoesNotExist:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Never allow editing another Super Admin's permissions (they always
+        # have everything and would be confusing to toggle).
+        if user.role == User.Role.SUPER_ADMIN:
+            return Response(
+                {"detail": "Super Admins always have all permissions; override not editable."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = PermissionsOverrideSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        new_override = serializer.validated_data["permissions_override"]
+        user.permissions_override = new_override
+        user.save(update_fields=["permissions_override"])
+
+        AuditLog.objects.create(
+            user=request.user,
+            action="user_permissions_updated",
+            entity_type="user",
+            entity_id=str(user.id),
+            details={
+                "username": user.username,
+                "override": new_override,
+            },
+        )
+
+        return Response({
+            "id": user.id,
+            "username": user.username,
+            "role": user.role,
+            "permissions_override": user.permissions_override,
+            "effective_permissions": effective_permissions_for(user),
+        })

@@ -1,6 +1,7 @@
 """
 Seed initial data:
   - 16 outlets (short codes; admin updates full XLS names via Django admin)
+  - Super Admin: superadmin / superadmin123
   - Admin user: admin / admin123
   - Store user for Gohagoda: gohagoda_upload / upload123
   - Manager for Gohagoda: gohagoda_manager / manager123
@@ -12,22 +13,7 @@ from apps.accounts.models import User
 
 
 OUTLETS = [
-    {"outlet_name": "SUPER MARKET:GOHAGODA",  "short_code": "ASMGOH",   "location_code": "011"},
-    {"outlet_name": "SUPER MARKET:SMWAT",      "short_code": "SMWAT",    "location_code": ""},
-    {"outlet_name": "SUPER MARKET:ASMHIDA",    "short_code": "ASMHIDA",  "location_code": ""},
-    {"outlet_name": "SUPER MARKET:ASMPOLGO",   "short_code": "ASMPOLGO", "location_code": ""},
-    {"outlet_name": "SUPER MARKET:EMHIGH",     "short_code": "EMHIGH",   "location_code": ""},
-    {"outlet_name": "SUPER MARKET:HAL",        "short_code": "Hal",      "location_code": ""},
-    {"outlet_name": "SUPER MARKET:ASMAMP",     "short_code": "ASMAMP",   "location_code": ""},
-    {"outlet_name": "SUPER MARKET:WATTA",      "short_code": "Watta",    "location_code": ""},
-    {"outlet_name": "SUPER MARKET:SMPUJA",     "short_code": "SMPUJA",   "location_code": ""},
-    {"outlet_name": "SUPER MARKET:SMLE",       "short_code": "SMLE",     "location_code": ""},
-    {"outlet_name": "SUPER MARKET:SMBARI",     "short_code": "SMBARI",   "location_code": ""},
-    {"outlet_name": "SUPER MARKET:EMMEDA",     "short_code": "EMMEDA",   "location_code": ""},
-    {"outlet_name": "SUPER MARKET:SMKY",       "short_code": "SMKY",     "location_code": ""},
-    {"outlet_name": "SUPER MARKET:MOBI",       "short_code": "MOBI",     "location_code": ""},
-    {"outlet_name": "SUPER MARKET:ASMARABE",   "short_code": "ASMARABE", "location_code": ""},
-    {"outlet_name": "SUPER MARKET:CBLALA",     "short_code": "CBLALA",   "location_code": ""},
+    {"outlet_name": "SUPER MARKET:ASFAK",  "short_code": "AS",   "location_code": "0161"},
 ]
 
 
@@ -54,6 +40,20 @@ class Command(BaseCommand):
                 self.stdout.write(f"  Outlet exists: {outlet.outlet_name}")
 
         gohagoda = Outlet.objects.get(outlet_name="SUPER MARKET:GOHAGODA")
+
+        # Super Admin — can manage per-user permissions
+        if not User.objects.filter(username="superadmin").exists():
+            user = User(
+                username="superadmin",
+                role=User.Role.SUPER_ADMIN,
+                is_staff=True,
+                is_superuser=True,
+            )
+            user.set_password("superadmin123")
+            user.save()
+            self.stdout.write(self.style.SUCCESS("  Created super admin: superadmin / superadmin123"))
+        else:
+            self.stdout.write("  Super admin already exists.")
 
         # Admin
         if not User.objects.filter(username="admin").exists():

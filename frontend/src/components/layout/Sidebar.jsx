@@ -8,7 +8,7 @@ import MenuOpenIcon from "@mui/icons-material/MenuOpen";
 import InventoryIcon from "@mui/icons-material/Inventory";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { useAuth } from "../../contexts/AuthContext";
-import { routesForRole, GROUP_ORDER, DEFAULT_EXPANDED_GROUPS } from "../../routes/config";
+import { routesForPermissions, GROUP_ORDER, DEFAULT_EXPANDED_GROUPS } from "../../routes/config";
 
 const EXPANDED_STORAGE_KEY = "sidebar_expanded_groups_v1";
 
@@ -34,8 +34,7 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }) 
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const { user } = useAuth();
   const location = useLocation();
-  const role = user?.role;
-  const items = routesForRole(role);
+  const items = routesForPermissions(user?.permissions);
 
   const grouped = GROUP_ORDER.map((g) => ({
     group: g,
