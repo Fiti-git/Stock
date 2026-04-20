@@ -10,12 +10,14 @@ class ItemSerializer(serializers.ModelSerializer):
     latest_selling_price = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True, default=None)
     barcodes = serializers.SerializerMethodField()
     barcode = serializers.SerializerMethodField()
+    category_ref_name = serializers.CharField(source="category_ref.name", read_only=True, default=None)
 
     class Meta:
         model = Item
         fields = [
             "id", "outlet", "outlet_name", "item_code", "item_name", "barcode", "barcodes",
-            "category", "rack_number", "shelf", "status", "created_at", "barcode_assigned_at",
+            "category", "category_ref", "category_ref_name",
+            "rack_number", "shelf", "status", "created_at", "barcode_assigned_at",
             "latest_cost_price", "latest_selling_price",
         ]
         read_only_fields = ["id", "created_at", "barcode_assigned_at"]
@@ -62,10 +64,11 @@ class ItemUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Item
-        fields = ["item_name", "barcode", "category", "rack_number", "shelf"]
+        fields = ["item_name", "barcode", "category", "category_ref", "rack_number", "shelf"]
         extra_kwargs = {
             "item_name": {"required": False},
             "category": {"required": False, "allow_blank": True},
+            "category_ref": {"required": False, "allow_null": True},
             "rack_number": {"required": False, "allow_blank": True},
             "shelf": {"required": False, "allow_blank": True},
         }

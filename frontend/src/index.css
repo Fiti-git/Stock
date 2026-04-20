@@ -2,6 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Tailwind base is kept for layout/spacing utilities; MUI CssBaseline handles colors/typography. */
+/* Tailwind base kept for layout/spacing utilities; MUI CssBaseline handles colors/typography. */
 html, body, #root { height: 100%; }
-body { margin: 0; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+body { margin: 0; font-family: 'Public Sans', 'Inter', system-ui, -apple-system, sans-serif; }

@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   Box, Drawer, List, ListItemButton, ListItemIcon, ListItemText,
-  Typography, Divider, IconButton, Tooltip, Collapse, useTheme, useMediaQuery,
+  Typography, IconButton, Tooltip, Collapse, Avatar, useTheme, useMediaQuery,
 } from "@mui/material";
 import MenuOpenIcon from "@mui/icons-material/MenuOpen";
 import InventoryIcon from "@mui/icons-material/Inventory";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import LogoutIcon from "@mui/icons-material/Logout";
 import { useAuth } from "../../contexts/AuthContext";
 import { routesForPermissions, GROUP_ORDER, DEFAULT_EXPANDED_GROUPS } from "../../routes/config";
 
@@ -26,13 +27,13 @@ function saveExpandedState(state) {
   try { localStorage.setItem(EXPANDED_STORAGE_KEY, JSON.stringify(state)); } catch { /* ignore */ }
 }
 
-export const SIDEBAR_WIDTH = 248;
-export const SIDEBAR_COLLAPSED = 68;
+export const SIDEBAR_WIDTH = 280;
+export const SIDEBAR_COLLAPSED = 88;
 
 export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const location = useLocation();
   const items = routesForPermissions(user?.permissions);
 
@@ -41,8 +42,6 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }) 
     items: items.filter((i) => i.group === g),
   })).filter((g) => g.items.length > 0);
 
-  // Which groups are expanded. Persisted per-group in localStorage. Keep the
-  // active route's group always open so the user sees where they are.
   const activeGroup = useMemo(() => {
     const current = items.find((i) => i.path === location.pathname);
     return current?.group;
@@ -72,79 +71,102 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }) 
     });
   };
 
+  const isCollapsedRail = collapsed && !isMobile;
+  const width = isCollapsedRail ? SIDEBAR_COLLAPSED : SIDEBAR_WIDTH;
+  const initials = (user?.username || "?").slice(0, 2).toUpperCase();
+
   const content = (
     <Box
       sx={{
-        width: collapsed && !isMobile ? SIDEBAR_COLLAPSED : SIDEBAR_WIDTH,
+        width,
         height: "100%",
         bgcolor: "background.sidebar",
         color: "text.sidebar",
+        borderRight: "1px dashed",
+        borderColor: "divider",
         display: "flex",
         flexDirection: "column",
         transition: "width 180ms ease",
         overflow: "hidden",
       }}
     >
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, px: collapsed && !isMobile ? 0 : 2, py: 1.75, height: 64, justifyContent: collapsed && !isMobile ? "center" : "space-between" }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, minWidth: 0 }}>
-          <Box sx={{ width: 34, height: 34, borderRadius: 2, bgcolor: "primary.main", color: "primary.contrastText", display: "grid", placeItems: "center", flexShrink: 0 }}>
+      {/* Brand lockup */}
+      <Box
+        sx={{
+          display: "flex", alignItems: "center",
+          gap: 1.5,
+          px: isCollapsedRail ? 0 : 2.5,
+          py: 2,
+          height: 72,
+          justifyContent: isCollapsedRail ? "center" : "space-between",
+        }}
+      >
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, minWidth: 0 }}>
+          <Box
+            sx={{
+              width: 40, height: 40, borderRadius: 2,
+              bgcolor: "primary.main", color: "primary.contrastText",
+              display: "grid", placeItems: "center",
+              boxShadow: (t) => t.customShadows?.primary,
+              flexShrink: 0,
+            }}
+          >
             <InventoryIcon fontSize="small" />
           </Box>
-          {(!collapsed || isMobile) && (
+          {!isCollapsedRail && (
             <Box sx={{ minWidth: 0 }}>
-              <Typography variant="subtitle2" sx={{ color: "text.sidebar", fontWeight: 700, lineHeight: 1.2 }} noWrap>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, lineHeight: 1.2, color: "text.primary" }} noWrap>
                 Arunalu Stock
               </Typography>
-              <Typography variant="caption" sx={{ color: "text.sidebarMuted" }} noWrap>
+              <Typography variant="caption" sx={{ color: "text.secondary" }} noWrap>
                 Super Mart
               </Typography>
             </Box>
           )}
         </Box>
-        {!isMobile && (!collapsed) && (
-          <IconButton size="small" onClick={onToggleCollapse} sx={{ color: "text.sidebarMuted" }}>
-            <MenuOpenIcon fontSize="small" />
-          </IconButton>
+        {!isMobile && !isCollapsedRail && (
+          <Tooltip title="Collapse sidebar">
+            <IconButton size="small" onClick={onToggleCollapse} sx={{ color: "text.secondary" }}>
+              <MenuOpenIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         )}
       </Box>
 
-      <Divider sx={{ borderColor: "rgba(148,163,184,0.12)" }} />
-
-      <Box sx={{ flex: 1, overflowY: "auto", py: 1 }}>
+      {/* Nav */}
+      <Box sx={{ flex: 1, overflowY: "auto", px: 1, py: 1 }}>
         {grouped.map((g) => {
-          const isCollapsedRail = collapsed && !isMobile;
           const isOpen = isCollapsedRail ? true : Boolean(expanded[g.group]);
           return (
-            <Box key={g.group} sx={{ mb: 0.25 }}>
+            <Box key={g.group} sx={{ mb: 1 }}>
               {!isCollapsedRail && (
                 <ListItemButton
                   onClick={() => toggleGroup(g.group)}
+                  disableRipple
                   sx={{
-                    mx: 1,
-                    px: 1.5,
-                    py: 0.5,
-                    borderRadius: 2,
-                    minHeight: 32,
-                    "&:hover": { bgcolor: "background.sidebarHover" },
+                    px: 1.5, py: 0.5,
+                    borderRadius: 1,
+                    minHeight: 28,
+                    "&:hover": { bgcolor: "transparent" },
                   }}
                 >
                   <Typography
                     variant="overline"
                     sx={{
                       flex: 1,
-                      color: "text.sidebarMuted",
-                      fontSize: "0.65rem",
+                      color: "text.secondary",
+                      fontSize: "0.68rem",
+                      fontWeight: 700,
                       lineHeight: 1.4,
-                      letterSpacing: 0.6,
+                      letterSpacing: "0.08em",
                     }}
                   >
                     {g.group}
                   </Typography>
                   <ExpandMoreIcon
-                    fontSize="inherit"
                     sx={{
                       fontSize: 16,
-                      color: "text.sidebarMuted",
+                      color: "text.secondary",
                       transition: "transform 160ms ease",
                       transform: isOpen ? "rotate(0deg)" : "rotate(-90deg)",
                     }}
@@ -152,7 +174,7 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }) 
                 </ListItemButton>
               )}
               <Collapse in={isOpen} timeout={160} unmountOnExit>
-                <List dense disablePadding>
+                <List dense disablePadding sx={{ mt: 0.25 }}>
                   {g.items.map((item) => {
                     const active = location.pathname === item.path;
                     const Icon = item.icon;
@@ -163,28 +185,44 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }) 
                         onClick={isMobile ? onClose : undefined}
                         selected={active}
                         sx={{
-                          mx: 1,
-                          borderRadius: 2,
-                          minHeight: 36,
+                          mx: 0.5,
+                          mb: 0.25,
+                          borderRadius: 1.5,
+                          minHeight: 40,
                           px: isCollapsedRail ? 1.25 : 1.5,
                           justifyContent: isCollapsedRail ? "center" : "flex-start",
                           color: "text.sidebar",
+                          fontWeight: 500,
+                          position: "relative",
                           "&.Mui-selected": {
-                            bgcolor: "primary.main",
-                            color: "primary.contrastText",
-                            "& .MuiListItemIcon-root": { color: "primary.contrastText" },
-                            "&:hover": { bgcolor: "primary.dark" },
+                            bgcolor: "primary.lighter",
+                            color: "primary.dark",
+                            fontWeight: 700,
+                            "& .MuiListItemIcon-root": { color: "primary.main" },
+                            "& .MuiListItemText-primary": { fontWeight: 700 },
+                            "&:hover": { bgcolor: "primary.lighter" },
                           },
                           "&:hover": { bgcolor: "background.sidebarHover" },
                         }}
                       >
-                        <ListItemIcon sx={{ color: "text.sidebarMuted", minWidth: 0, mr: isCollapsedRail ? 0 : 1.5, justifyContent: "center" }}>
+                        <ListItemIcon
+                          sx={{
+                            color: "text.sidebarMuted",
+                            minWidth: 0,
+                            mr: isCollapsedRail ? 0 : 2,
+                            justifyContent: "center",
+                          }}
+                        >
                           {Icon ? <Icon fontSize="small" /> : null}
                         </ListItemIcon>
                         {!isCollapsedRail && (
                           <ListItemText
                             primary={item.label}
-                            primaryTypographyProps={{ fontSize: "0.8125rem", fontWeight: active ? 600 : 500, noWrap: true }}
+                            primaryTypographyProps={{
+                              fontSize: "0.8125rem",
+                              fontWeight: active ? 700 : 500,
+                              noWrap: true,
+                            }}
                           />
                         )}
                       </ListItemButton>
@@ -204,16 +242,38 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }) 
         })}
       </Box>
 
-      <Divider sx={{ borderColor: "rgba(148,163,184,0.12)" }} />
-      <Box sx={{ px: 2, py: 1.25, display: "flex", alignItems: "center", gap: 1, justifyContent: collapsed && !isMobile ? "center" : "flex-start" }}>
-        {(!collapsed || isMobile) ? (
-          <Typography variant="caption" sx={{ color: "text.sidebarMuted" }} noWrap>
-            v0.1 · {user?.username}
-          </Typography>
-        ) : (
-          <Tooltip title={user?.username || ""} placement="right">
-            <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "success.main" }} />
-          </Tooltip>
+      {/* User card */}
+      <Box
+        sx={{
+          m: 2,
+          p: isCollapsedRail ? 1 : 2,
+          borderRadius: 2,
+          bgcolor: "background.neutral",
+          display: "flex",
+          alignItems: "center",
+          gap: 1.5,
+          justifyContent: isCollapsedRail ? "center" : "flex-start",
+        }}
+      >
+        <Avatar sx={{ width: 36, height: 36, bgcolor: "primary.main", fontSize: "0.85rem", fontWeight: 700 }}>
+          {initials}
+        </Avatar>
+        {!isCollapsedRail && (
+          <>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2 }} noWrap>
+                {user?.username || "—"}
+              </Typography>
+              <Typography variant="caption" sx={{ color: "text.secondary", textTransform: "capitalize" }} noWrap>
+                {(user?.role || "").replace("_", " ")}
+              </Typography>
+            </Box>
+            <Tooltip title="Logout">
+              <IconButton size="small" onClick={logout} sx={{ color: "text.secondary" }}>
+                <LogoutIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </>
         )}
       </Box>
     </Box>

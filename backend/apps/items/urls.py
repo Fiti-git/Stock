@@ -1,10 +1,17 @@
 from django.urls import path
 from .views import ItemListView, ItemDetailView, PendingItemListView, assign_barcode, accept_change, reject_change, catalog_list, item_price_history, update_item, item_lookup, negative_pos_report, item_barcodes, item_barcode_detail, item_history
+from .views_categories import (
+    category_list_create, category_detail, category_assign_items, category_options,
+)
 
 urlpatterns = [
     path("", ItemListView.as_view(), name="item-list"),
     path("lookup/", item_lookup, name="item-lookup"),
     path("catalog/", catalog_list, name="item-catalog"),
+    path("categories/", category_list_create, name="category-list-create"),
+    path("categories/options/", category_options, name="category-options"),
+    path("categories/<int:pk>/", category_detail, name="category-detail"),
+    path("categories/<int:pk>/assign-items/", category_assign_items, name="category-assign-items"),
     path("<int:pk>/", ItemDetailView.as_view(), name="item-detail"),
     path("<int:item_id>/price-history/", item_price_history, name="item-price-history"),
     path("<int:item_id>/history/", item_history, name="item-history"),

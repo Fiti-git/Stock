@@ -7,10 +7,9 @@ const ThemeModeContext = createContext({ mode: "light", toggleMode: () => {} });
 const STORAGE_KEY = "theme-mode";
 
 export function ThemeModeProvider({ children }) {
-  const [mode, setMode] = useState(() => {
-    if (typeof window === "undefined") return "light";
-    return localStorage.getItem(STORAGE_KEY) || "light";
-  });
+  // Locked to light for now — dark palette is kept in the theme layer and can
+  // be re-enabled by unlocking this state without touching any page code.
+  const [mode] = useState("light");
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, mode);
@@ -18,7 +17,7 @@ export function ThemeModeProvider({ children }) {
   }, [mode]);
 
   const value = useMemo(
-    () => ({ mode, toggleMode: () => setMode((m) => (m === "light" ? "dark" : "light")), setMode }),
+    () => ({ mode, toggleMode: () => {}, setMode: () => {} }),
     [mode]
   );
 

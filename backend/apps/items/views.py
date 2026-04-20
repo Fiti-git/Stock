@@ -391,6 +391,13 @@ def catalog_list(request):
     if category:
         qs = qs.filter(category=category)
 
+    category_id = request.query_params.get("category_id", "").strip()
+    if category_id:
+        try:
+            qs = qs.filter(category_ref_id=int(category_id))
+        except (ValueError, TypeError):
+            pass
+
     # Annotate with latest snapshot prices via subquery (single SQL query, no N+1)
     latest_snap = PosSnapshot.objects.filter(item=OuterRef("pk")).order_by("-snapshot_date")
     qs = qs.select_related("outlet").annotate(
@@ -424,6 +431,7 @@ def catalog_list(request):
             "barcode": barcodes[0] if barcodes else None,
             "barcodes": barcodes,
             "category": item.category,
+            "category_ref_id": item.category_ref_id,
             "status": item.status,
             "outlet_name": item.outlet.outlet_name,
             "latest_selling_price": str(item.latest_selling_price) if item.latest_selling_price is not None else None,

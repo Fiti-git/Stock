@@ -1,6 +1,22 @@
 from django.db import models
 
 
+class Category(models.Model):
+    name = models.CharField(max_length=200, unique=True)
+    description = models.CharField(max_length=500, blank=True, default="")
+    sort_order = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "item_categories"
+        ordering = ["sort_order", "name"]
+
+    def __str__(self):
+        return self.name
+
+
 class Item(models.Model):
     class Status(models.TextChoices):
         ACTIVE = "active", "Active"
@@ -15,6 +31,13 @@ class Item(models.Model):
     item_name = models.CharField(max_length=300)
     barcode = models.CharField(max_length=100, blank=True, null=True)
     category = models.CharField(max_length=200, blank=True)
+    category_ref = models.ForeignKey(
+        "items.Category",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="items",
+    )
     rack_number = models.CharField(max_length=50, blank=True, default='')
     shelf = models.CharField(max_length=50, blank=True, default='')
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING_BARCODE)

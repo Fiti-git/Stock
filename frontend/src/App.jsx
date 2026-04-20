@@ -32,6 +32,30 @@ import MobileDevicesPage from "./pages/admin/MobileDevicesPage";
 import LoginEventsPage from "./pages/admin/LoginEventsPage";
 import OrphanCleanupPage from "./pages/admin/OrphanCleanupPage";
 import UserPermissionsPage from "./pages/super-admin/UserPermissionsPage";
+import DamageUploadPage from "./pages/transactions/DamageUploadPage";
+import DamageHistoryPage from "./pages/transactions/DamageHistoryPage";
+import OfficeUploadPage from "./pages/transactions/OfficeUploadPage";
+import OfficeHistoryPage from "./pages/transactions/OfficeHistoryPage";
+import VerificationUploadPage from "./pages/transactions/VerificationUploadPage";
+import VerificationHistoryPage from "./pages/transactions/VerificationHistoryPage";
+import GrnUploadPage from "./pages/transactions/GrnUploadPage";
+import GrnHistoryPage from "./pages/transactions/GrnHistoryPage";
+import RtsUploadPage from "./pages/transactions/RtsUploadPage";
+import RtsHistoryPage from "./pages/transactions/RtsHistoryPage";
+import SalesUploadPage from "./pages/transactions/SalesUploadPage";
+import SalesHistoryPage from "./pages/transactions/SalesHistoryPage";
+import SalesReturnsUploadPage from "./pages/transactions/SalesReturnsUploadPage";
+import SalesReturnsHistoryPage from "./pages/transactions/SalesReturnsHistoryPage";
+import TransactionsHubPage from "./pages/transactions/TransactionsHubPage";
+import OperationsTodayPage from "./pages/operations/OperationsTodayPage";
+import DailySalesReportPage from "./pages/operations/DailySalesReportPage";
+import ItemRankingsReportPage from "./pages/operations/ItemRankingsReportPage";
+import WastageReportPage from "./pages/operations/WastageReportPage";
+import AnomalyDashboardPage from "./pages/operations/AnomalyDashboardPage";
+import OperationsHubPage from "./pages/operations/OperationsHubPage";
+import SupplierScorecardPage from "./pages/operations/SupplierScorecardPage";
+import SuppliersPage from "./pages/admin/SuppliersPage";
+import CategoriesPage from "./pages/admin/CategoriesPage";
 
 const LicenseSetupRequired = lazy(() => import("./pages/LicenseSetupRequired"));
 const LicenseConfiguration = lazy(() => import("./pages/admin/LicenseConfiguration"));
@@ -119,6 +143,31 @@ export default function App() {
                     <Route path="/admin/orphan-cleanup" element={<PermissionRoute code="nav.orphan_cleanup"><OrphanCleanupPage /></PermissionRoute>} />
 
                     <Route path="/super-admin/user-permissions" element={<PermissionRoute code="nav.user_permissions"><UserPermissionsPage /></PermissionRoute>} />
+
+                    <Route path="/operations" element={<PermissionRoute code="nav.operations_hub"><OperationsHubPage /></PermissionRoute>} />
+                    <Route path="/operations/today" element={<PermissionRoute code="nav.operations_today"><OperationsTodayPage /></PermissionRoute>} />
+                    <Route path="/operations/reports/daily-sales" element={<PermissionRoute code="nav.report_daily_sales"><DailySalesReportPage /></PermissionRoute>} />
+                    <Route path="/operations/reports/item-rankings" element={<PermissionRoute code="nav.report_item_rankings"><ItemRankingsReportPage /></PermissionRoute>} />
+                    <Route path="/operations/reports/wastage" element={<PermissionRoute code="nav.report_wastage"><WastageReportPage /></PermissionRoute>} />
+                    <Route path="/operations/anomalies" element={<PermissionRoute code="nav.anomalies"><AnomalyDashboardPage /></PermissionRoute>} />
+                    <Route path="/operations/supplier-scorecard" element={<PermissionRoute code="nav.supplier_scorecard"><SupplierScorecardPage /></PermissionRoute>} />
+                    <Route path="/admin/suppliers" element={<PermissionRoute code="nav.suppliers"><SuppliersPage /></PermissionRoute>} />
+                    <Route path="/admin/categories" element={<PermissionRoute code="nav.categories"><CategoriesPage /></PermissionRoute>} />
+                    <Route path="/transactions" element={<PermissionRoute code="nav.transactions_hub"><TransactionsHubPage /></PermissionRoute>} />
+                    <Route path="/transactions/damage/upload" element={<PermissionRoute code="nav.damage_upload"><DamageUploadPage /></PermissionRoute>} />
+                    <Route path="/transactions/damage/history" element={<PermissionRoute code="nav.damage_history"><DamageHistoryPage /></PermissionRoute>} />
+                    <Route path="/transactions/office/upload" element={<PermissionRoute code="nav.office_upload"><OfficeUploadPage /></PermissionRoute>} />
+                    <Route path="/transactions/office/history" element={<PermissionRoute code="nav.office_history"><OfficeHistoryPage /></PermissionRoute>} />
+                    <Route path="/transactions/verification/upload" element={<PermissionRoute code="nav.verification_upload"><VerificationUploadPage /></PermissionRoute>} />
+                    <Route path="/transactions/verification/history" element={<PermissionRoute code="nav.verification_history"><VerificationHistoryPage /></PermissionRoute>} />
+                    <Route path="/transactions/grn/upload" element={<PermissionRoute code="nav.grn_upload"><GrnUploadPage /></PermissionRoute>} />
+                    <Route path="/transactions/grn/history" element={<PermissionRoute code="nav.grn_history"><GrnHistoryPage /></PermissionRoute>} />
+                    <Route path="/transactions/rts/upload" element={<PermissionRoute code="nav.rts_upload"><RtsUploadPage /></PermissionRoute>} />
+                    <Route path="/transactions/rts/history" element={<PermissionRoute code="nav.rts_history"><RtsHistoryPage /></PermissionRoute>} />
+                    <Route path="/transactions/sales/upload" element={<PermissionRoute code="nav.sales_upload"><SalesUploadPage /></PermissionRoute>} />
+                    <Route path="/transactions/sales/history" element={<PermissionRoute code="nav.sales_history"><SalesHistoryPage /></PermissionRoute>} />
+                    <Route path="/transactions/sales_returns/upload" element={<PermissionRoute code="nav.sales_returns_upload"><SalesReturnsUploadPage /></PermissionRoute>} />
+                    <Route path="/transactions/sales_returns/history" element={<PermissionRoute code="nav.sales_returns_history"><SalesReturnsHistoryPage /></PermissionRoute>} />
 
                     <Route path="/dashboard" element={<PermissionRoute code="nav.manager_dashboard"><DashboardPage /></PermissionRoute>} />
                     <Route path="/dashboard/pending" element={<PermissionRoute code="nav.pending"><PendingItemsPage /></PermissionRoute>} />

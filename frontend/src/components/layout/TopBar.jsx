@@ -5,14 +5,11 @@ import {
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import SearchIcon from "@mui/icons-material/Search";
-import DarkModeIcon from "@mui/icons-material/DarkMode";
-import LightModeIcon from "@mui/icons-material/LightMode";
 import LogoutIcon from "@mui/icons-material/Logout";
 import PersonIcon from "@mui/icons-material/Person";
 import StorefrontIcon from "@mui/icons-material/Storefront";
 import { useAuth } from "../../contexts/AuthContext";
 import { useOutlet } from "../../contexts/OutletContext";
-import { useThemeMode } from "../../theme/ThemeModeContext";
 import { getOutlets } from "../../api/outlets";
 import Breadcrumbs from "./Breadcrumbs";
 
@@ -21,7 +18,6 @@ export default function TopBar({ onMenuClick, onOpenPalette }) {
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const { user, logout } = useAuth();
   const { selectedOutlet, setSelectedOutlet } = useOutlet();
-  const { mode, toggleMode } = useThemeMode();
   const [outlets, setOutlets] = useState([]);
   const [anchor, setAnchor] = useState(null);
 
@@ -121,12 +117,6 @@ export default function TopBar({ onMenuClick, onOpenPalette }) {
           </Select>
         )}
 
-        <Tooltip title={mode === "dark" ? "Light mode" : "Dark mode"}>
-          <IconButton onClick={toggleMode}>
-            {mode === "dark" ? <LightModeIcon /> : <DarkModeIcon />}
-          </IconButton>
-        </Tooltip>
-
         <Tooltip title={user?.username || "Account"}>
           <IconButton onClick={(e) => setAnchor(e.currentTarget)} sx={{ p: 0.5 }}>
             <Avatar sx={{ width: 34, height: 34, bgcolor: "primary.main", fontSize: "0.85rem", fontWeight: 600 }}>
@@ -145,10 +135,6 @@ export default function TopBar({ onMenuClick, onOpenPalette }) {
           <MuiMenuItem disabled>
             <ListItemIcon><PersonIcon fontSize="small" /></ListItemIcon>
             Profile
-          </MuiMenuItem>
-          <MuiMenuItem onClick={() => { setAnchor(null); toggleMode(); }}>
-            <ListItemIcon>{mode === "dark" ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}</ListItemIcon>
-            Toggle theme
           </MuiMenuItem>
           <Divider />
           <MuiMenuItem onClick={logout}>

@@ -88,3 +88,9 @@ backups/
 # Frontend build output
 frontend/dist/
 frontend/build/
+
+# POS export samples (business data, not code)
+xltype/
+
+# Mobile app — tracked as its own git repo, not part of this one
+mobile/
