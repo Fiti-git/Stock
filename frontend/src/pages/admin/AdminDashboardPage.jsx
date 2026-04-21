@@ -9,12 +9,15 @@ import SearchIcon from "@mui/icons-material/Search";
 import StorefrontIcon from "@mui/icons-material/Storefront";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import QrCode2Icon from "@mui/icons-material/QrCode2";
+import HubIcon from "@mui/icons-material/Hub";
 import ReportProblemIcon from "@mui/icons-material/ReportProblem";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelIcon from "@mui/icons-material/Cancel";
 import Layout from "../../components/Layout";
 import { PageHeader, DataTable, StatCard } from "../../components/ui";
 import { getAdminSummary, getVariances, getAlerts, getCountProgress } from "../../api/dashboard";
+import { getMappingStats } from "../../api/orgCatalog";
+import { getStockAgeSummary } from "../../api/stockAge";
 import { useOutlet } from "../../contexts/OutletContext";
 
 function VarianceCell({ v }) {
@@ -33,11 +36,20 @@ export default function AdminDashboardPage() {
   const [progress, setProgress] = useState(null);
   const [outletLoading, setOutletLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const [mapping, setMapping] = useState(null);
+  const [ageSummary, setAgeSummary] = useState(null);
 
   useEffect(() => {
     setSummaryLoad(true);
     getAdminSummary().then((r) => setSummary(r.data)).catch(() => {}).finally(() => setSummaryLoad(false));
+    getMappingStats().then((r) => setMapping(r.data)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    getStockAgeSummary({ outletId: outletId || undefined })
+      .then((r) => setAgeSummary(r.data))
+      .catch(() => setAgeSummary(null));
+  }, [outletId]);
 
   useEffect(() => {
     if (!outletId) return;
@@ -112,6 +124,7 @@ export default function AdminDashboardPage() {
           { label: "Total Items", value: (summary?.total_items ?? 0).toLocaleString(), icon: <Inventory2Icon />, color: "info" },
           { label: "Pending Barcodes", value: (summary?.total_pending_barcodes ?? 0).toLocaleString(), icon: <QrCode2Icon />, color: "warning" },
           { label: "Negative POS Today", value: (summary?.total_negative_today ?? 0).toLocaleString(), icon: <ReportProblemIcon />, color: "error" },
+          { label: "Mapping Coverage", value: mapping ? `${mapping.mapped_pct}%` : "—", icon: <HubIcon />, color: "success" },
         ].map((c) => (
           <Grid key={c.label} item xs={6} md={3}>
             <StatCard label={c.label} value={c.value} icon={c.icon} color={c.color} loading={summaryLoad} />
@@ -132,6 +145,36 @@ export default function AdminDashboardPage() {
           </Grid>
         ))}
       </Grid>
+
+      {/* Aging Inventory widget */}
+      {ageSummary && ageSummary.rows > 0 && (
+        <Card variant="outlined" sx={{ mb: 3 }}>
+          <CardContent>
+            <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" alignItems={{ md: "center" }} spacing={2}>
+              <Box>
+                <Typography variant="overline" color="text.secondary">Aging Inventory (FIFO)</Typography>
+                <Typography variant="h5" sx={{ mt: 0.5 }}>
+                  {ageSummary.pct_over_90_by_qty}% of on-hand stock is over 90 days old
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {ageSummary.over_90_sku_count.toLocaleString()} SKU(s) with oldest lot &gt; 90d ·
+                  Value on hand: {ageSummary.total_value.toLocaleString()} ·
+                  {ageSummary.last_built_at
+                    ? ` Last built ${new Date(ageSummary.last_built_at).toLocaleString()}`
+                    : ""}
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                <Chip size="small" label={`0–30d: ${ageSummary.buckets["0_30"].toLocaleString()}`} />
+                <Chip size="small" label={`31–60d: ${ageSummary.buckets["31_60"].toLocaleString()}`} color="info" variant="outlined" />
+                <Chip size="small" label={`61–90d: ${ageSummary.buckets["61_90"].toLocaleString()}`} color="warning" variant="outlined" />
+                <Chip size="small" label={`90+d: ${ageSummary.buckets["90_plus"].toLocaleString()}`} color="error" variant="outlined" />
+                <Button component={Link} to="/admin/stock-age" variant="outlined" size="small">View</Button>
+              </Stack>
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Outlet status table */}
       <Card variant="outlined" sx={{ mb: 3 }}>

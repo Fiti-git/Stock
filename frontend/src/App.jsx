@@ -56,6 +56,12 @@ import OperationsHubPage from "./pages/operations/OperationsHubPage";
 import SupplierScorecardPage from "./pages/operations/SupplierScorecardPage";
 import SuppliersPage from "./pages/admin/SuppliersPage";
 import CategoriesPage from "./pages/admin/CategoriesPage";
+import MasterProductsPage from "./pages/admin/MasterProductsPage";
+import MasterMappingPage from "./pages/admin/MasterMappingPage";
+import DemandDashboardPage from "./pages/admin/DemandDashboardPage";
+import PurchasePlansPage from "./pages/admin/PurchasePlansPage";
+import PurchasePlanDetailPage from "./pages/admin/PurchasePlanDetailPage";
+import StockAgePage from "./pages/admin/StockAgePage";
 
 const LicenseSetupRequired = lazy(() => import("./pages/LicenseSetupRequired"));
 const LicenseConfiguration = lazy(() => import("./pages/admin/LicenseConfiguration"));
@@ -153,6 +159,12 @@ export default function App() {
                     <Route path="/operations/supplier-scorecard" element={<PermissionRoute code="nav.supplier_scorecard"><SupplierScorecardPage /></PermissionRoute>} />
                     <Route path="/admin/suppliers" element={<PermissionRoute code="nav.suppliers"><SuppliersPage /></PermissionRoute>} />
                     <Route path="/admin/categories" element={<PermissionRoute code="nav.categories"><CategoriesPage /></PermissionRoute>} />
+                    <Route path="/admin/master-products" element={<PermissionRoute code="nav.master_products"><MasterProductsPage /></PermissionRoute>} />
+                    <Route path="/admin/master-mapping" element={<PermissionRoute code="nav.master_mapping"><MasterMappingPage /></PermissionRoute>} />
+                    <Route path="/admin/demand" element={<PermissionRoute code="nav.demand_dashboard"><DemandDashboardPage /></PermissionRoute>} />
+                    <Route path="/admin/purchase-plans" element={<PermissionRoute code="nav.purchase_plans"><PurchasePlansPage /></PermissionRoute>} />
+                    <Route path="/admin/purchase-plans/:id" element={<PermissionRoute code="nav.purchase_plans"><PurchasePlanDetailPage /></PermissionRoute>} />
+                    <Route path="/admin/stock-age" element={<PermissionRoute code="nav.stock_age"><StockAgePage /></PermissionRoute>} />
                     <Route path="/transactions" element={<PermissionRoute code="nav.transactions_hub"><TransactionsHubPage /></PermissionRoute>} />
                     <Route path="/transactions/damage/upload" element={<PermissionRoute code="nav.damage_upload"><DamageUploadPage /></PermissionRoute>} />
                     <Route path="/transactions/damage/history" element={<PermissionRoute code="nav.damage_history"><DamageHistoryPage /></PermissionRoute>} />

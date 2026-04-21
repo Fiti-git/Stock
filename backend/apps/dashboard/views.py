@@ -472,7 +472,9 @@ def daily_counts(request):
     Useful for reviewing what was counted, where, and by whom.
 
     Query params:
-      count_date — YYYY-MM-DD (default: today)
+      date_from  — YYYY-MM-DD (inclusive, default: today)
+      date_to    — YYYY-MM-DD (inclusive, default: date_from)
+      count_date — YYYY-MM-DD (legacy single-day; used as both bounds if set)
       outlet     — outlet id (admin override)
       search     — filter by item code or name
       page, page_size
@@ -483,18 +485,28 @@ def daily_counts(request):
     if not outlet:
         return Response({"detail": "No outlet."}, status=400)
 
-    raw_date = request.query_params.get("count_date", "")
-    try:
-        count_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
-    except (ValueError, TypeError):
-        count_date = date.today()
+    def _parse(raw):
+        try:
+            return datetime.strptime(raw, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return None
+
+    legacy = _parse(request.query_params.get("count_date", ""))
+    date_from = _parse(request.query_params.get("date_from", "")) or legacy or date.today()
+    date_to = _parse(request.query_params.get("date_to", "")) or legacy or date_from
+    if date_to < date_from:
+        date_from, date_to = date_to, date_from
 
     search = request.query_params.get("search", "").strip()
 
     qs = (
-        StockCount.objects.filter(outlet=outlet, count_date=count_date)
+        StockCount.objects.filter(
+            outlet=outlet,
+            count_date__gte=date_from,
+            count_date__lte=date_to,
+        )
         .select_related("item", "counted_by")
-        .order_by("item__item_code", "counted_at")
+        .order_by("-count_date", "item__item_code", "counted_at")
     )
 
     if search:
@@ -526,6 +538,7 @@ def daily_counts(request):
             "actual_qty": float(sc.actual_qty),
             "counted_by_username": sc.counted_by.username if sc.counted_by else None,
             "counted_at": sc.counted_at.isoformat(),
+            "count_date": str(sc.count_date),
             "is_month_end": sc.is_month_end,
         }
         for sc in page_qs
@@ -536,7 +549,8 @@ def daily_counts(request):
         "page": page,
         "page_size": page_size,
         "total_pages": max(1, (total + page_size - 1) // page_size),
-        "count_date": str(count_date),
+        "date_from": str(date_from),
+        "date_to": str(date_to),
         "results": results,
     })
 

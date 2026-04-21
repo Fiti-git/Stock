@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "apps.dashboard",
     "apps.licensing",
     "apps.dbops",
+    "apps.org_catalog",
 ]
 
 MIDDLEWARE = [

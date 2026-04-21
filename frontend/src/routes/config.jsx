@@ -36,6 +36,7 @@ import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import StoreIcon from "@mui/icons-material/Store";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import CategoryIcon from "@mui/icons-material/Category";
+import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
 
 /**
  * Single source of truth for routes. Consumed by Sidebar, Breadcrumbs, CommandPalette.
@@ -97,6 +98,13 @@ export const routes = [
   { path: "/transactions/sales_returns/upload",   code: "nav.sales_returns_upload",  label: "Sales Returns — Upload",    icon: AssignmentReturnIcon,  roles: ["store_user","staff","manager","admin","super_admin"], group: "Operate", showInNav: false },
   { path: "/transactions/sales_returns/history",  code: "nav.sales_returns_history", label: "Sales Returns — History",   icon: AssignmentReturnIcon,  roles: ["store_user","staff","manager","admin","super_admin"], group: "Operate", showInNav: false },
 
+  // ------------------------- ORGANIZE -------------------------
+  { path: "/admin/master-products",       code: "nav.master_products",  label: "Master Products",  icon: Inventory2Icon,       roles: ["manager","admin","super_admin"],         group: "Organize" },
+  { path: "/admin/master-mapping",        code: "nav.master_mapping",   label: "Master Mapping",   icon: EditNoteIcon,         roles: ["admin","super_admin"],                    group: "Organize" },
+  { path: "/admin/demand",                code: "nav.demand_dashboard", label: "Demand Dashboard", icon: QueryStatsIcon,       roles: ["manager","admin","super_admin"],         group: "Organize" },
+  { path: "/admin/purchase-plans",        code: "nav.purchase_plans",   label: "Purchase Plans",   icon: AssignmentIcon,       roles: ["admin","super_admin"],                    group: "Organize" },
+  { path: "/admin/stock-age",             code: "nav.stock_age",        label: "Stock Age",        icon: HourglassEmptyIcon,   roles: ["manager","admin","super_admin"],         group: "Organize" },
+
   // ------------------------- CONFIGURE -------------------------
   { path: "/product-master",              code: "nav.product_master",   label: "Product Master",   icon: EditNoteIcon,         roles: ["manager","admin","super_admin"],         group: "Configure" },
   { path: "/admin/barcode-master",        code: "nav.barcode_master",   label: "Barcode Master",   icon: QrCodeScannerIcon,    roles: ["manager","admin","super_admin"],         group: "Configure" },
@@ -138,7 +146,7 @@ export function findRoute(pathname) {
   });
 }
 
-export const GROUP_ORDER = ["Operate", "Analyze", "Configure"];
+export const GROUP_ORDER = ["Operate", "Analyze", "Organize", "Configure"];
 
 // Groups that start expanded. All four are open on first visit — the user's
 // per-group collapse state is persisted in localStorage on subsequent loads.

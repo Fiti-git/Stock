@@ -13,7 +13,8 @@ import { useOutlet } from "../../contexts/OutletContext";
 export default function CountedStockDailyPage() {
   const { outletId } = useOutlet();
   const today = new Date().toISOString().slice(0, 10);
-  const [countDate, setCountDate] = useState(today);
+  const [dateFrom, setDateFrom] = useState(today);
+  const [dateTo, setDateTo] = useState(today);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
@@ -24,16 +25,17 @@ export default function CountedStockDailyPage() {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const res = await getDailyCounts({ outletId, countDate, search, page, pageSize: PAGE_SIZE });
+      const res = await getDailyCounts({ outletId, dateFrom, dateTo, search, page, pageSize: PAGE_SIZE });
       setData(res.data);
     } catch (err) { setError(err?.response?.data?.detail || "Failed to load data."); }
     finally { setLoading(false); }
-  }, [outletId, countDate, search, page]);
+  }, [outletId, dateFrom, dateTo, search, page]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); }, [outletId, countDate, search]);
+  useEffect(() => { setPage(1); }, [outletId, dateFrom, dateTo, search]);
 
   const columns = [
+    { field: "count_date", headerName: "Date", flex: 0.7, minWidth: 110 },
     { field: "item_code", headerName: "Item Code", flex: 0.8, minWidth: 110 },
     { field: "item_name", headerName: "Item Name", flex: 1.6, minWidth: 220 },
     { field: "category", headerName: "Category", flex: 0.8, minWidth: 110, valueGetter: (v) => v || "—" },
@@ -54,7 +56,8 @@ export default function CountedStockDailyPage() {
       <PageHeader title="Counted Stock Daily" subtitle="Daily record of physical counts" icon={<ChecklistIcon />} />
 
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mb: 2 }}>
-        <TextField size="small" type="date" label="Count Date" InputLabelProps={{ shrink: true }} value={countDate} onChange={(e) => setCountDate(e.target.value)} />
+        <TextField size="small" type="date" label="From" InputLabelProps={{ shrink: true }} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+        <TextField size="small" type="date" label="To" InputLabelProps={{ shrink: true }} value={dateTo} onChange={(e) => setDateTo(e.target.value)} inputProps={{ min: dateFrom }} />
         <TextField size="small" placeholder="Search item code or name…" value={search} onChange={(e) => setSearch(e.target.value)} sx={{ flex: 1 }}
           InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }} />
         <Button variant="contained" startIcon={<RefreshIcon />} onClick={load}>Refresh</Button>
@@ -62,7 +65,10 @@ export default function CountedStockDailyPage() {
 
       {data && (
         <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: "block" }}>
-          {data.count} record{data.count !== 1 ? "s" : ""} for <b>{countDate}</b>
+          {data.count} record{data.count !== 1 ? "s" : ""}{" "}
+          {dateFrom === dateTo
+            ? <>for <b>{dateFrom}</b></>
+            : <>from <b>{dateFrom}</b> to <b>{dateTo}</b></>}
         </Typography>
       )}
 

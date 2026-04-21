@@ -12,4 +12,5 @@ urlpatterns = [
     path("api/dashboard/", include("apps.dashboard.urls")),
     path("api/license/", include("apps.licensing.urls")),
     path("api/db/", include("apps.dbops.urls")),
+    path("api/org/", include("apps.org_catalog.urls")),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -36,6 +36,11 @@ PERMISSIONS = [
     ("nav.catalog",               "Product Catalog",         "Navigation · Catalog"),
     ("nav.product_master",        "Product Master",          "Navigation · Catalog"),
     ("nav.barcode_master",        "Barcode Master",          "Navigation · Catalog"),
+    ("nav.master_products",       "Master Products (Org)",   "Navigation · Organization"),
+    ("nav.master_mapping",        "Master Mapping",          "Navigation · Organization"),
+    ("nav.demand_dashboard",      "Demand Dashboard",        "Navigation · Organization"),
+    ("nav.purchase_plans",        "Purchase Plans",          "Navigation · Organization"),
+    ("nav.stock_age",             "Stock Age",               "Navigation · Organization"),
 
     ("nav.outlets",               "Outlets",                 "Navigation · Administration"),
     ("nav.users",                 "Users",                   "Navigation · Administration"),
@@ -145,6 +150,9 @@ ROLE_DEFAULTS = {
         "sales_returns.approve", "sales_returns.delete_batch",
         "nav.suppliers", "suppliers.manage",
         "nav.categories", "categories.manage",
+        "nav.master_products", "nav.master_mapping",
+        "nav.demand_dashboard", "nav.purchase_plans",
+        "nav.stock_age",
     ],
 
     "manager": [
@@ -154,6 +162,9 @@ ROLE_DEFAULTS = {
         "nav.shrinkage", "nav.item_pos_history",
         "nav.catalog", "nav.product_master", "nav.barcode_master",
         "nav.categories",
+        "nav.master_products", "nav.master_mapping",
+        "nav.demand_dashboard", "nav.purchase_plans",
+        "nav.stock_age",
         "nav.db_management",
         "nav.transactions_hub",
         "nav.damage_upload", "nav.damage_history",
