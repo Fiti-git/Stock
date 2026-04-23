@@ -70,7 +70,8 @@ export default function MasterMappingPage() {
     } finally {
       setLoadingItems(false);
     }
-  }, [q, outletId, page, notify]);
+
+  }, [q, outletId, page]);
 
   useEffect(() => { loadStats(); }, [loadStats]);
   useEffect(() => { loadItems(); }, [loadItems]);

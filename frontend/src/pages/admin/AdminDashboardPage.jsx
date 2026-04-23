@@ -14,6 +14,7 @@ import ReportProblemIcon from "@mui/icons-material/ReportProblem";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelIcon from "@mui/icons-material/Cancel";
 import Layout from "../../components/Layout";
+import OnboardingChecklist from "../../components/OnboardingChecklist";
 import { PageHeader, DataTable, StatCard } from "../../components/ui";
 import { getAdminSummary, getVariances, getAlerts, getCountProgress } from "../../api/dashboard";
 import { getMappingStats } from "../../api/orgCatalog";
@@ -116,6 +117,8 @@ export default function AdminDashboardPage() {
         subtitle={summary?.today ?? "System-wide overview"}
         icon={<DashboardIcon />}
       />
+
+      <OnboardingChecklist />
 
       {/* KPI cards */}
       <Grid container spacing={2} sx={{ mb: 3 }}>

@@ -19,7 +19,63 @@ const ACTION_LABELS = {
   assign_barcode: "Assign Barcode",
   accept_item_change: "Accept Item Change",
   reject_item_change: "Reject Item Change",
+  "stock_count.submit": "Count Submitted",
+  "stock_count.upsert": "Count Re-submitted",
+  "stock_count.approve": "Count Approved",
+  "stock_count.reject": "Count Rejected",
+  "stock_count.bulk_approve": "Count Bulk Approved",
+  "stock_count.approve_on_close": "Count Auto-approved (session close)",
+  "count_session.close": "Session Closed",
+  "variance.resolve": "Variance Resolved",
+  "variance.bulk_resolve": "Variance Bulk Resolved",
 };
+
+function DiffView({ details }) {
+  if (!details || typeof details !== "object") return null;
+  const before = details.before;
+  const after = details.after;
+  if (!before && !after) {
+    return (
+      <Box component="pre" sx={{ fontSize: "0.75rem", bgcolor: "action.hover", p: 2, borderRadius: 1, overflow: "auto", m: 0 }}>
+        {JSON.stringify(details, null, 2)}
+      </Box>
+    );
+  }
+  const keys = Array.from(new Set([
+    ...Object.keys(before || {}),
+    ...Object.keys(after || {}),
+  ]));
+  const changed = keys.filter((k) => JSON.stringify(before?.[k]) !== JSON.stringify(after?.[k]));
+  return (
+    <Box>
+      {details.reason && (
+        <Typography variant="body2" sx={{ mb: 1 }}><b>Reason:</b> {details.reason}</Typography>
+      )}
+      <Box sx={{ display: "grid", gridTemplateColumns: "180px 1fr 1fr", gap: 1, fontSize: "0.8rem" }}>
+        <Typography variant="caption" sx={{ fontWeight: 600 }}>Field</Typography>
+        <Typography variant="caption" sx={{ fontWeight: 600 }}>Before</Typography>
+        <Typography variant="caption" sx={{ fontWeight: 600 }}>After</Typography>
+        {keys.flatMap((k) => {
+          const isChanged = changed.includes(k);
+          return [
+            <span key={`${k}-name`} style={{ fontWeight: isChanged ? 600 : 400 }}>{k}</span>,
+            <span key={`${k}-before`} style={{ color: isChanged ? "#d32f2f" : "inherit", fontFamily: "monospace" }}>
+              {JSON.stringify(before?.[k] ?? null)}
+            </span>,
+            <span key={`${k}-after`} style={{ color: isChanged ? "#2e7d32" : "inherit", fontFamily: "monospace" }}>
+              {JSON.stringify(after?.[k] ?? null)}
+            </span>,
+          ];
+        })}
+      </Box>
+      {details.extra && (
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
+          Extra: {JSON.stringify(details.extra)}
+        </Typography>
+      )}
+    </Box>
+  );
+}
 
 export default function AuditLogPage() {
   const notify = useNotify();
@@ -117,9 +173,7 @@ export default function AuditLogPage() {
               <Typography variant="subtitle2">Details for record #{expandedRecord.id}</Typography>
               <IconButton size="small" onClick={() => setExpanded({})}><ExpandLessIcon /></IconButton>
             </Stack>
-            <Box component="pre" sx={{ fontSize: "0.75rem", bgcolor: "action.hover", p: 2, borderRadius: 1, overflow: "auto", m: 0 }}>
-              {JSON.stringify(expandedRecord.details, null, 2)}
-            </Box>
+            <DiffView details={expandedRecord.details} />
           </CardContent>
         </Card>
       )}

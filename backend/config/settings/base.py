@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     "apps.licensing",
     "apps.dbops",
     "apps.org_catalog",
+    "apps.pos",
 ]
 
 MIDDLEWARE = [

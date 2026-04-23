@@ -62,6 +62,28 @@ export const routes = [
   { path: "/dashboard/pending",         code: "nav.pending",              label: "Pending Items",      icon: ChecklistIcon,          roles: ["manager","admin","super_admin"],                       group: "Operate" },
   { path: "/admin/upload-approvals",    code: "nav.upload_approvals",     label: "Upload Approvals",   icon: AssignmentTurnedInIcon, roles: ["admin","super_admin"],                                 group: "Operate" },
   { path: "/daily-counts",              code: "nav.daily_counts",         label: "Counted Stock Daily",icon: FactCheckIcon,          roles: ["manager","admin","super_admin"],                       group: "Operate" },
+  { path: "/count-review",              code: "nav.count_review",         label: "Count Review",       icon: FactCheckIcon,          roles: ["manager","admin","super_admin"],                       group: "Operate" },
+  { path: "/variance-reconciliation",   code: "nav.variance_reconciliation", label: "Variance Reconciliation", icon: ChecklistIcon,    roles: ["manager","admin","super_admin"],                       group: "Operate" },
+
+  // ------------------------- POS -------------------------
+  { path: "/pos",                       code: "nav.pos_terminal",         label: "POS Terminal",       icon: PointOfSaleIcon,        roles: ["store_user","staff","manager","admin","super_admin"], group: "POS" },
+  { path: "/pos/shifts",                code: "nav.pos_shifts",           label: "POS — Shifts",       icon: ReceiptLongIcon,        roles: ["manager","admin","super_admin"],                       group: "POS" },
+  { path: "/pos/bills",                 code: "nav.pos_bills",            label: "POS — Bills",        icon: ReceiptLongIcon,        roles: ["manager","admin","super_admin"],                       group: "POS" },
+  { path: "/pos/daily-sales",           code: "nav.pos_daily_sales",      label: "POS — Daily Sales",  icon: QueryStatsIcon,         roles: ["manager","admin","super_admin"],                       group: "POS" },
+  { path: "/pos/customers",             code: "nav.pos_customers",        label: "POS — Customers",    icon: PeopleAltIcon,          roles: ["manager","admin","super_admin"],                       group: "POS" },
+  { path: "/pos/stock",                 code: "nav.pos_stock",            label: "POS — Stock",        icon: Inventory2Icon,         roles: ["manager","admin","super_admin"],                       group: "POS" },
+  { path: "/pos/outlet-settings",       code: "nav.pos_outlet_settings",  label: "POS — Outlet Setup", icon: StorefrontIcon,         roles: ["manager","admin","super_admin"],                       group: "POS" },
+  { path: "/pos/grn",                   code: "nav.pos_grn_entry",        label: "POS — GRN Entry",    icon: MoveToInboxIcon,        roles: ["manager","admin","super_admin"],                       group: "POS" },
+  { path: "/pos/prices/bulk",           code: "nav.pos_bulk_price",       label: "POS — Bulk Price",   icon: EditNoteIcon,           roles: ["manager","admin","super_admin"],                       group: "POS" },
+  { path: "/pos/prices/history",        code: "nav.pos_price_history",    label: "POS — Price History",icon: HistoryIcon,            roles: ["manager","admin","super_admin"],                       group: "POS" },
+  { path: "/pos/promotions",            code: "nav.pos_promotions",       label: "POS — Promotions",   icon: AssessmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS" },
+  { path: "/pos/products",              code: "nav.pos_products",         label: "POS — Products",     icon: Inventory2Icon,         roles: ["manager","admin","super_admin"],                       group: "POS" },
+  { path: "/pos/low-stock",             code: "nav.pos_low_stock",        label: "POS — Low Stock",    icon: ReportProblemIcon,      roles: ["manager","admin","super_admin"],                       group: "POS" },
+  { path: "/pos/reports",               code: "nav.pos_reports",          label: "POS — Reports",      icon: QueryStatsIcon,         roles: ["manager","admin","super_admin"],                       group: "POS" },
+  { path: "/pos/expenses",              code: "nav.pos_expenses",         label: "POS — Expenses",     icon: AssignmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS" },
+  { path: "/pos/purchase-returns",      code: "nav.pos_rts",              label: "POS — RTS",          icon: KeyboardReturnIcon,     roles: ["manager","admin","super_admin"],                       group: "POS" },
+  { path: "/pos/payables",              code: "nav.pos_payables",         label: "POS — Payables",     icon: AssessmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS" },
+  { path: "/pos/z-report",              code: "nav.pos_shifts",           label: "POS — Z Report",     icon: ReceiptLongIcon,        roles: ["manager","admin","super_admin"],                       group: "POS" },
 
   // ------------------------- ANALYZE -------------------------
   { path: "/admin/dashboard",           code: "nav.admin_dashboard",      label: "Admin Dashboard",    icon: DashboardIcon,          roles: ["admin","super_admin"],                        group: "Analyze" },
@@ -72,6 +94,8 @@ export const routes = [
   { path: "/items/history",             code: "nav.item_pos_history",     label: "POS History",        icon: QueryStatsIcon,         roles: ["manager","admin","super_admin"],              group: "Analyze" },
   { path: "/admin/reports/daily-upload",code: "nav.daily_upload_report",  label: "Daily Upload Report",icon: AssessmentIcon,         roles: ["admin","super_admin"],                        group: "Analyze" },
   { path: "/admin/negative-pos",        code: "nav.negative_pos",         label: "Negative POS",       icon: ReportProblemIcon,      roles: ["admin","super_admin"],                        group: "Analyze" },
+  { path: "/admin/reports/stock-variance", code: "nav.stock_variance",    label: "Stock Variance",     icon: FactCheckIcon,          roles: ["admin","super_admin"],                        group: "Analyze" },
+  { path: "/admin/reports/counted-items",  code: "nav.counted_items_report", label: "Counted vs Uncounted", icon: ChecklistIcon,      roles: ["admin","super_admin"],                        group: "Analyze" },
   { path: "/catalog",                   code: "nav.catalog",              label: "Product Catalog",    icon: Inventory2Icon,         roles: ["manager","admin","super_admin"],              group: "Analyze" },
 
   // Operations hub child reports — reachable by URL, hidden from sidebar (nested under /operations).
@@ -146,8 +170,9 @@ export function findRoute(pathname) {
   });
 }
 
-export const GROUP_ORDER = ["Operate", "Analyze", "Organize", "Configure"];
+export const GROUP_ORDER = ["Operate", "POS", "Analyze", "Organize", "Configure"];
 
-// Groups that start expanded. All four are open on first visit — the user's
-// per-group collapse state is persisted in localStorage on subsequent loads.
-export const DEFAULT_EXPANDED_GROUPS = new Set(GROUP_ORDER);
+// Groups that start expanded. POS is collapsed by default (it has many links);
+// the others auto-open. The user's per-group collapse state is persisted in
+// localStorage after the first visit.
+export const DEFAULT_EXPANDED_GROUPS = new Set(["Operate", "Analyze", "Organize", "Configure"]);

@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Stack, TextField, MenuItem, Typography, Paper,
+  Stack, TextField, MenuItem, Typography, Paper, Dialog, DialogTitle,
+  DialogContent, DialogActions, Button, IconButton, Box, CircularProgress,
+  Alert, Chip,
 } from "@mui/material";
 import AssessmentIcon from "@mui/icons-material/Assessment";
+import FiberNewIcon from "@mui/icons-material/FiberNew";
+import CloseIcon from "@mui/icons-material/Close";
 import Layout from "../../components/Layout";
-import { PageHeader, DataTable } from "../../components/ui";
+import { PageHeader, DataTable, EmptyState } from "../../components/ui";
 import { getOutlets } from "../../api/outlets";
-import { getDailyUploadReport } from "../../api/dashboard";
+import { getDailyUploadReport, getDailyUploadNewItems } from "../../api/dashboard";
 
 const fmtMoney = (v) => v == null ? "—" : Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtPct = (v) => v == null ? "—" : `${Number(v).toFixed(2)}%`;
@@ -20,6 +24,74 @@ function isoToday() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function eachDateISO(fromISO, toISO) {
+  const out = [];
+  const start = new Date(fromISO);
+  const end = new Date(toISO);
+  if (isNaN(start) || isNaN(end) || start > end) return out;
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    out.push(d.toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+function NewItemsDialog({ outletId, outletName, date, onClose }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setLoading(true);
+    getDailyUploadNewItems({ outletId, date })
+      .then(({ data }) => setItems(data.results || []))
+      .catch(() => setError("Could not load new items."))
+      .finally(() => setLoading(false));
+  }, [outletId, date]);
+
+  const columns = [
+    { field: "item_code", headerName: "Code", flex: 0.8, minWidth: 110 },
+    { field: "item_name", headerName: "Name", flex: 1.8, minWidth: 200 },
+    { field: "cost_price", headerName: "Cost", flex: 0.5, minWidth: 90, valueGetter: (v) => v != null ? Number(v).toFixed(2) : "—" },
+    { field: "selling_price", headerName: "Sell", flex: 0.5, minWidth: 90, valueGetter: (v) => v != null ? Number(v).toFixed(2) : "—" },
+    { field: "pos_quantity", headerName: "Qty", flex: 0.5, minWidth: 80, valueGetter: (v) => v != null ? Number(v).toFixed(0) : "—" },
+  ];
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="lg" fullWidth>
+      <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <Box>
+          <Typography variant="h4">New Items ({items.length})</Typography>
+          <Typography variant="caption" color="text.secondary">
+            {outletName} · <b>{date}</b>
+          </Typography>
+        </Box>
+        <IconButton onClick={onClose}><CloseIcon /></IconButton>
+      </DialogTitle>
+      <DialogContent dividers>
+        {loading && <Box sx={{ display: "grid", placeItems: "center", py: 6 }}><CircularProgress /></Box>}
+        {error && <Alert severity="error">{error}</Alert>}
+        {!loading && !error && (
+          items.length === 0 ? (
+            <EmptyState title="No new items" description="This upload introduced no new products." />
+          ) : (
+            <DataTable
+              rows={items}
+              columns={columns}
+              getRowId={(r) => r.item_code}
+              height={560}
+              initialPageSize={25}
+              pageSizeOptions={[25, 50, 100]}
+            />
+          )
+        )}
+      </DialogContent>
+      <DialogActions sx={{ px: 3, py: 2 }}>
+        <Button onClick={onClose} color="inherit">Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 export default function DailyUploadReportPage() {
   const [outlets, setOutlets] = useState([]);
   const [outletId, setOutletId] = useState("");
@@ -27,6 +99,7 @@ export default function DailyUploadReportPage() {
   const [toDate, setToDate] = useState(isoToday());
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [newItemsCtx, setNewItemsCtx] = useState(null);
 
   useEffect(() => {
     getOutlets().then(({ data }) => setOutlets(Array.isArray(data) ? data : []));
@@ -45,9 +118,72 @@ export default function DailyUploadReportPage() {
 
   useEffect(() => { fetchReport(); /* eslint-disable-next-line */ }, [fromDate, toDate, outletId]);
 
+  const selectedOutlet = outlets.find((o) => String(o.id) === String(outletId));
+  const selectedOutletName = selectedOutlet?.outlet_name || "";
+
+  const displayRows = useMemo(() => {
+    if (!outletId) return rows;
+    const have = new Set(rows.map((r) => r.upload_date));
+    const dates = eachDateISO(fromDate, toDate);
+    const missing = dates
+      .filter((d) => !have.has(d))
+      .map((d) => ({
+        id: `missing-${outletId}-${d}`,
+        outlet_id: Number(outletId),
+        outlet_name: selectedOutletName,
+        upload_date: d,
+        is_missing: true,
+        new_items_count: 0,
+        total_items: 0,
+        total_cost_value: null,
+        total_selling_value: null,
+        gross_profit_value: null,
+        gross_profit_pct: null,
+        negative_items_count: 0,
+        negative_cost_value: null,
+        negative_selling_value: null,
+        negative_gross_profit_value: null,
+        negative_gross_profit_pct: null,
+      }));
+    return [...rows, ...missing].sort((a, b) =>
+      a.upload_date < b.upload_date ? 1 : -1
+    );
+  }, [rows, outletId, fromDate, toDate, selectedOutletName]);
+
+  const missingCount = displayRows.filter((r) => r.is_missing).length;
+
   const columns = useMemo(() => [
     { field: "outlet_name", headerName: "Outlet", flex: 1, minWidth: 140 },
-    { field: "upload_date", headerName: "Upload Date", width: 120 },
+    {
+      field: "upload_date", headerName: "Upload Date", width: 140,
+      renderCell: (p) => p.row.is_missing ? (
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          <Typography variant="body2">{p.value}</Typography>
+          <Chip size="small" color="error" variant="outlined" label="Missing" />
+        </Stack>
+      ) : p.value,
+    },
+    {
+      field: "actions", headerName: "", width: 60, sortable: false, filterable: false,
+      renderCell: (p) => {
+        const hasNew = !p.row.is_missing && (p.row.new_items_count ?? 0) > 0;
+        return (
+          <IconButton
+            size="small"
+            color="warning"
+            disabled={!hasNew}
+            title={hasNew ? `View ${p.row.new_items_count} new items` : "No new items"}
+            onClick={() => setNewItemsCtx({
+              outletId: p.row.outlet_id,
+              outletName: p.row.outlet_name,
+              date: p.row.upload_date,
+            })}
+          >
+            <FiberNewIcon fontSize="small" />
+          </IconButton>
+        );
+      },
+    },
     { field: "new_items_count", headerName: "New Items", type: "number", width: 100 },
     { field: "total_items", headerName: "Total Items", type: "number", width: 110 },
     { field: "total_cost_value", headerName: "Total Cost (LKR)", type: "number", width: 150,
@@ -134,15 +270,34 @@ export default function DailyUploadReportPage() {
         </Paper>
       )}
 
+      {outletId && missingCount > 0 && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          {missingCount} missing upload{missingCount === 1 ? "" : "s"} for {selectedOutletName} in this date range.
+        </Alert>
+      )}
+
       <DataTable
-        rows={rows}
+        rows={displayRows}
         columns={columns}
         loading={loading}
         emptyText="No uploads in this date range"
         height={600}
         initialPageSize={50}
         pageSizeOptions={[25, 50, 100]}
+        getRowClassName={(p) => p.row.is_missing ? "row-missing" : ""}
+        sx={{
+          "& .row-missing": { bgcolor: "rgba(211, 47, 47, 0.08)" },
+        }}
       />
+
+      {newItemsCtx && (
+        <NewItemsDialog
+          outletId={newItemsCtx.outletId}
+          outletName={newItemsCtx.outletName}
+          date={newItemsCtx.date}
+          onClose={() => setNewItemsCtx(null)}
+        />
+      )}
     </Layout>
   );
 }

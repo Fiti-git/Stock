@@ -6,6 +6,7 @@ import {
 import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedIn";
 import CloseIcon from "@mui/icons-material/Close";
 import VisibilityIcon from "@mui/icons-material/Visibility";
+import FiberNewIcon from "@mui/icons-material/FiberNew";
 import CheckIcon from "@mui/icons-material/Check";
 import BlockIcon from "@mui/icons-material/Block";
 import Layout from "../../components/Layout";
@@ -103,12 +104,72 @@ function DiffDialog({ log, onClose, onApprove, onReject, processing }) {
   );
 }
 
+function NewItemsDialog({ log, onClose }) {
+  const [diff, setDiff] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setLoading(true);
+    getUploadDiff(log.id)
+      .then(({ data }) => setDiff(data))
+      .catch(() => setError("Could not load new items."))
+      .finally(() => setLoading(false));
+  }, [log.id]);
+
+  const columns = [
+    { field: "item_code", headerName: "Code", flex: 0.8, minWidth: 110 },
+    { field: "item_name", headerName: "Name", flex: 1.8, minWidth: 200 },
+    { field: "cost_price", headerName: "Cost", flex: 0.5, minWidth: 90, valueGetter: (v) => v != null ? Number(v).toFixed(2) : "—" },
+    { field: "selling_price", headerName: "Sell", flex: 0.5, minWidth: 90, valueGetter: (v) => v != null ? Number(v).toFixed(2) : "—" },
+    { field: "pos_quantity", headerName: "Qty", flex: 0.5, minWidth: 80, valueGetter: (v) => v != null ? Number(v).toFixed(0) : "—" },
+  ];
+
+  const rows = diff?.new_items ?? [];
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="lg" fullWidth>
+      <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <Box>
+          <Typography variant="h4">New Items ({rows.length})</Typography>
+          <Typography variant="caption" color="text.secondary">
+            {log.outlet_name} · <b>{log.snapshot_date}</b> · {log.filename}
+          </Typography>
+        </Box>
+        <IconButton onClick={onClose}><CloseIcon /></IconButton>
+      </DialogTitle>
+      <DialogContent dividers>
+        {loading && <Box sx={{ display: "grid", placeItems: "center", py: 6 }}><CircularProgress /></Box>}
+        {error && <Alert severity="error">{error}</Alert>}
+        {diff && (
+          rows.length === 0 ? (
+            <EmptyState title="No new items" description="This upload contains no new products." />
+          ) : (
+            <DataTable
+              rows={rows}
+              columns={columns}
+              getRowId={(r) => r.item_code}
+              height={560}
+              initialPageSize={25}
+              pageSizeOptions={[25, 50, 100]}
+            />
+          )
+        )}
+      </DialogContent>
+      <DialogActions sx={{ px: 3, py: 2 }}>
+        <Button onClick={onClose} color="inherit">Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 export default function UploadApprovalsPage() {
   const notify = useNotify();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(null);
   const [previewLog, setPreviewLog] = useState(null);
+  const [newItemsLog, setNewItemsLog] = useState(null);
 
   const load = () => {
     setLoading(true);
@@ -153,12 +214,22 @@ export default function UploadApprovalsPage() {
       ),
     },
     {
-      field: "actions", headerName: "", width: 220, sortable: false, filterable: false,
+      field: "actions", headerName: "", width: 260, sortable: false, filterable: false,
       renderCell: (p) => {
         const isP = processing && processing.startsWith(String(p.row.id));
+        const hasNew = (p.row.new_items_count ?? 0) > 0;
         return (
-          <Stack direction="row" spacing={0.5}>
+          <Stack direction="row" spacing={0.5} alignItems="center">
             <Button size="small" startIcon={<VisibilityIcon />} onClick={() => setPreviewLog(p.row)}>Preview</Button>
+            <IconButton
+              size="small"
+              color="warning"
+              title={hasNew ? `View ${p.row.new_items_count} new items` : "No new items"}
+              disabled={!hasNew}
+              onClick={() => setNewItemsLog(p.row)}
+            >
+              <FiberNewIcon fontSize="small" />
+            </IconButton>
             <IconButton size="small" color="success" onClick={() => handle(p.row.id, "approve")} disabled={isP}><CheckIcon fontSize="small" /></IconButton>
             <IconButton size="small" color="error" onClick={() => handle(p.row.id, "reject")} disabled={isP}><BlockIcon fontSize="small" /></IconButton>
           </Stack>
@@ -193,6 +264,10 @@ export default function UploadApprovalsPage() {
           onReject={(id) => handle(id, "reject")}
           processing={processing}
         />
+      )}
+
+      {newItemsLog && (
+        <NewItemsDialog log={newItemsLog} onClose={() => setNewItemsLog(null)} />
       )}
     </Layout>
   );

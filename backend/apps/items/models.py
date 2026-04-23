@@ -47,6 +47,13 @@ class Item(models.Model):
     is_nbci = models.BooleanField(default=False)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING_BARCODE)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    # Inventory + pricing for in-house POS (separate from external PosSnapshot flow)
+    on_hand = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    tax_rate_pct = models.DecimalField(max_digits=6, decimal_places=3, default=0)
+    sell_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    cost_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    reorder_level = models.DecimalField(max_digits=14, decimal_places=3, default=0)
     barcode_assigned_at = models.DateTimeField(null=True, blank=True)
     barcode_assigned_by = models.ForeignKey(
         "accounts.User",
@@ -170,3 +177,73 @@ class PendingItem(models.Model):
 
     def __str__(self):
         return f"Pending: {self.item_code} — {self.item_name} ({self.change_type})"
+
+
+class StockMovement(models.Model):
+    """
+    Append-only ledger of stock changes. Every POS sale, void, return,
+    GRN, damage, adjustment, or variance correction writes a row here.
+    Item.on_hand is the running balance; this table is the audit trail.
+    """
+
+    class Kind(models.TextChoices):
+        OPENING = "opening", "Opening Balance"
+        SALE = "sale", "POS Sale"
+        VOID = "void", "Bill Void"
+        RETURN = "return", "Customer Return"
+        GRN = "grn", "Goods Received"
+        DAMAGE = "damage", "Damage / Wastage"
+        ADJUSTMENT = "adjustment", "Manual Adjustment"
+        VARIANCE = "variance", "Variance Correction"
+        TRANSFER_IN = "transfer_in", "Transfer In"
+        TRANSFER_OUT = "transfer_out", "Transfer Out"
+
+    outlet = models.ForeignKey("outlets.Outlet", on_delete=models.CASCADE, related_name="stock_movements")
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name="stock_movements")
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    qty_change = models.DecimalField(max_digits=14, decimal_places=3)  # signed: sale negative, GRN positive
+    balance_after = models.DecimalField(max_digits=14, decimal_places=3)
+    unit_cost = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+
+    ref_type = models.CharField(max_length=40, blank=True, default="")   # "Bill", "GRN", etc.
+    ref_id = models.CharField(max_length=40, blank=True, default="")
+
+    note = models.CharField(max_length=500, blank=True, default="")
+    created_by = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name="stock_movements")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "stock_movements"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["outlet", "item", "-created_at"]),
+            models.Index(fields=["kind", "-created_at"]),
+            models.Index(fields=["ref_type", "ref_id"]),
+        ]
+
+    def __str__(self):
+        return f"{self.kind} {self.item_id} {self.qty_change:+}"
+
+
+class ItemPriceHistory(models.Model):
+    """Append-only log of sell/cost price changes per item."""
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name="price_history")
+    outlet = models.ForeignKey("outlets.Outlet", on_delete=models.CASCADE, related_name="price_history")
+    old_sell = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    new_sell = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    old_cost = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    new_cost = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    source = models.CharField(max_length=40, blank=True, default="manual")   # manual, grn, bulk_update, api
+    note = models.CharField(max_length=500, blank=True, default="")
+    changed_by = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name="price_changes")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "item_price_history"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["item", "-created_at"]),
+            models.Index(fields=["outlet", "-created_at"]),
+        ]

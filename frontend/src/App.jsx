@@ -25,9 +25,13 @@ import NegativePosReportPage from "./pages/admin/NegativePosReportPage";
 import AdminDashboardPage from "./pages/admin/AdminDashboardPage";
 import ProductMasterPage from "./pages/manager/ProductMasterPage";
 import CountedStockDailyPage from "./pages/manager/CountedStockDailyPage";
+import CountReviewPage from "./pages/manager/CountReviewPage";
+import VarianceReconciliationPage from "./pages/manager/VarianceReconciliationPage";
 import BarcodeMasterPage from "./pages/admin/BarcodeMasterPage";
 import ProductHistoryPage from "./pages/admin/ProductHistoryPage";
 import DailyUploadReportPage from "./pages/admin/DailyUploadReportPage";
+import StockVarianceReportPage from "./pages/admin/StockVarianceReportPage";
+import CountedItemsReportPage from "./pages/admin/CountedItemsReportPage";
 import MobileDevicesPage from "./pages/admin/MobileDevicesPage";
 import LoginEventsPage from "./pages/admin/LoginEventsPage";
 import OrphanCleanupPage from "./pages/admin/OrphanCleanupPage";
@@ -63,6 +67,25 @@ import PurchasePlansPage from "./pages/admin/PurchasePlansPage";
 import PurchasePlanDetailPage from "./pages/admin/PurchasePlanDetailPage";
 import StockAgePage from "./pages/admin/StockAgePage";
 
+const PosTerminalPage = lazy(() => import("./pages/pos/PosTerminalPage"));
+const PosShiftsPage = lazy(() => import("./pages/pos/PosShiftsPage"));
+const PosBillsPage = lazy(() => import("./pages/pos/PosBillsPage"));
+const PosDailySalesPage = lazy(() => import("./pages/pos/PosDailySalesPage"));
+const PosCustomersPage = lazy(() => import("./pages/pos/PosCustomersPage"));
+const PosStockMovementsPage = lazy(() => import("./pages/pos/PosStockMovementsPage"));
+const PosOutletSettingsPage = lazy(() => import("./pages/pos/PosOutletSettingsPage"));
+const PosGrnEntryPage = lazy(() => import("./pages/pos/PosGrnEntryPage"));
+const PosBulkPricePage = lazy(() => import("./pages/pos/PosBulkPricePage"));
+const PosPriceHistoryPage = lazy(() => import("./pages/pos/PosPriceHistoryPage"));
+const PosPromotionsPage = lazy(() => import("./pages/pos/PosPromotionsPage"));
+const PosProductsPage = lazy(() => import("./pages/pos/PosProductsPage"));
+const PosLowStockPage = lazy(() => import("./pages/pos/PosLowStockPage"));
+const PosReportsPage = lazy(() => import("./pages/pos/PosReportsPage"));
+const PosExpensesPage = lazy(() => import("./pages/pos/PosExpensesPage"));
+const PosPurchaseReturnsPage = lazy(() => import("./pages/pos/PosPurchaseReturnsPage"));
+const PosPayablesPage = lazy(() => import("./pages/pos/PosPayablesPage"));
+const PosZReportPage = lazy(() => import("./pages/pos/PosZReportPage"));
+const TerminalPage = lazy(() => import("./pages/terminal/TerminalPage"));
 const LicenseSetupRequired = lazy(() => import("./pages/LicenseSetupRequired"));
 const LicenseConfiguration = lazy(() => import("./pages/admin/LicenseConfiguration"));
 const DbManagement = lazy(() => import("./pages/DbManagement"));
@@ -104,9 +127,12 @@ function HomeRedirect() {
   const { user, loading } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
+  // If hosted on a pos.* subdomain (e.g. pos.merchant.com), always land on terminal
+  const isPosHost = typeof window !== "undefined" && /^pos[\.-]/i.test(window.location.hostname);
+  if (isPosHost) return <Navigate to="/terminal" replace />;
   if (user.role === "ServiceProvider") return <Navigate to="/admin/license-configuration" replace />;
   if (user.role === "super_admin") return <Navigate to="/admin/dashboard" replace />;
-  if (user.role === "store_user" || user.role === "staff") return <Navigate to="/count" replace />;
+  if (user.role === "store_user" || user.role === "staff") return <Navigate to="/terminal" replace />;
   if (user.role === "admin") return <Navigate to="/admin/dashboard" replace />;
   return <Navigate to="/dashboard" replace />;
 }
@@ -144,6 +170,8 @@ export default function App() {
                     <Route path="/admin/barcode-master" element={<PermissionRoute code="nav.barcode_master"><BarcodeMasterPage /></PermissionRoute>} />
                     <Route path="/admin/products/:itemId/history" element={<RoleRoute allowedRoles={["manager","admin","super_admin"]}><ProductHistoryPage /></RoleRoute>} />
                     <Route path="/admin/reports/daily-upload" element={<PermissionRoute code="nav.daily_upload_report"><DailyUploadReportPage /></PermissionRoute>} />
+                    <Route path="/admin/reports/stock-variance" element={<PermissionRoute code="nav.stock_variance"><StockVarianceReportPage /></PermissionRoute>} />
+                    <Route path="/admin/reports/counted-items" element={<PermissionRoute code="nav.counted_items_report"><CountedItemsReportPage /></PermissionRoute>} />
                     <Route path="/admin/mobile-devices" element={<PermissionRoute code="nav.mobile_devices"><MobileDevicesPage /></PermissionRoute>} />
                     <Route path="/admin/login-events" element={<PermissionRoute code="nav.login_events"><LoginEventsPage /></PermissionRoute>} />
                     <Route path="/admin/orphan-cleanup" element={<PermissionRoute code="nav.orphan_cleanup"><OrphanCleanupPage /></PermissionRoute>} />
@@ -188,6 +216,28 @@ export default function App() {
                     <Route path="/items/history" element={<PermissionRoute code="nav.item_pos_history"><ItemPosHistoryPage /></PermissionRoute>} />
                     <Route path="/product-master" element={<PermissionRoute code="nav.product_master"><ProductMasterPage /></PermissionRoute>} />
                     <Route path="/daily-counts" element={<PermissionRoute code="nav.daily_counts"><CountedStockDailyPage /></PermissionRoute>} />
+                    <Route path="/count-review" element={<PermissionRoute code="nav.count_review"><CountReviewPage /></PermissionRoute>} />
+                    <Route path="/variance-reconciliation" element={<PermissionRoute code="nav.variance_reconciliation"><VarianceReconciliationPage /></PermissionRoute>} />
+                    <Route path="/pos" element={<PermissionRoute code="nav.pos_terminal"><PosTerminalPage /></PermissionRoute>} />
+                    <Route path="/pos/shifts" element={<PermissionRoute code="nav.pos_shifts"><PosShiftsPage /></PermissionRoute>} />
+                    <Route path="/pos/bills" element={<PermissionRoute code="nav.pos_bills"><PosBillsPage /></PermissionRoute>} />
+                    <Route path="/pos/daily-sales" element={<PermissionRoute code="nav.pos_daily_sales"><PosDailySalesPage /></PermissionRoute>} />
+                    <Route path="/pos/customers" element={<PermissionRoute code="nav.pos_customers"><PosCustomersPage /></PermissionRoute>} />
+                    <Route path="/pos/stock" element={<PermissionRoute code="nav.pos_stock"><PosStockMovementsPage /></PermissionRoute>} />
+                    <Route path="/pos/outlet-settings" element={<PermissionRoute code="nav.pos_outlet_settings"><PosOutletSettingsPage /></PermissionRoute>} />
+                    <Route path="/pos/grn" element={<PermissionRoute code="nav.pos_grn_entry"><PosGrnEntryPage /></PermissionRoute>} />
+                    <Route path="/pos/prices/bulk" element={<PermissionRoute code="nav.pos_bulk_price"><PosBulkPricePage /></PermissionRoute>} />
+                    <Route path="/pos/prices/history" element={<PermissionRoute code="nav.pos_price_history"><PosPriceHistoryPage /></PermissionRoute>} />
+                    <Route path="/pos/promotions" element={<PermissionRoute code="nav.pos_promotions"><PosPromotionsPage /></PermissionRoute>} />
+                    <Route path="/pos/products" element={<PermissionRoute code="nav.pos_products"><PosProductsPage /></PermissionRoute>} />
+                    <Route path="/pos/low-stock" element={<PermissionRoute code="nav.pos_low_stock"><PosLowStockPage /></PermissionRoute>} />
+                    <Route path="/pos/reports" element={<PermissionRoute code="nav.pos_reports"><PosReportsPage /></PermissionRoute>} />
+                    <Route path="/pos/expenses" element={<PermissionRoute code="nav.pos_expenses"><PosExpensesPage /></PermissionRoute>} />
+                    <Route path="/pos/purchase-returns" element={<PermissionRoute code="nav.pos_rts"><PosPurchaseReturnsPage /></PermissionRoute>} />
+                    <Route path="/pos/payables" element={<PermissionRoute code="nav.pos_payables"><PosPayablesPage /></PermissionRoute>} />
+                    <Route path="/pos/z-report" element={<PermissionRoute code="nav.pos_shifts"><PosZReportPage /></PermissionRoute>} />
+                    <Route path="/terminal" element={<PermissionRoute code="nav.pos_terminal"><TerminalPage /></PermissionRoute>} />
+                    <Route path="/terminal/bills" element={<PermissionRoute code="nav.pos_terminal"><TerminalPage /></PermissionRoute>} />
                   </Routes>
                 </Suspense>
               </BrowserRouter>
