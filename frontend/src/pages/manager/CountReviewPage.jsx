@@ -35,7 +35,9 @@ export default function CountReviewPage() {
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [selection, setSelection] = useState([]);
+  const [selection, setSelection] = useState({ type: "include", ids: new Set() });
+  const selectionIds = Array.from(selection.ids);
+  const selectionCount = selection.ids.size;
   const [rejectTarget, setRejectTarget] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
   const PAGE_SIZE = 25;
@@ -57,7 +59,7 @@ export default function CountReviewPage() {
   }, [outletId, dateFrom, dateTo, search, status, page, notify]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); setSelection([]); }, [outletId, dateFrom, dateTo, search, status]);
+  useEffect(() => { setPage(1); setSelection({ type: "include", ids: new Set() }); }, [outletId, dateFrom, dateTo, search, status]);
 
   const handleApprove = async (id) => {
     try {
@@ -70,11 +72,11 @@ export default function CountReviewPage() {
   };
 
   const handleBulkApprove = async () => {
-    if (!selection.length) return;
+    if (!selectionCount) return;
     try {
-      const res = await bulkApproveCounts(selection);
+      const res = await bulkApproveCounts(selectionIds);
       notify(`Approved ${res.data.count} count(s).`, "success");
-      setSelection([]);
+      setSelection({ type: "include", ids: new Set() });
       load();
     } catch (err) {
       notify(err?.response?.data?.detail || "Bulk approve failed.", "error");
@@ -167,8 +169,8 @@ export default function CountReviewPage() {
         <TextField size="small" placeholder="Search item code or name…" value={search} onChange={(e) => setSearch(e.target.value)} sx={{ flex: 1 }}
           InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }} />
         <Button variant="contained" startIcon={<RefreshIcon />} onClick={load}>Refresh</Button>
-        <Button variant="contained" color="success" startIcon={<CheckIcon />} disabled={!selection.length} onClick={handleBulkApprove}>
-          Approve {selection.length > 0 ? `(${selection.length})` : ""}
+        <Button variant="contained" color="success" startIcon={<CheckIcon />} disabled={!selectionCount} onClick={handleBulkApprove}>
+          Approve {selectionCount > 0 ? `(${selectionCount})` : ""}
         </Button>
       </Stack>
 

@@ -47,7 +47,9 @@ export default function VarianceReconciliationPage() {
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [selection, setSelection] = useState([]);
+  const [selection, setSelection] = useState({ type: "include", ids: new Set() });
+  const selectionIds = Array.from(selection.ids);
+  const selectionCount = selection.ids.size;
 
   const [resolveTarget, setResolveTarget] = useState(null);
   const [resolveForm, setResolveForm] = useState({ status: "explained", note: "", adjustment_qty: "" });
@@ -87,7 +89,7 @@ export default function VarianceReconciliationPage() {
 
   useEffect(() => { loadSessions(); }, [loadSessions]);
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); setSelection([]); }, [outletId, sessionFilter, dateFrom, dateTo, statusFilter, search]);
+  useEffect(() => { setPage(1); setSelection({ type: "include", ids: new Set() }); }, [outletId, sessionFilter, dateFrom, dateTo, statusFilter, search]);
 
   const openResolve = (row) => {
     setResolveTarget(row);
@@ -112,10 +114,10 @@ export default function VarianceReconciliationPage() {
 
   const handleBulkResolve = async () => {
     try {
-      const res = await bulkResolveVariance(selection, bulkForm);
+      const res = await bulkResolveVariance(selectionIds, bulkForm);
       notify(`Resolved ${res.data.count} record(s).`, "success");
       setBulkOpen(false);
-      setSelection([]);
+      setSelection({ type: "include", ids: new Set() });
       load();
     } catch (err) {
       notify(err?.response?.data?.detail || "Bulk resolve failed.", "error");
@@ -202,8 +204,8 @@ export default function VarianceReconciliationPage() {
         <TextField size="small" placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)}
           InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }} sx={{ flex: 1, minWidth: 200 }} />
         <Button variant="contained" startIcon={<RefreshIcon />} onClick={load}>Refresh</Button>
-        <Button variant="contained" color="primary" disabled={!selection.length} onClick={() => setBulkOpen(true)}>
-          Bulk resolve {selection.length > 0 ? `(${selection.length})` : ""}
+        <Button variant="contained" color="primary" disabled={!selectionCount} onClick={() => setBulkOpen(true)}>
+          Bulk resolve {selectionCount > 0 ? `(${selectionCount})` : ""}
         </Button>
         {selectedSession && selectedSession.status === "open" && (
           <Button variant="outlined" color="warning" onClick={handleCloseSession}>
@@ -266,7 +268,7 @@ export default function VarianceReconciliationPage() {
 
       {/* Bulk resolve */}
       <Dialog open={bulkOpen} onClose={() => setBulkOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Bulk resolve {selection.length} record(s)</DialogTitle>
+        <DialogTitle>Bulk resolve {selectionCount} record(s)</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField select label="Status" value={bulkForm.status} onChange={(e) => setBulkForm({ ...bulkForm, status: e.target.value })}>
