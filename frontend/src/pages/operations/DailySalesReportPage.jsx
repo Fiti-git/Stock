@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import {
-  Box, Paper, Typography, Grid, Card, CardContent,
-  CircularProgress, Alert,
+  Typography, Grid, Card, CardContent, Alert,
 } from "@mui/material";
 import PointOfSaleIcon from "@mui/icons-material/PointOfSale";
 import Layout from "../../components/Layout";
 import { PageHeader } from "../../components/ui";
 import ReportFilterBar from "../../components/operations/ReportFilterBar";
+import PaginatedTable from "../../components/operations/PaginatedTable";
 import { getDailySalesReport } from "../../api/reports";
 
 function lkr(n) {
@@ -81,54 +81,23 @@ export default function DailySalesReportPage() {
         ))}
       </Grid>
 
-      <Paper variant="outlined" sx={{ overflow: "auto" }}>
-        {loading ? (
-          <Box sx={{ display: "flex", justifyContent: "center", p: 6 }}>
-            <CircularProgress />
-          </Box>
-        ) : (
-          <Box component="table" sx={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
-            <thead>
-              <tr style={{ background: "rgba(0,0,0,0.04)", textAlign: "left" }}>
-                {["Date", "Outlet", "Bills", "Items", "Gross", "Discount", "Returns", "Net", "Avg Bill"].map((h, i) => (
-                  <th
-                    key={h}
-                    style={{
-                      padding: "8px 12px",
-                      textAlign: i >= 2 ? "right" : "left",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {(data?.rows || []).map((r, i) => (
-                <tr key={`${r.outlet_id}-${r.date}-${i}`} style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
-                  <td style={{ padding: "6px 12px" }}>{r.date}</td>
-                  <td style={{ padding: "6px 12px" }}>{r.outlet_name || "—"}</td>
-                  <td style={{ padding: "6px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{r.bills}</td>
-                  <td style={{ padding: "6px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{Number(r.items || 0).toLocaleString()}</td>
-                  <td style={{ padding: "6px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{lkr(r.gross_sales)}</td>
-                  <td style={{ padding: "6px 12px", textAlign: "right", color: "#b45309", fontVariantNumeric: "tabular-nums" }}>{lkr(r.discount)}</td>
-                  <td style={{ padding: "6px 12px", textAlign: "right", color: r.returns_value < 0 ? "#b91c1c" : "inherit", fontVariantNumeric: "tabular-nums" }}>{lkr(r.returns_value)}</td>
-                  <td style={{ padding: "6px 12px", textAlign: "right", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{lkr(r.net_sales)}</td>
-                  <td style={{ padding: "6px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{lkr(r.avg_bill_value)}</td>
-                </tr>
-              ))}
-              {(data?.rows?.length ?? 0) === 0 && !loading && (
-                <tr>
-                  <td colSpan={9} style={{ padding: 24, textAlign: "center", color: "rgba(0,0,0,0.5)" }}>
-                    No sales data in this window.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </Box>
-        )}
-      </Paper>
+      <PaginatedTable
+        loading={loading}
+        rows={data?.rows || []}
+        getRowKey={(r, i) => `${r.outlet_id}-${r.date}-${i}`}
+        emptyText="No sales data in this window."
+        columns={[
+          { header: "Date",     render: (r) => r.date },
+          { header: "Outlet",   render: (r) => r.outlet_name || "—" },
+          { header: "Bills",    align: "right", render: (r) => r.bills },
+          { header: "Items",    align: "right", render: (r) => Number(r.items || 0).toLocaleString() },
+          { header: "Gross",    align: "right", render: (r) => lkr(r.gross_sales) },
+          { header: "Discount", align: "right", render: (r) => lkr(r.discount),       cellStyle: () => ({ color: "#b45309" }) },
+          { header: "Returns",  align: "right", render: (r) => lkr(r.returns_value),  cellStyle: (r) => ({ color: r.returns_value < 0 ? "#b91c1c" : "inherit" }) },
+          { header: "Net",      align: "right", render: (r) => lkr(r.net_sales),      cellStyle: () => ({ fontWeight: 600 }) },
+          { header: "Avg Bill", align: "right", render: (r) => lkr(r.avg_bill_value) },
+        ]}
+      />
     </Layout>
   );
 }

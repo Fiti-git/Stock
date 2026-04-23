@@ -14,6 +14,9 @@ export const acceptChange = (pendingId) =>
 export const rejectChange = (pendingId) =>
   api.post(`/items/pending/${pendingId}/reject-change/`);
 
+export const markPendingNbci = (pendingId) =>
+  api.post(`/items/pending/${pendingId}/mark-nbci/`);
+
 export const getItemDetail = (id) => api.get(`/items/${id}/`);
 
 export const getItemPosHistory = (itemId, page = 1, pageSize = 60) =>

@@ -13,6 +13,7 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import Layout from "../../components/Layout";
 import { PageHeader } from "../../components/ui";
+import PaginatedTable from "../../components/operations/PaginatedTable";
 import { getAnomalies } from "../../api/anomalies";
 
 /**
@@ -206,58 +207,22 @@ export default function AnomalyDashboardPage() {
         </DialogTitle>
         <DialogContent dividers>
           {detail && (
-            <Box sx={{ overflowX: "auto" }}>
-              <Box
-                component="table"
-                sx={{ fontSize: "0.85rem", width: "100%", borderCollapse: "collapse" }}
-              >
-                <thead>
-                  <tr style={{ textAlign: "left", background: "rgba(0,0,0,0.04)" }}>
-                    {detail.columns.map((c) => (
-                      <th
-                        key={c.field}
-                        style={{
-                          padding: "8px 12px",
-                          textAlign: c.numeric ? "right" : "left",
-                        }}
-                      >
-                        {c.header}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {detail.items.map((row, i) => (
-                    <tr key={i} style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
-                      {detail.columns.map((c) => (
-                        <td
-                          key={c.field}
-                          style={{
-                            padding: "6px 12px",
-                            textAlign: c.numeric ? "right" : "left",
-                            fontVariantNumeric: c.numeric ? "tabular-nums" : "normal",
-                            fontWeight: c.field === "delta_pct" || c.field === "wastage_pct" ? 600 : "normal",
-                            color:
-                              c.format === "pct" && Number(row[c.field]) < 0 ? "#b91c1c" :
-                              c.format === "pct" && Number(row[c.field]) > 0 && c.field !== "delta_pct" ? "#b45309" :
-                              "inherit",
-                          }}
-                        >
-                          {formatValue(row[c.field], c.format)}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                  {detail.items.length === 0 && (
-                    <tr>
-                      <td colSpan={detail.columns.length} style={{ padding: 24, textAlign: "center", color: "rgba(0,0,0,0.5)" }}>
-                        Nothing flagged in this window.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </Box>
-            </Box>
+            <PaginatedTable
+              rows={detail.items}
+              emptyText="Nothing flagged in this window."
+              columns={detail.columns.map((c) => ({
+                header: c.header,
+                align: c.numeric ? "right" : "left",
+                render: (row) => formatValue(row[c.field], c.format),
+                cellStyle: (row) => ({
+                  fontWeight: c.field === "delta_pct" || c.field === "wastage_pct" ? 600 : "normal",
+                  color:
+                    c.format === "pct" && Number(row[c.field]) < 0 ? "#b91c1c" :
+                    c.format === "pct" && Number(row[c.field]) > 0 && c.field !== "delta_pct" ? "#b45309" :
+                    "inherit",
+                }),
+              }))}
+            />
           )}
         </DialogContent>
         <DialogActions>

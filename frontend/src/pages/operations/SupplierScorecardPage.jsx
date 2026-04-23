@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import {
   Box, Card, CardContent, Typography, Grid, CircularProgress, Alert,
-  Paper, Chip, Stack, Dialog, DialogTitle, DialogContent, DialogActions, Button,
+  Chip, Stack, Dialog, DialogTitle, DialogContent, DialogActions, Button,
 } from "@mui/material";
 import LeaderboardIcon from "@mui/icons-material/Leaderboard";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import Layout from "../../components/Layout";
 import { PageHeader } from "../../components/ui";
 import ReportFilterBar from "../../components/operations/ReportFilterBar";
+import PaginatedTable from "../../components/operations/PaginatedTable";
 import { getSupplierScorecard, getSupplierDetailScorecard } from "../../api/suppliers";
 
 function lkr(n) {
@@ -97,73 +98,52 @@ export default function SupplierScorecardPage() {
         ))}
       </Grid>
 
-      <Paper variant="outlined" sx={{ overflow: "auto" }}>
-        {loading ? (
-          <Box sx={{ display: "flex", justifyContent: "center", p: 6 }}>
-            <CircularProgress />
-          </Box>
-        ) : (
-          <Box component="table" sx={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
-            <thead>
-              <tr style={{ background: "rgba(0,0,0,0.04)", textAlign: "left" }}>
-                <th style={{ padding: "8px 12px" }}>Code</th>
-                <th style={{ padding: "8px 12px" }}>Name</th>
-                <th style={{ padding: "8px 12px", textAlign: "right" }}>GRN</th>
-                <th style={{ padding: "8px 12px", textAlign: "right" }}>RTS</th>
-                <th style={{ padding: "8px 12px", textAlign: "right" }}>Net Purchases</th>
-                <th style={{ padding: "8px 12px", textAlign: "right" }}>RTS %</th>
-                <th style={{ padding: "8px 12px", textAlign: "right" }}>Deliveries</th>
-                <th style={{ padding: "8px 12px", textAlign: "right" }}>Items</th>
-                <th style={{ padding: "8px 12px", textAlign: "right" }}>Avg / delivery</th>
-                <th style={{ padding: "8px 12px" }}>Last delivery</th>
-                <th style={{ padding: "8px 12px", width: 60 }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.code} style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
-                  <td style={{ padding: "6px 12px", fontFamily: "monospace" }}>{r.code}</td>
-                  <td style={{ padding: "6px 12px" }}>
-                    {r.name || <span style={{ color: "rgba(0,0,0,0.4)" }}>— unnamed —</span>}
-                    {r.is_active === false && (
-                      <Chip size="small" label="inactive" sx={{ ml: 1 }} variant="outlined" />
-                    )}
-                  </td>
-                  <td style={{ padding: "6px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{lkr(r.grn_value)}</td>
-                  <td style={{ padding: "6px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums", color: r.rts_value > 0 ? "#b45309" : "inherit" }}>{lkr(r.rts_value)}</td>
-                  <td style={{ padding: "6px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{lkr(r.net_purchases)}</td>
-                  <td style={{ padding: "6px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                    {r.rts_rate_pct == null ? "—" : (
-                      <Chip
-                        size="small"
-                        label={`${r.rts_rate_pct}%`}
-                        color={r.rts_rate_pct > 5 ? "error" : r.rts_rate_pct > 2 ? "warning" : "success"}
-                        variant="outlined"
-                      />
-                    )}
-                  </td>
-                  <td style={{ padding: "6px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{r.deliveries}</td>
-                  <td style={{ padding: "6px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{r.distinct_items}</td>
-                  <td style={{ padding: "6px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{lkr(r.avg_delivery_value)}</td>
-                  <td style={{ padding: "6px 12px", color: "rgba(0,0,0,0.6)" }}>{r.last_delivery || "—"}</td>
-                  <td style={{ padding: "6px 12px", textAlign: "right" }}>
-                    <Button size="small" startIcon={<VisibilityIcon />} onClick={() => openDrill(r)}>
-                      Drill
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-              {rows.length === 0 && !loading && (
-                <tr>
-                  <td colSpan={11} style={{ padding: 24, textAlign: "center", color: "rgba(0,0,0,0.5)" }}>
-                    No supplier activity in this window.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </Box>
-        )}
-      </Paper>
+      <PaginatedTable
+        loading={loading}
+        rows={rows}
+        getRowKey={(r) => r.code}
+        emptyText="No supplier activity in this window."
+        columns={[
+          { header: "Code", mono: true, render: (r) => r.code },
+          {
+            header: "Name",
+            render: (r) => (
+              <>
+                {r.name || <span style={{ color: "rgba(0,0,0,0.4)" }}>— unnamed —</span>}
+                {r.is_active === false && (
+                  <Chip size="small" label="inactive" sx={{ ml: 1 }} variant="outlined" />
+                )}
+              </>
+            ),
+          },
+          { header: "GRN",           align: "right", render: (r) => lkr(r.grn_value) },
+          { header: "RTS",           align: "right", render: (r) => lkr(r.rts_value),
+            cellStyle: (r) => ({ color: r.rts_value > 0 ? "#b45309" : "inherit" }) },
+          { header: "Net Purchases", align: "right", render: (r) => lkr(r.net_purchases),
+            cellStyle: () => ({ fontWeight: 600 }) },
+          { header: "RTS %",         align: "right", render: (r) =>
+              r.rts_rate_pct == null ? "—" : (
+                <Chip
+                  size="small"
+                  label={`${r.rts_rate_pct}%`}
+                  color={r.rts_rate_pct > 5 ? "error" : r.rts_rate_pct > 2 ? "warning" : "success"}
+                  variant="outlined"
+                />
+              ),
+          },
+          { header: "Deliveries",    align: "right", render: (r) => r.deliveries },
+          { header: "Items",         align: "right", render: (r) => r.distinct_items },
+          { header: "Avg / delivery",align: "right", render: (r) => lkr(r.avg_delivery_value) },
+          { header: "Last delivery", render: (r) => r.last_delivery || "—",
+            cellStyle: () => ({ color: "rgba(0,0,0,0.6)" }) },
+          { header: "", align: "right", width: 60, render: (r) => (
+              <Button size="small" startIcon={<VisibilityIcon />} onClick={() => openDrill(r)}>
+                Drill
+              </Button>
+            ),
+          },
+        ]}
+      />
 
       {/* Supplier drill-down */}
       <Dialog open={!!drill} onClose={() => setDrill(null)} maxWidth="lg" fullWidth>

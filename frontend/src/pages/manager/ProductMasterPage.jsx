@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Stack, TextField, MenuItem, IconButton, Tooltip, Chip, InputAdornment, Grid, Typography, Box, Button, Divider,
+  FormControlLabel, Switch,
 } from "@mui/material";
 import EditNoteIcon from "@mui/icons-material/EditNote";
 import EditIcon from "@mui/icons-material/Edit";
@@ -73,6 +74,7 @@ export default function ProductMasterPage() {
       const payload = {
         item_name: editing.item_name,
         category: editing.category, rack_number: editing.rack_number, shelf: editing.shelf,
+        is_nbci: Boolean(editing.is_nbci),
       };
       const { data } = await updateItem(editing.id, payload);
       setItems((p) => p.map((it) => it.id === data.id ? { ...it, ...data, barcode: it.barcode, barcodes: it.barcodes } : it));
@@ -102,6 +104,12 @@ export default function ProductMasterPage() {
     { field: "category", headerName: "Category", flex: 0.8, minWidth: 110, valueGetter: (v) => v || "—" },
     { field: "rack_number", headerName: "Rack", flex: 0.5, minWidth: 80, valueGetter: (v) => v || "—" },
     { field: "shelf", headerName: "Shelf", flex: 0.5, minWidth: 80, valueGetter: (v) => v || "—" },
+    {
+      field: "is_nbci", headerName: "NBCI", flex: 0.45, minWidth: 80,
+      renderCell: (p) => p.value
+        ? <Chip size="small" label="Yes" color="secondary" />
+        : <Chip size="small" label="No" variant="outlined" />,
+    },
     ...(isAdmin ? [{ field: "outlet_name", headerName: "Outlet", flex: 0.9, minWidth: 130 }] : []),
     { field: "latest_cost_price", headerName: "Cost", type: "number", flex: 0.6, minWidth: 90, valueGetter: (v) => v != null ? Number(v).toFixed(2) : "—" },
     { field: "latest_selling_price", headerName: "Sell", type: "number", flex: 0.6, minWidth: 90, valueGetter: (v) => v != null ? Number(v).toFixed(2) : "—" },
@@ -210,6 +218,25 @@ export default function ProductMasterPage() {
             <Grid item xs={6}><TextField fullWidth label="Rack No." placeholder="R3" value={editing?.rack_number || ""} onChange={(e) => setEditing((f) => ({ ...f, rack_number: e.target.value }))} /></Grid>
             <Grid item xs={6}><TextField fullWidth label="Shelf" placeholder="S2" value={editing?.shelf || ""} onChange={(e) => setEditing((f) => ({ ...f, shelf: e.target.value }))} /></Grid>
           </Grid>
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={Boolean(editing?.is_nbci)}
+                onChange={(e) => setEditing((f) => ({ ...f, is_nbci: e.target.checked }))}
+              />
+            }
+            label={
+              <Box>
+                <Typography variant="body2">Non-Barcoded Item (NBCI)</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {editing?.is_nbci
+                    ? "Switching off will send this item back to the Pending Review Queue."
+                    : "Turning this on removes this item from the Pending Review Queue."}
+                </Typography>
+              </Box>
+            }
+          />
         </Stack>
       </FormDialog>
     </Layout>

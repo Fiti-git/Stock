@@ -17,7 +17,7 @@ class ItemSerializer(serializers.ModelSerializer):
         fields = [
             "id", "outlet", "outlet_name", "item_code", "item_name", "barcode", "barcodes",
             "category", "category_ref", "category_ref_name",
-            "rack_number", "shelf", "status", "created_at", "barcode_assigned_at",
+            "rack_number", "shelf", "status", "is_nbci", "created_at", "barcode_assigned_at",
             "latest_cost_price", "latest_selling_price",
         ]
         read_only_fields = ["id", "created_at", "barcode_assigned_at"]
@@ -64,13 +64,14 @@ class ItemUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Item
-        fields = ["item_name", "barcode", "category", "category_ref", "rack_number", "shelf"]
+        fields = ["item_name", "barcode", "category", "category_ref", "rack_number", "shelf", "is_nbci"]
         extra_kwargs = {
             "item_name": {"required": False},
             "category": {"required": False, "allow_blank": True},
             "category_ref": {"required": False, "allow_null": True},
             "rack_number": {"required": False, "allow_blank": True},
             "shelf": {"required": False, "allow_blank": True},
+            "is_nbci": {"required": False},
         }
 
 

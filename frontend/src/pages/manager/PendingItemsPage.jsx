@@ -10,7 +10,7 @@ import CheckIcon from "@mui/icons-material/Check";
 import Layout from "../../components/Layout";
 import { PageHeader, EmptyState } from "../../components/ui";
 import { useNotify } from "../../providers/NotificationProvider";
-import { getPendingItems, assignBarcode, acceptChange, rejectChange } from "../../api/items";
+import { getPendingItems, assignBarcode, acceptChange, rejectChange, markPendingNbci } from "../../api/items";
 import { getOutlets } from "../../api/outlets";
 import { useAuth } from "../../contexts/AuthContext";
 
@@ -18,6 +18,7 @@ function NewCodeCard({ item, onAssigned }) {
   const notify = useNotify();
   const [assigning, setAssigning] = useState(false);
   const [inputs, setInputs] = useState({ barcode: "", category: "", rack_number: "", shelf: "" });
+  const [nbci, setNbci] = useState("no");
   const set = (k, v) => setInputs((p) => ({ ...p, [k]: v }));
 
   const handleAssign = async () => {
@@ -29,6 +30,20 @@ function NewCodeCard({ item, onAssigned }) {
       onAssigned(item.id);
     } catch (err) { notify.error(err.response?.data?.detail || "Failed to assign barcode."); }
     finally { setAssigning(false); }
+  };
+
+  const handleNbciChange = async (next) => {
+    setNbci(next);
+    if (next !== "yes") return;
+    setAssigning(true);
+    try {
+      await markPendingNbci(item.id);
+      notify.success("Marked as Non-Barcoded Item.");
+      onAssigned(item.id);
+    } catch (err) {
+      setNbci("no");
+      notify.error(err.response?.data?.detail || "Failed to mark as NBCI.");
+    } finally { setAssigning(false); }
   };
 
   return (
@@ -48,6 +63,16 @@ function NewCodeCard({ item, onAssigned }) {
           {item.latest_cost_price != null && <Typography variant="caption" color="text.secondary">Cost: <b>LKR {Number(item.latest_cost_price).toFixed(2)}</b></Typography>}
           {item.latest_selling_price != null && <Typography variant="caption" color="text.secondary">Sell: <b>LKR {Number(item.latest_selling_price).toFixed(2)}</b></Typography>}
         </Stack>
+
+        <TextField
+          select size="small" label="NBCI (Non-Barcoded Item)"
+          value={nbci} onChange={(e) => handleNbciChange(e.target.value)}
+          disabled={assigning} sx={{ mb: 2, minWidth: 220 }}
+          helperText={nbci === "yes" ? "Removing from queue…" : "Select Yes if this item has no barcode — it will leave the queue."}
+        >
+          <MenuItem value="no">No</MenuItem>
+          <MenuItem value="yes">Yes</MenuItem>
+        </TextField>
 
         <TextField fullWidth autoComplete="off" label="Barcode" placeholder="Scan or type barcode…"
           InputProps={{ startAdornment: <InputAdornment position="start"><QrCodeScannerIcon fontSize="small" /></InputAdornment>, style: { fontFamily: "monospace" } }}

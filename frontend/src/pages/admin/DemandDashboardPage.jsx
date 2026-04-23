@@ -17,17 +17,23 @@ export default function DemandDashboardPage() {
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 50 });
   const [rowCount, setRowCount] = useState(0);
   const [q, setQ] = useState("");
+  const [qApplied, setQApplied] = useState("");
   const [outletId, setOutletId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [summary, setSummary] = useState(null);
   const [outlets, setOutlets] = useState([]);
   const [categories, setCategories] = useState([]);
 
+  useEffect(() => {
+    const t = setTimeout(() => setQApplied(q.trim()), 300);
+    return () => clearTimeout(t);
+  }, [q]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await getDemand({
-        q: q.trim() || undefined,
+        q: qApplied || undefined,
         outletId: outletId || undefined,
         categoryId: categoryId || undefined,
         page: paginationModel.page + 1,
@@ -40,7 +46,9 @@ export default function DemandDashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [q, outletId, categoryId, paginationModel, notify]);
+    // `notify` changes identity every render — excluding it prevents a refetch loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qApplied, outletId, categoryId, paginationModel]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {

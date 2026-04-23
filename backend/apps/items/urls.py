@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import ItemListView, ItemDetailView, PendingItemListView, assign_barcode, accept_change, reject_change, catalog_list, item_price_history, update_item, item_lookup, negative_pos_report, item_barcodes, item_barcode_detail, item_history
+from .views import ItemListView, ItemDetailView, PendingItemListView, assign_barcode, accept_change, reject_change, catalog_list, item_price_history, update_item, item_lookup, negative_pos_report, item_barcodes, item_barcode_detail, item_history, mark_pending_nbci
 from .views_categories import (
     category_list_create, category_detail, category_assign_items, category_options,
 )
@@ -19,6 +19,7 @@ urlpatterns = [
     path("pending/<int:pending_id>/assign-barcode/", assign_barcode, name="assign-barcode"),
     path("pending/<int:pending_id>/accept-change/", accept_change, name="accept-change"),
     path("pending/<int:pending_id>/reject-change/", reject_change, name="reject-change"),
+    path("pending/<int:pending_id>/mark-nbci/", mark_pending_nbci, name="mark-pending-nbci"),
     path("<int:item_id>/update/", update_item, name="item-update"),
     path("<int:item_id>/barcodes/", item_barcodes, name="item-barcodes"),
     path("<int:item_id>/barcodes/<int:barcode_id>/", item_barcode_detail, name="item-barcode-detail"),

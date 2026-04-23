@@ -32,6 +32,7 @@ export default function StockAgePage() {
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 50 });
   const [rowCount, setRowCount] = useState(0);
   const [q, setQ] = useState("");
+  const [qApplied, setQApplied] = useState("");
   const [outletId, setOutletId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [bucket, setBucket] = useState("");
@@ -40,11 +41,17 @@ export default function StockAgePage() {
   const [categories, setCategories] = useState([]);
   const [recomputing, setRecomputing] = useState(false);
 
+  // Debounce the search field so typing doesn't fire one request per keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setQApplied(q.trim()), 300);
+    return () => clearTimeout(t);
+  }, [q]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await getStockAge({
-        q: q.trim() || undefined,
+        q: qApplied || undefined,
         outletId: outletId || undefined,
         categoryId: categoryId || undefined,
         bucket: bucket || undefined,
@@ -58,7 +65,9 @@ export default function StockAgePage() {
     } finally {
       setLoading(false);
     }
-  }, [q, outletId, categoryId, bucket, paginationModel, notify]);
+    // `notify` is a fresh object every render — excluding it prevents a render loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qApplied, outletId, categoryId, bucket, paginationModel]);
 
   const loadSummary = useCallback(async () => {
     try {

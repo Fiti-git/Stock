@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import {
-  Box, Paper, Typography, CircularProgress, Alert,
-  ToggleButton, ToggleButtonGroup, Stack, TextField, MenuItem,
+  Alert, ToggleButton, ToggleButtonGroup, Stack, TextField, MenuItem,
 } from "@mui/material";
 import LeaderboardIcon from "@mui/icons-material/Leaderboard";
 import Layout from "../../components/Layout";
 import { PageHeader } from "../../components/ui";
 import ReportFilterBar from "../../components/operations/ReportFilterBar";
+import PaginatedTable from "../../components/operations/PaginatedTable";
 import { getItemRankingsReport } from "../../api/reports";
 
 function lkr(n) {
@@ -101,67 +101,28 @@ export default function ItemRankingsReportPage() {
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      <Paper variant="outlined" sx={{ overflow: "auto" }}>
-        {loading ? (
-          <Box sx={{ display: "flex", justifyContent: "center", p: 6 }}>
-            <CircularProgress />
-          </Box>
-        ) : (
-          <Box component="table" sx={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
-            <thead>
-              <tr style={{ background: "rgba(0,0,0,0.04)", textAlign: "left" }}>
-                <th style={{ padding: "8px 12px", width: 40 }}>#</th>
-                <th style={{ padding: "8px 12px" }}>Item Code</th>
-                <th style={{ padding: "8px 12px" }}>Description</th>
-                {isDead ? (
-                  <>
-                    <th style={{ padding: "8px 12px", textAlign: "right" }}>Bought Qty</th>
-                    <th style={{ padding: "8px 12px", textAlign: "right" }}>Bought Value</th>
-                  </>
-                ) : (
-                  <>
-                    <th style={{ padding: "8px 12px", textAlign: "right" }}>Qty</th>
-                    <th style={{ padding: "8px 12px", textAlign: "right" }}>Revenue</th>
-                    <th style={{ padding: "8px 12px", textAlign: "right" }}>Cost</th>
-                    <th style={{ padding: "8px 12px", textAlign: "right" }}>Gross Margin</th>
-                    <th style={{ padding: "8px 12px", textAlign: "right" }}>Invoices</th>
-                  </>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={r.item_code + i} style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
-                  <td style={{ padding: "6px 12px", color: "rgba(0,0,0,0.6)" }}>{i + 1}</td>
-                  <td style={{ padding: "6px 12px", fontFamily: "monospace" }}>{r.item_code}</td>
-                  <td style={{ padding: "6px 12px" }}>{r.description || "—"}</td>
-                  {isDead ? (
-                    <>
-                      <td style={{ padding: "6px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{Number(r.bought_qty || 0).toLocaleString()}</td>
-                      <td style={{ padding: "6px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums", color: "#b91c1c", fontWeight: 600 }}>{lkr(r.bought_value)}</td>
-                    </>
-                  ) : (
-                    <>
-                      <td style={{ padding: "6px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{Number(r.sold_qty || 0).toLocaleString()}</td>
-                      <td style={{ padding: "6px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{lkr(r.sold_revenue)}</td>
-                      <td style={{ padding: "6px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums", color: "rgba(0,0,0,0.6)" }}>{lkr(r.total_cost)}</td>
-                      <td style={{ padding: "6px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums", color: "#166534" }}>{lkr(r.gross_margin)}</td>
-                      <td style={{ padding: "6px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{r.invoices}</td>
-                    </>
-                  )}
-                </tr>
-              ))}
-              {rows.length === 0 && !loading && (
-                <tr>
-                  <td colSpan={isDead ? 5 : 8} style={{ padding: 24, textAlign: "center", color: "rgba(0,0,0,0.5)" }}>
-                    {isDead ? "No dead stock found — every purchased item was sold in this window." : "No sales in this window."}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </Box>
-        )}
-      </Paper>
+      <PaginatedTable
+        loading={loading}
+        rows={rows}
+        getRowKey={(r, i) => `${r.item_code}-${i}`}
+        emptyText={isDead ? "No dead stock found — every purchased item was sold in this window." : "No sales in this window."}
+        columns={isDead ? [
+          { header: "#",            width: 40, render: (_r, i) => i + 1, cellStyle: () => ({ color: "rgba(0,0,0,0.6)" }) },
+          { header: "Item Code",    mono: true, render: (r) => r.item_code },
+          { header: "Description",  render: (r) => r.description || "—" },
+          { header: "Bought Qty",   align: "right", render: (r) => Number(r.bought_qty || 0).toLocaleString() },
+          { header: "Bought Value", align: "right", render: (r) => lkr(r.bought_value), cellStyle: () => ({ color: "#b91c1c", fontWeight: 600 }) },
+        ] : [
+          { header: "#",            width: 40, render: (_r, i) => i + 1, cellStyle: () => ({ color: "rgba(0,0,0,0.6)" }) },
+          { header: "Item Code",    mono: true, render: (r) => r.item_code },
+          { header: "Description",  render: (r) => r.description || "—" },
+          { header: "Qty",          align: "right", render: (r) => Number(r.sold_qty || 0).toLocaleString() },
+          { header: "Revenue",      align: "right", render: (r) => lkr(r.sold_revenue), cellStyle: () => ({ fontWeight: 600 }) },
+          { header: "Cost",         align: "right", render: (r) => lkr(r.total_cost),  cellStyle: () => ({ color: "rgba(0,0,0,0.6)" }) },
+          { header: "Gross Margin", align: "right", render: (r) => lkr(r.gross_margin), cellStyle: () => ({ color: "#166534" }) },
+          { header: "Invoices",     align: "right", render: (r) => r.invoices },
+        ]}
+      />
     </Layout>
   );
 }

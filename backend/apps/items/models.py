@@ -40,6 +40,11 @@ class Item(models.Model):
     )
     rack_number = models.CharField(max_length=50, blank=True, default='')
     shelf = models.CharField(max_length=50, blank=True, default='')
+    # NBCI = Non-Barcoded Item. When True the item is legitimately without a
+    # barcode (e.g. loose produce) and should not appear in the Pending Review
+    # Queue. Flipping this back to False re-creates a pending request so a
+    # barcode can be assigned later.
+    is_nbci = models.BooleanField(default=False)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING_BARCODE)
     created_at = models.DateTimeField(auto_now_add=True)
     barcode_assigned_at = models.DateTimeField(null=True, blank=True)

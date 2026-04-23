@@ -332,6 +332,8 @@ def update_item(request, item_id):
     if request.user.role != "admin" and item.outlet != request.user.outlet:
         return Response({"detail": "Not authorized for this outlet."}, status=status.HTTP_403_FORBIDDEN)
 
+    prev_is_nbci = item.is_nbci
+
     serializer = ItemUpdateSerializer(item, data=request.data, partial=True)
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -347,6 +349,36 @@ def update_item(request, item_id):
             defaults={"is_primary": not item.barcodes.exists(), "assigned_by": request.user},
         )
 
+    # NBCI toggle side-effects:
+    #   False -> True : close any open pending requests, activate the item.
+    #   True  -> False: re-open a NEW_CODE pending request if no barcode yet.
+    nbci_now = updated.is_nbci
+    if nbci_now != prev_is_nbci:
+        if nbci_now:
+            PendingItem.objects.filter(
+                first_seen_outlet=updated.outlet,
+                item_code=updated.item_code,
+                status=PendingItem.Status.PENDING,
+            ).update(status=PendingItem.Status.ASSIGNED, staff_note="Resolved as NBCI")
+            if not updated.barcodes.exists():
+                updated.status = Item.Status.ACTIVE
+                updated.save(update_fields=["status"])
+        else:
+            if not updated.barcodes.exists():
+                PendingItem.objects.get_or_create(
+                    first_seen_outlet=updated.outlet,
+                    item_code=updated.item_code,
+                    status=PendingItem.Status.PENDING,
+                    defaults={
+                        "item_name": updated.item_name,
+                        "change_type": PendingItem.ChangeType.NEW_CODE,
+                        "item": updated,
+                        "staff_note": "Re-opened after NBCI cleared",
+                    },
+                )
+                updated.status = Item.Status.PENDING_BARCODE
+                updated.save(update_fields=["status"])
+
     AuditLog.objects.create(
         user=request.user,
         action="update_item",
@@ -356,6 +388,50 @@ def update_item(request, item_id):
     )
 
     return Response(ItemSerializer(updated).data, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([IsManager])
+def mark_pending_nbci(request, pending_id):
+    """
+    Resolve a PENDING NEW_CODE entry by marking the item as Non-Barcoded (NBCI).
+    Creates/activates the outlet Item with is_nbci=True and closes the pending row.
+    """
+    try:
+        pending = PendingItem.objects.select_related("first_seen_outlet").get(
+            pk=pending_id,
+            status=PendingItem.Status.PENDING,
+            change_type=PendingItem.ChangeType.NEW_CODE,
+        )
+    except PendingItem.DoesNotExist:
+        return Response({"detail": "Pending item not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    outlet = pending.first_seen_outlet
+    if request.user.role != "admin" and outlet != request.user.outlet:
+        return Response({"detail": "Not authorized for this outlet."}, status=status.HTTP_403_FORBIDDEN)
+
+    item, _ = Item.objects.get_or_create(
+        outlet=outlet,
+        item_code=pending.item_code,
+        defaults={"item_name": pending.item_name},
+    )
+    item.is_nbci = True
+    item.status = Item.Status.ACTIVE
+    item.save(update_fields=["is_nbci", "status"])
+
+    pending.status = PendingItem.Status.ASSIGNED
+    pending.staff_note = "Resolved as NBCI"
+    pending.save(update_fields=["status", "staff_note"])
+
+    AuditLog.objects.create(
+        user=request.user,
+        action="mark_nbci",
+        entity_type="item",
+        entity_id=str(item.id),
+        details={"item_code": item.item_code, "pending_id": pending.id},
+    )
+
+    return Response({"status": "ok", "item_id": item.id})
 
 
 # ---------------------------------------------------------------------------
