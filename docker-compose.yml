@@ -46,8 +46,6 @@ services:
       - /app/node_modules
     ports:
       - "8002:5173"
-    environment:
-      - VITE_API_URL=http://123.231.60.24:1606
     depends_on:
       - backend
 
