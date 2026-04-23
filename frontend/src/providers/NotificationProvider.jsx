@@ -21,3 +21,10 @@ export function useNotify() {
     info:    (msg, opts) => enqueueSnackbar(msg, { variant: "info",    ...opts }),
   };
 }
+
+export function useNotification() {
+  const { enqueueSnackbar } = useSnackbar();
+  const notify = (msg, variant = "default", opts) =>
+    enqueueSnackbar(msg, { variant, ...opts });
+  return { notify };
+}
