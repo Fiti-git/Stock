@@ -26,13 +26,8 @@ services:
       - media_files:/app/media
       - static_files:/app/staticfiles
       - ./backups:/app/backups
-    expose:
-      - "8000"
-    # No public port: the frontend nginx proxies /api/ to this service over
-    # the docker network. If mobile/external clients need direct access,
-    # add a `ports:` mapping to a port that isn't already claimed by another
-    # app on this host (e.g. 8001 currently routes to a separate "StockMyPoS"
-    # via the upstream router rule).
+    ports:
+      - "${BACKEND_PORT:-8001}:8000"
     depends_on:
       db:
         condition: service_healthy
