@@ -28,6 +28,11 @@ class PosSnapshot(models.Model):
         db_table = "pos_snapshots"
         unique_together = ("outlet", "item", "snapshot_date")
         ordering = ["-snapshot_date"]
+        indexes = [
+            models.Index(fields=["outlet", "snapshot_date"]),
+            models.Index(fields=["outlet", "snapshot_date", "pos_quantity"]),
+            models.Index(fields=["item", "-snapshot_date"]),
+        ]
 
     def __str__(self):
         return f"{self.outlet} / {self.item.item_code} @ {self.snapshot_date}"

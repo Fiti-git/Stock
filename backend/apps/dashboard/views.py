@@ -85,7 +85,14 @@ def count_progress(request):
 def variances(request):
     """
     POS qty vs latest actual count for the manager's outlet.
+
+    Aggregation, abs-variance sort and pagination are all pushed to SQL so
+    rendering 50 of 50k snapshots reads ~50 rows from the DB instead of all
+    50k into Python memory.
     """
+    from django.db.models import OuterRef, Subquery, F, ExpressionWrapper, DecimalField, Value
+    from django.db.models.functions import Abs, Coalesce
+
     outlet = _resolve_outlet(request)
 
     try:
@@ -99,64 +106,45 @@ def variances(request):
         .values_list("snapshot_date", flat=True)
         .first()
     )
-
     if not latest_snapshot:
         return Response([])
 
-    latest_date_by_item = {
-        row["item_id"]: row["max_date"]
-        for row in StockCount.objects.filter(outlet=outlet)
-        .values("item_id")
-        .annotate(max_date=Max("count_date"))
-    }
-
-    summed_counts = {}
-    for row in (
+    # Latest count_date for this (outlet, item)
+    latest_count_date = (
         StockCount.objects
-        .filter(outlet=outlet, item_id__in=latest_date_by_item.keys())
-        .values("item_id", "count_date")
-        .annotate(total_qty=Sum("actual_qty"))
-    ):
-        item_id = row["item_id"]
-        if row["count_date"] == latest_date_by_item.get(item_id):
-            summed_counts[item_id] = {
-                "total_qty": float(row["total_qty"]),
-                "count_date": row["count_date"],
-            }
+        .filter(outlet=outlet, item=OuterRef("item"))
+        .order_by("-count_date")
+        .values("count_date")[:1]
+    )
+    # Summed actual_qty on that latest date for this (outlet, item)
+    counted_qty_subq = (
+        StockCount.objects
+        .filter(outlet=outlet, item=OuterRef("item"), count_date=Subquery(latest_count_date))
+        .values("item")
+        .annotate(total=Sum("actual_qty"))
+        .values("total")[:1]
+    )
 
-    snapshots = (
-        PosSnapshot.objects.filter(outlet=outlet, snapshot_date=latest_snapshot)
+    qs = (
+        PosSnapshot.objects
+        .filter(outlet=outlet, snapshot_date=latest_snapshot)
         .select_related("item")
-    )
-
-    results = []
-    for snap in snapshots:
-        count_data = summed_counts.get(snap.item.id)
-        actual_qty = count_data["total_qty"] if count_data else None
-        pos_qty = float(snap.pos_quantity)
-        variance = (actual_qty - pos_qty) if actual_qty is not None else None
-
-        results.append(
-            {
-                "item_id": snap.item.id,
-                "item_code": snap.item.item_code,
-                "item_name": snap.item.item_name,
-                "category": snap.item.category,
-                "pos_qty": pos_qty,
-                "actual_qty": actual_qty,
-                "variance": variance,
-                "location_tag": "",
-                "last_counted": str(count_data["count_date"]) if count_data else None,
-                "snapshot_date": str(latest_snapshot),
-            }
+        .annotate(
+            actual_qty=Subquery(counted_qty_subq, output_field=DecimalField(max_digits=14, decimal_places=3)),
+            last_counted=Subquery(latest_count_date),
         )
-
-    results.sort(
-        key=lambda x: abs(x["variance"]) if x["variance"] is not None else -999,
-        reverse=True,
+        .annotate(
+            variance=ExpressionWrapper(
+                F("actual_qty") - F("pos_quantity"),
+                output_field=DecimalField(max_digits=14, decimal_places=3),
+            ),
+        )
+        .annotate(
+            # NULL variances (no count) sort last under DESC by giving them -1
+            abs_variance=Coalesce(Abs(F("variance")), Value(Decimal("-1"))),
+        )
+        .order_by("-abs_variance")
     )
-
-    results = results[:limit]
 
     try:
         page = max(1, int(request.query_params.get("page", 1)))
@@ -167,9 +155,25 @@ def variances(request):
     except (TypeError, ValueError):
         page_size = 50
 
-    total = len(results)
+    total = min(qs.count(), limit)
     offset = (page - 1) * page_size
-    page_results = results[offset: offset + page_size]
+    page_qs = qs[offset: min(offset + page_size, limit)]
+
+    page_results = [
+        {
+            "item_id": snap.item.id,
+            "item_code": snap.item.item_code,
+            "item_name": snap.item.item_name,
+            "category": snap.item.category,
+            "pos_qty": float(snap.pos_quantity),
+            "actual_qty": float(snap.actual_qty) if snap.actual_qty is not None else None,
+            "variance": float(snap.variance) if snap.variance is not None else None,
+            "location_tag": "",
+            "last_counted": str(snap.last_counted) if snap.last_counted else None,
+            "snapshot_date": str(latest_snapshot),
+        }
+        for snap in page_qs
+    ]
 
     return Response({
         "count": total,
@@ -372,10 +376,17 @@ def shrinkage(request):
 @permission_classes([IsManager])
 def admin_summary(request):
     """Cross-outlet summary for admins."""
+    from django.core.cache import cache
+
     if request.user.role != "admin" and request.user.role != "super_admin":
         return Response({"detail": "Admin only."}, status=403)
 
     today = date.today()
+    cache_key = f"dashboard.admin_summary.{today.isoformat()}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return Response(cached)
+
     outlets = Outlet.objects.all().order_by("outlet_name")
 
     uploaded_today_ids = set(
@@ -412,14 +423,16 @@ def admin_summary(request):
             "counted_today": counted_today,
         })
 
-    return Response({
+    payload = {
         "today": str(today),
         "outlet_count": len(rows),
         "total_items": total_items,
         "total_pending_barcodes": total_pending,
         "total_negative_today": total_negative,
         "outlets": rows,
-    })
+    }
+    cache.set(cache_key, payload, 60)
+    return Response(payload)
 
 
 @api_view(["POST"])
@@ -618,10 +631,17 @@ def daily_upload_report(request):
         except (ValueError, TypeError):
             return default
 
+    from django.core.cache import cache
+
     today = date.today()
     from_date = _parse(request.query_params.get("from_date"), today - timedelta(days=7))
     to_date = _parse(request.query_params.get("to_date"), today)
     outlet_filter = request.query_params.get("outlet")
+
+    cache_key = f"dashboard.daily_upload_report.{from_date.isoformat()}.{to_date.isoformat()}.{outlet_filter or 'all'}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return Response(cached)
 
     snap_qs = PosSnapshot.objects.filter(snapshot_date__gte=from_date, snapshot_date__lte=to_date)
     if outlet_filter:
@@ -713,11 +733,13 @@ def daily_upload_report(request):
 
     rows.sort(key=lambda r: (r["upload_date"], r["outlet_name"]), reverse=True)
 
-    return Response({
+    payload = {
         "from_date": str(from_date),
         "to_date": str(to_date),
         "results": rows,
-    })
+    }
+    cache.set(cache_key, payload, 60)
+    return Response(payload)
 
 
 @api_view(["GET"])

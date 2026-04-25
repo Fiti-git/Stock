@@ -130,11 +130,25 @@ class ItemDetailSerializer(serializers.ModelSerializer):
     def get_barcode(self, obj):
         return obj.primary_barcode
 
+    # Per-instance memoization: a single detail response calls _latest_pos
+    # three times (latest_pos_qty, variance) and _latest_count twice
+    # (latest_actual_qty, variance). Cache them on the instance so each is
+    # only one query per detail render.
     def _latest_pos(self, obj):
-        return PosSnapshot.objects.filter(item=obj).order_by("-snapshot_date").first()
+        cached = getattr(obj, "_cached_latest_pos", None)
+        if cached is not None:
+            return cached if cached != "MISS" else None
+        snap = PosSnapshot.objects.filter(item=obj).order_by("-snapshot_date").first()
+        obj._cached_latest_pos = snap if snap else "MISS"
+        return snap
 
     def _latest_count(self, obj):
-        return StockCount.objects.filter(item=obj).order_by("-count_date").first()
+        cached = getattr(obj, "_cached_latest_count", None)
+        if cached is not None:
+            return cached if cached != "MISS" else None
+        sc = StockCount.objects.filter(item=obj).order_by("-count_date").first()
+        obj._cached_latest_count = sc if sc else "MISS"
+        return sc
 
     def get_pos_history(self, obj):
         snaps = PosSnapshot.objects.filter(item=obj).order_by("-snapshot_date")[:30]

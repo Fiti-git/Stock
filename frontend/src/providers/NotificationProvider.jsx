@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { SnackbarProvider, useSnackbar } from "notistack";
 
 export function NotificationProvider({ children }) {
@@ -24,7 +25,9 @@ export function useNotify() {
 
 export function useNotification() {
   const { enqueueSnackbar } = useSnackbar();
-  const notify = (msg, variant = "default", opts) =>
-    enqueueSnackbar(msg, { variant, ...opts });
+  const notify = useCallback(
+    (msg, variant = "default", opts) => enqueueSnackbar(msg, { variant, ...opts }),
+    [enqueueSnackbar],
+  );
   return { notify };
 }

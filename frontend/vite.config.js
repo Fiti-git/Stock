@@ -13,4 +13,25 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    target: "es2020",
+    sourcemap: false,
+    chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "vendor-react": ["react", "react-dom", "react-router-dom"],
+          "vendor-mui": [
+            "@mui/material",
+            "@mui/icons-material",
+            "@emotion/react",
+            "@emotion/styled",
+          ],
+          "vendor-mui-x": ["@mui/x-data-grid", "@mui/x-date-pickers"],
+          "vendor-charts": ["recharts"],
+          "vendor-xlsx": ["xlsx"],
+        },
+      },
+    },
+  },
 });
