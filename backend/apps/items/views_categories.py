@@ -6,7 +6,8 @@ their free-text `category` field so existing reports/UI keep working; the new
 `category_ref` FK runs alongside it and is authoritative going forward.
 """
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, IntegerField, OuterRef, Q, Subquery
+from django.db.models.functions import Coalesce
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -14,6 +15,23 @@ from rest_framework.response import Response
 from apps.accounts.permissions import IsAdmin, IsManager
 from apps.uploads.models import AuditLog
 from .models import Category, Item
+
+
+def _item_count_subquery():
+    """Per-category item count without GROUP BY. Postgres rejects the
+    naive .annotate(Count('items')) + Meta.ordering combination."""
+    return Coalesce(
+        Subquery(
+            Item.objects
+            .filter(category_ref=OuterRef("pk"))
+            .order_by()
+            .values("category_ref")
+            .annotate(c=Count("id"))
+            .values("c")[:1],
+            output_field=IntegerField(),
+        ),
+        0,
+    )
 
 
 def _serialize(c, item_count=None):
@@ -33,7 +51,7 @@ def _serialize(c, item_count=None):
 @permission_classes([IsAdmin])
 def category_list_create(request):
     if request.method == "GET":
-        qs = Category.objects.annotate(item_count=Count("items")).order_by("sort_order", "name")
+        qs = Category.objects.annotate(item_count=_item_count_subquery()).order_by("sort_order", "name")
 
         q = (request.query_params.get("q") or "").strip()
         if q:
@@ -90,7 +108,7 @@ def category_list_create(request):
 @permission_classes([IsAdmin])
 def category_detail(request, pk):
     try:
-        c = Category.objects.annotate(item_count=Count("items")).get(pk=pk)
+        c = Category.objects.annotate(item_count=_item_count_subquery()).get(pk=pk)
     except Category.DoesNotExist:
         return Response({"detail": "Category not found."}, status=status.HTTP_404_NOT_FOUND)
 
