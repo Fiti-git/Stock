@@ -53,6 +53,7 @@ export function AuthProvider({ children }) {
           outlet_id: me.outlet_id,
           outlet_name: me.outlet_name ?? null,
           permissions: me.permissions || [],
+          systems: me.systems || [],
         });
       }
     } catch {
@@ -77,6 +78,7 @@ export function AuthProvider({ children }) {
       outlet_id: decoded.outlet_id,
       outlet_name: decoded.outlet_name ?? null,
       permissions: [],
+      systems: [],
     };
     const me = await fetchMe();
     if (me) {
@@ -86,6 +88,7 @@ export function AuthProvider({ children }) {
         outlet_id: me.outlet_id,
         outlet_name: me.outlet_name ?? null,
         permissions: me.permissions || [],
+        systems: me.systems || [],
       };
     }
     setUser(u);

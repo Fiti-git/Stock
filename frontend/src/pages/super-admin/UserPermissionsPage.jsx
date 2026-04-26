@@ -29,11 +29,15 @@ export default function UserPermissionsPage() {
   const [loading, setLoading] = useState(true);
 
   const [selectedUserId, setSelectedUserId] = useState("");
-  const [detail, setDetail] = useState(null); // {id, username, role, permissions_override, effective_permissions}
+  const [detail, setDetail] = useState(null); // {id, username, role, permissions_override, effective_permissions, systems}
   const [draftCodes, setDraftCodes] = useState(new Set());
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  // System filter — narrows the visible permission rows to one product.
+  // "all" shows everything; "stock"/"pos" hides codes tagged for the other product.
+  // Cross-product codes (system: "both") always remain visible.
+  const [systemFilter, setSystemFilter] = useState("all");
 
   useEffect(() => {
     Promise.all([getUsers(), getPermissionRegistry()])
@@ -64,14 +68,49 @@ export default function UserPermissionsPage() {
       .finally(() => setDetailLoading(false));
   }, [selectedUserId]); // eslint-disable-line
 
+  // Categories filtered by the active system chip. "both" codes always show
+  // regardless of filter, so picking "stock" still surfaces shared admin
+  // pages (Users, Audit Log, License) the super admin needs to grant.
   const categories = useMemo(() => {
+    const visible = registry.filter((p) => {
+      if (systemFilter === "all") return true;
+      return !p.system || p.system === "both" || p.system === systemFilter;
+    });
     const map = new Map();
-    for (const p of registry) {
+    for (const p of visible) {
       if (!map.has(p.category)) map.set(p.category, []);
       map.get(p.category).push(p);
     }
     return Array.from(map.entries());
+  }, [registry, systemFilter]);
+
+  // Codes per system — used by the "Grant all STOCK / POS" bulk buttons.
+  const codesBySystem = useMemo(() => {
+    const out = { stock: [], pos: [], both: [] };
+    for (const p of registry) {
+      const s = p.system || "both";
+      if (out[s]) out[s].push(p.code);
+    }
+    return out;
   }, [registry]);
+
+  const grantSystem = (system) => {
+    setDraftCodes((prev) => {
+      const next = new Set(prev);
+      for (const c of codesBySystem[system] || []) next.add(c);
+      return next;
+    });
+    setDirty(true);
+  };
+
+  const revokeSystem = (system) => {
+    setDraftCodes((prev) => {
+      const next = new Set(prev);
+      for (const c of codesBySystem[system] || []) next.delete(c);
+      return next;
+    });
+    setDirty(true);
+  };
 
   const toggle = (code) => {
     setDraftCodes((prev) => {
@@ -168,6 +207,15 @@ export default function UserPermissionsPage() {
                   }
                 />
                 <Chip size="small" label={`${draftCodes.size} granted`} />
+                {(detail.systems || []).map((s) => (
+                  <Chip
+                    key={s}
+                    size="small"
+                    color={s === "stock" ? "primary" : "secondary"}
+                    label={s.toUpperCase()}
+                    variant="filled"
+                  />
+                ))}
               </Stack>
             )}
           </Stack>
@@ -193,6 +241,78 @@ export default function UserPermissionsPage() {
               </Box>
             ) : (
               <Stack spacing={2}>
+                <Paper sx={{ p: 2 }}>
+                  <Stack
+                    direction={{ xs: "column", md: "row" }}
+                    spacing={2}
+                    alignItems={{ md: "center" }}
+                    justifyContent="space-between"
+                  >
+                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                      <Typography variant="body2" sx={{ fontWeight: 600, mr: 1 }}>
+                        System:
+                      </Typography>
+                      {[
+                        { key: "all",   label: "All" },
+                        { key: "stock", label: "STOCK" },
+                        { key: "pos",   label: "POS" },
+                      ].map((opt) => (
+                        <Chip
+                          key={opt.key}
+                          label={opt.label}
+                          size="small"
+                          clickable
+                          color={systemFilter === opt.key ? "primary" : "default"}
+                          variant={systemFilter === opt.key ? "filled" : "outlined"}
+                          onClick={() => setSystemFilter(opt.key)}
+                        />
+                      ))}
+                    </Stack>
+                    <Stack direction="row" spacing={1} flexWrap="wrap">
+                      <Tooltip title={`Tick every Stock-tagged code (${codesBySystem.stock.length})`}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                          onClick={() => grantSystem("stock")}
+                        >
+                          Grant all STOCK
+                        </Button>
+                      </Tooltip>
+                      <Tooltip title={`Untick every Stock-tagged code`}>
+                        <Button
+                          size="small"
+                          variant="text"
+                          color="primary"
+                          onClick={() => revokeSystem("stock")}
+                        >
+                          Revoke STOCK
+                        </Button>
+                      </Tooltip>
+                      <Tooltip title={`Tick every POS-tagged code (${codesBySystem.pos.length})`}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="secondary"
+                          onClick={() => grantSystem("pos")}
+                        >
+                          Grant all POS
+                        </Button>
+                      </Tooltip>
+                      <Tooltip title={`Untick every POS-tagged code`}>
+                        <Button
+                          size="small"
+                          variant="text"
+                          color="secondary"
+                          onClick={() => revokeSystem("pos")}
+                        >
+                          Revoke POS
+                        </Button>
+                      </Tooltip>
+                    </Stack>
+                  </Stack>
+                </Paper>
+
                 {categories.map(([cat, items]) => {
                   const allOn = items.every((p) => draftCodes.has(p.code));
                   const noneOn = items.every((p) => !draftCodes.has(p.code));

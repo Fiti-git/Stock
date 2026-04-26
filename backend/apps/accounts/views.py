@@ -6,7 +6,11 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from apps.uploads.models import AuditLog
 from .models import User, LoginEvent
 from .permissions import IsAdmin, IsSuperAdmin
-from .permission_registry import registry_as_dicts, effective_permissions_for
+from .permission_registry import (
+    registry_as_dicts,
+    effective_permissions_for,
+    systems_for_user,
+)
 from .serializers import (
     UserSerializer,
     UserCreateSerializer,
@@ -240,6 +244,7 @@ class UserPermissionsDetailView(APIView):
             "role": user.role,
             "permissions_override": user.permissions_override,
             "effective_permissions": effective_permissions_for(user),
+            "systems": systems_for_user(user),
         })
 
     def patch(self, request, pk):
@@ -281,4 +286,5 @@ class UserPermissionsDetailView(APIView):
             "role": user.role,
             "permissions_override": user.permissions_override,
             "effective_permissions": effective_permissions_for(user),
+            "systems": systems_for_user(user),
         })

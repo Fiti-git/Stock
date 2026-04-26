@@ -6,152 +6,206 @@ The Super Admin can override any user's effective permissions by setting
 `User.permissions_override` to an explicit list of codes; when it is None
 the user inherits the role defaults below.
 
-Two kinds of codes are tracked:
+Three kinds of codes are tracked:
   - "nav.*"    — controls visibility of a sidebar item and access to the
                  corresponding page route.
   - other      — action-level toggles (e.g. "users.manage") enforced at
                  specific API endpoints and UI buttons.
+
+Each code also carries a *system* tag — one of:
+  "stock"  → belongs to the Stock product
+  "pos"    → belongs to the POS product
+  "both"   → cross-product (login, audit, license, users, …)
+
+The system tag drives:
+  - the STOCK | POS toggle in the sidebar (filters which routes show)
+  - the Super Admin "Grant all STOCK / Grant all POS" bulk-grant buttons
+  - which "systems" a user has (derived from their effective permissions)
+
+The tag is purely informational — it does NOT gate access. A user's effective
+permissions are still the only source of truth for what they can see/do.
 """
 
-# (code, label, category) tuples. Category groups codes in the admin UI.
+# (code, label, category, system) tuples. Category groups codes in the
+# admin UI; system tags the product the code belongs to.
+#
+# Backwards-compat: 3-tuple rows (code, label, category) are still accepted
+# by the loader below and default to system="both". Add the 4th element when
+# editing a row so the system filter works correctly.
 PERMISSIONS = [
     # --- Navigation (sidebar + page access) ---
-    ("nav.count",                 "Stock Count",             "Navigation · Operations"),
-    ("nav.upload",                "Upload XLS",              "Navigation · Operations"),
-    ("nav.upload_history",        "Upload History",          "Navigation · Operations"),
+    ("nav.count",                 "Stock Count",             "Navigation · Operations", "stock"),
+    ("nav.upload",                "Upload XLS",              "Navigation · Operations", "stock"),
+    ("nav.upload_history",        "Upload History",          "Navigation · Operations", "stock"),
 
-    ("nav.admin_dashboard",       "Admin Dashboard",         "Navigation · Dashboards"),
-    ("nav.manager_dashboard",     "Manager Dashboard",       "Navigation · Dashboards"),
-    ("nav.overview",              "Outlets Overview",        "Navigation · Dashboards"),
+    ("nav.admin_dashboard",       "Admin Dashboard",         "Navigation · Dashboards", "stock"),
+    ("nav.manager_dashboard",     "Manager Dashboard",       "Navigation · Dashboards", "stock"),
+    ("nav.overview",              "Outlets Overview",        "Navigation · Dashboards", "stock"),
 
-    ("nav.pending",               "Pending Items",           "Navigation · Review"),
-    ("nav.upload_approvals",      "Upload Approvals",        "Navigation · Review"),
-    ("nav.daily_counts",          "Counted Stock Daily",     "Navigation · Review"),
-    ("nav.count_review",          "Count Review",            "Navigation · Review"),
-    ("nav.variance_reconciliation", "Variance Reconciliation", "Navigation · Review"),
+    ("nav.pending",               "Pending Items",           "Navigation · Review", "stock"),
+    ("nav.upload_approvals",      "Upload Approvals",        "Navigation · Review", "stock"),
+    ("nav.daily_counts",          "Counted Stock Daily",     "Navigation · Review", "stock"),
+    ("nav.count_review",          "Count Review",            "Navigation · Review", "stock"),
+    ("nav.variance_reconciliation", "Variance Reconciliation", "Navigation · Review", "stock"),
 
-    ("nav.shrinkage",             "Shrinkage",               "Navigation · Reports"),
-    ("nav.item_pos_history",      "POS History",             "Navigation · Reports"),
-    ("nav.daily_upload_report",   "Daily Upload Report",     "Navigation · Reports"),
-    ("nav.negative_pos",          "Negative POS",            "Navigation · Reports"),
-    ("nav.stock_variance",        "Stock Variance Report",   "Navigation · Reports"),
-    ("nav.counted_items_report",  "Counted vs Uncounted",    "Navigation · Reports"),
+    ("nav.shrinkage",             "Shrinkage",               "Navigation · Reports", "stock"),
+    ("nav.item_pos_history",      "POS History",             "Navigation · Reports", "stock"),
+    ("nav.daily_upload_report",   "Daily Upload Report",     "Navigation · Reports", "stock"),
+    ("nav.negative_pos",          "Negative POS",            "Navigation · Reports", "stock"),
+    ("nav.stock_variance",        "Stock Variance Report",   "Navigation · Reports", "stock"),
+    ("nav.counted_items_report",  "Counted vs Uncounted",    "Navigation · Reports", "stock"),
 
-    ("nav.catalog",               "Product Catalog",         "Navigation · Catalog"),
-    ("nav.product_master",        "Product Master",          "Navigation · Catalog"),
-    ("nav.barcode_master",        "Barcode Master",          "Navigation · Catalog"),
-    ("nav.master_products",       "Master Products (Org)",   "Navigation · Organization"),
-    ("nav.master_mapping",        "Master Mapping",          "Navigation · Organization"),
-    ("nav.demand_dashboard",      "Demand Dashboard",        "Navigation · Organization"),
-    ("nav.purchase_plans",        "Purchase Plans",          "Navigation · Organization"),
-    ("nav.stock_age",             "Stock Age",               "Navigation · Organization"),
+    ("nav.catalog",               "Product Catalog",         "Navigation · Catalog", "stock"),
+    ("nav.product_master",        "Product Master",          "Navigation · Catalog", "stock"),
+    ("nav.barcode_master",        "Barcode Master",          "Navigation · Catalog", "stock"),
+    ("nav.master_products",       "Master Products (Org)",   "Navigation · Organization", "stock"),
+    ("nav.master_mapping",        "Master Mapping",          "Navigation · Organization", "stock"),
+    ("nav.demand_dashboard",      "Demand Dashboard",        "Navigation · Organization", "stock"),
+    ("nav.purchase_plans",        "Purchase Plans",          "Navigation · Organization", "stock"),
+    ("nav.stock_age",             "Stock Age",               "Navigation · Organization", "stock"),
 
-    ("nav.outlets",               "Outlets",                 "Navigation · Administration"),
-    ("nav.users",                 "Users",                   "Navigation · Administration"),
-    ("nav.license",               "License",                 "Navigation · Administration"),
-    ("nav.user_permissions",      "User Permissions",        "Navigation · Administration"),
-    ("nav.operations_hub",        "Outlet Operations Hub",    "Navigation · Operations"),
-    ("nav.operations_today",      "Operations — Today",       "Navigation · Operations"),
-    ("nav.report_daily_sales",    "Report — Daily Sales",     "Navigation · Operations"),
-    ("nav.report_item_rankings",  "Report — Top / Dead Stock","Navigation · Operations"),
-    ("nav.report_wastage",        "Report — Wastage Summary", "Navigation · Operations"),
-    ("nav.anomalies",             "Anomaly Dashboard",         "Navigation · Operations"),
-    ("nav.suppliers",             "Suppliers",                 "Navigation · Administration"),
-    ("nav.supplier_scorecard",    "Supplier Scorecard",        "Navigation · Operations"),
-    ("nav.categories",            "Categories",                "Navigation · Catalog"),
+    # Cross-product admin pages — visible regardless of which system the user has.
+    ("nav.outlets",               "Outlets",                 "Navigation · Administration", "both"),
+    ("nav.users",                 "Users",                   "Navigation · Administration", "both"),
+    ("nav.license",               "License",                 "Navigation · Administration", "both"),
+    ("nav.user_permissions",      "User Permissions",        "Navigation · Administration", "both"),
+    ("nav.operations_hub",        "Outlet Operations Hub",    "Navigation · Operations", "stock"),
+    ("nav.operations_today",      "Operations — Today",       "Navigation · Operations", "stock"),
+    ("nav.report_daily_sales",    "Report — Daily Sales",     "Navigation · Operations", "stock"),
+    ("nav.report_item_rankings",  "Report — Top / Dead Stock","Navigation · Operations", "stock"),
+    ("nav.report_wastage",        "Report — Wastage Summary", "Navigation · Operations", "stock"),
+    ("nav.anomalies",             "Anomaly Dashboard",         "Navigation · Operations", "stock"),
+    ("nav.suppliers",             "Suppliers",                 "Navigation · Administration", "both"),
+    ("nav.supplier_scorecard",    "Supplier Scorecard",        "Navigation · Operations", "stock"),
+    ("nav.categories",            "Categories",                "Navigation · Catalog", "stock"),
 
-    ("nav.audit_log",             "Audit Log",               "Navigation · Audit & Security"),
-    ("nav.mobile_devices",        "Mobile Devices",          "Navigation · Audit & Security"),
-    ("nav.login_events",          "Login Events",            "Navigation · Audit & Security"),
-    ("nav.orphan_cleanup",        "Orphan Cleanup",          "Navigation · Audit & Security"),
+    ("nav.audit_log",             "Audit Log",               "Navigation · Audit & Security", "both"),
+    ("nav.mobile_devices",        "Mobile Devices",          "Navigation · Audit & Security", "both"),
+    ("nav.login_events",          "Login Events",            "Navigation · Audit & Security", "both"),
+    ("nav.orphan_cleanup",        "Orphan Cleanup",          "Navigation · Audit & Security", "both"),
 
-    ("nav.db_management",         "DB Management",           "Navigation · System"),
+    ("nav.db_management",         "DB Management",           "Navigation · System", "both"),
 
     # --- Transaction uploads (per-report-type nav) ---
-    ("nav.transactions_hub",      "Transactions Hub",        "Navigation · Transactions"),
-    ("nav.damage_upload",         "Damage — Upload",         "Navigation · Transactions"),
-    ("nav.damage_history",        "Damage — History",        "Navigation · Transactions"),
-    ("nav.office_upload",         "Office Use — Upload",     "Navigation · Transactions"),
-    ("nav.office_history",        "Office Use — History",    "Navigation · Transactions"),
-    ("nav.verification_upload",   "Verification — Upload",   "Navigation · Transactions"),
-    ("nav.verification_history",  "Verification — History",  "Navigation · Transactions"),
-    ("nav.grn_upload",            "GRN — Upload",            "Navigation · Transactions"),
-    ("nav.grn_history",           "GRN — History",           "Navigation · Transactions"),
-    ("nav.rts_upload",            "Return to Supply — Upload",  "Navigation · Transactions"),
-    ("nav.rts_history",           "Return to Supply — History", "Navigation · Transactions"),
-    ("nav.sales_upload",          "Sales — Upload",           "Navigation · Transactions"),
-    ("nav.sales_history",         "Sales — History",          "Navigation · Transactions"),
-    ("nav.sales_returns_upload",  "Sales Returns — Upload",   "Navigation · Transactions"),
-    ("nav.sales_returns_history", "Sales Returns — History",  "Navigation · Transactions"),
+    ("nav.transactions_hub",      "Transactions Hub",        "Navigation · Transactions", "stock"),
+    ("nav.damage_upload",         "Damage — Upload",         "Navigation · Transactions", "stock"),
+    ("nav.damage_history",        "Damage — History",        "Navigation · Transactions", "stock"),
+    ("nav.office_upload",         "Office Use — Upload",     "Navigation · Transactions", "stock"),
+    ("nav.office_history",        "Office Use — History",    "Navigation · Transactions", "stock"),
+    ("nav.verification_upload",   "Verification — Upload",   "Navigation · Transactions", "stock"),
+    ("nav.verification_history",  "Verification — History",  "Navigation · Transactions", "stock"),
+    ("nav.grn_upload",            "GRN — Upload",            "Navigation · Transactions", "stock"),
+    ("nav.grn_history",           "GRN — History",           "Navigation · Transactions", "stock"),
+    ("nav.rts_upload",            "Return to Supply — Upload",  "Navigation · Transactions", "stock"),
+    ("nav.rts_history",           "Return to Supply — History", "Navigation · Transactions", "stock"),
+    ("nav.sales_upload",          "Sales — Upload",           "Navigation · Transactions", "stock"),
+    ("nav.sales_history",         "Sales — History",          "Navigation · Transactions", "stock"),
+    ("nav.sales_returns_upload",  "Sales Returns — Upload",   "Navigation · Transactions", "stock"),
+    ("nav.sales_returns_history", "Sales Returns — History",  "Navigation · Transactions", "stock"),
 
     # --- Actions ---
-    ("users.manage",              "Create / edit / delete users",  "Actions · Users"),
-    ("users.permissions",         "Manage per-user permissions",   "Actions · Users"),
-    ("items.bulk_upload",         "Bulk-upload items (XLS/CSV)",   "Actions · Items"),
-    ("items.delete",              "Delete items",                  "Actions · Items"),
-    ("counts.approve",            "Approve stock counts",          "Actions · Counts"),
-    ("outlets.manage",            "Create / edit outlets",         "Actions · Outlets"),
-    ("damage.approve",            "Approve damage uploads",        "Actions · Transactions"),
-    ("damage.delete_batch",       "Delete damage upload batch",    "Actions · Transactions"),
-    ("office.approve",            "Approve office uploads",        "Actions · Transactions"),
-    ("office.delete_batch",       "Delete office upload batch",    "Actions · Transactions"),
-    ("verification.approve",      "Approve verification uploads",  "Actions · Transactions"),
-    ("verification.delete_batch", "Delete verification batch",     "Actions · Transactions"),
-    ("grn.approve",               "Approve GRN uploads",           "Actions · Transactions"),
-    ("grn.delete_batch",          "Delete GRN batch",              "Actions · Transactions"),
-    ("rts.approve",               "Approve return-to-supply uploads",  "Actions · Transactions"),
-    ("rts.delete_batch",          "Delete return-to-supply batch",     "Actions · Transactions"),
-    ("sales.approve",             "Approve sales uploads",             "Actions · Transactions"),
-    ("sales.delete_batch",        "Delete sales batch",                "Actions · Transactions"),
-    ("sales_returns.approve",     "Approve sales-returns uploads",     "Actions · Transactions"),
-    ("sales_returns.delete_batch","Delete sales-returns batch",        "Actions · Transactions"),
-    ("suppliers.manage",          "Create / edit / delete suppliers",  "Actions · Suppliers"),
-    ("categories.manage",         "Create / edit / delete categories", "Actions · Items"),
+    ("users.manage",              "Create / edit / delete users",  "Actions · Users", "both"),
+    ("users.permissions",         "Manage per-user permissions",   "Actions · Users", "both"),
+    ("items.bulk_upload",         "Bulk-upload items (XLS/CSV)",   "Actions · Items", "stock"),
+    ("items.delete",              "Delete items",                  "Actions · Items", "stock"),
+    ("counts.approve",            "Approve stock counts",          "Actions · Counts", "stock"),
+    ("outlets.manage",            "Create / edit outlets",         "Actions · Outlets", "both"),
+    ("damage.approve",            "Approve damage uploads",        "Actions · Transactions", "stock"),
+    ("damage.delete_batch",       "Delete damage upload batch",    "Actions · Transactions", "stock"),
+    ("office.approve",            "Approve office uploads",        "Actions · Transactions", "stock"),
+    ("office.delete_batch",       "Delete office upload batch",    "Actions · Transactions", "stock"),
+    ("verification.approve",      "Approve verification uploads",  "Actions · Transactions", "stock"),
+    ("verification.delete_batch", "Delete verification batch",     "Actions · Transactions", "stock"),
+    ("grn.approve",               "Approve GRN uploads",           "Actions · Transactions", "stock"),
+    ("grn.delete_batch",          "Delete GRN batch",              "Actions · Transactions", "stock"),
+    ("rts.approve",               "Approve return-to-supply uploads",  "Actions · Transactions", "stock"),
+    ("rts.delete_batch",          "Delete return-to-supply batch",     "Actions · Transactions", "stock"),
+    ("sales.approve",             "Approve sales uploads",             "Actions · Transactions", "stock"),
+    ("sales.delete_batch",        "Delete sales batch",                "Actions · Transactions", "stock"),
+    ("sales_returns.approve",     "Approve sales-returns uploads",     "Actions · Transactions", "stock"),
+    ("sales_returns.delete_batch","Delete sales-returns batch",        "Actions · Transactions", "stock"),
+    ("suppliers.manage",          "Create / edit / delete suppliers",  "Actions · Suppliers", "both"),
+    ("categories.manage",         "Create / edit / delete categories", "Actions · Items", "stock"),
 
     # --- POS ---
-    ("nav.pos_terminal",          "POS Terminal (cashier)",            "Navigation · POS"),
-    ("nav.pos_shifts",            "POS — Shifts",                      "Navigation · POS"),
-    ("nav.pos_bills",             "POS — Bills",                       "Navigation · POS"),
-    ("nav.pos_daily_sales",       "POS — Daily Sales",                 "Navigation · POS"),
-    ("pos.sell",                  "Create bills (sell)",               "Actions · POS"),
-    ("pos.shift_open",            "Open a till shift",                 "Actions · POS"),
-    ("pos.shift_close",           "Close a till shift",                "Actions · POS"),
-    ("pos.void",                  "Void bills",                        "Actions · POS"),
-    ("pos.reports",               "View POS reports",                  "Actions · POS"),
-    ("nav.pos_customers",         "POS — Customers",                   "Navigation · POS"),
-    ("nav.pos_stock",             "POS — Stock Movements",             "Navigation · POS"),
-    ("nav.pos_outlet_settings",   "POS — Outlet Settings (receipt/QR)","Navigation · POS"),
-    ("pos.customers.manage",      "Manage customers",                  "Actions · POS"),
-    ("pos.stock.adjust",          "Manual stock adjustment",           "Actions · POS"),
-    ("pos.outlet_settings",       "Edit outlet receipt/LankaQR settings","Actions · POS"),
-    ("nav.pos_grn_entry",         "POS — GRN Entry",                   "Navigation · POS"),
-    ("nav.pos_bulk_price",        "POS — Bulk Price Update",           "Navigation · POS"),
-    ("nav.pos_price_history",     "POS — Price History",               "Navigation · POS"),
-    ("pos.grn.entry",             "Enter GRN (stock in)",              "Actions · POS"),
-    ("pos.prices.update",         "Update item prices",                "Actions · POS"),
-    ("pos.customers.credit",      "Adjust customer credit",            "Actions · POS"),
-    ("nav.pos_promotions",        "POS — Promotions",                  "Navigation · POS"),
-    ("pos.promotions.manage",     "Manage promotions",                 "Actions · POS"),
-    ("nav.pos_products",          "POS — Products",                    "Navigation · POS"),
-    ("nav.pos_low_stock",         "POS — Low Stock",                   "Navigation · POS"),
-    ("nav.pos_reports",           "POS — Reports (top/profit/tax)",    "Navigation · POS"),
-    ("nav.pos_expenses",          "POS — Expenses",                    "Navigation · POS"),
-    ("nav.pos_rts",               "POS — Purchase Returns",            "Navigation · POS"),
-    ("nav.pos_payables",          "POS — Supplier Payables",           "Navigation · POS"),
-    ("pos.products.manage",       "Create / edit / delete products",   "Actions · POS"),
-    ("pos.products.import",       "Bulk-import products via CSV",      "Actions · POS"),
-    ("pos.rts.manage",            "Enter purchase returns",            "Actions · POS"),
-    ("pos.expenses.manage",       "Enter expenses",                    "Actions · POS"),
-    ("pos.payables.manage",       "Record supplier payments",          "Actions · POS"),
+    ("nav.pos_terminal",          "POS Terminal (cashier)",            "Navigation · POS", "pos"),
+    ("nav.pos_shifts",            "POS — Shifts",                      "Navigation · POS", "pos"),
+    ("nav.pos_bills",             "POS — Bills",                       "Navigation · POS", "pos"),
+    ("nav.pos_daily_sales",       "POS — Daily Sales",                 "Navigation · POS", "pos"),
+    ("pos.sell",                  "Create bills (sell)",               "Actions · POS", "pos"),
+    ("pos.shift_open",            "Open a till shift",                 "Actions · POS", "pos"),
+    ("pos.shift_close",           "Close a till shift",                "Actions · POS", "pos"),
+    ("pos.void",                  "Void bills",                        "Actions · POS", "pos"),
+    ("pos.reports",               "View POS reports",                  "Actions · POS", "pos"),
+    ("nav.pos_customers",         "POS — Customers",                   "Navigation · POS", "pos"),
+    ("nav.pos_stock",             "POS — Stock Movements",             "Navigation · POS", "pos"),
+    ("nav.pos_outlet_settings",   "POS — Outlet Settings (receipt/QR)","Navigation · POS", "pos"),
+    ("pos.customers.manage",      "Manage customers",                  "Actions · POS", "pos"),
+    ("pos.stock.adjust",          "Manual stock adjustment",           "Actions · POS", "pos"),
+    ("pos.outlet_settings",       "Edit outlet receipt/LankaQR settings","Actions · POS", "pos"),
+    ("nav.pos_grn_entry",         "POS — GRN Entry",                   "Navigation · POS", "pos"),
+    ("nav.pos_bulk_price",        "POS — Bulk Price Update",           "Navigation · POS", "pos"),
+    ("nav.pos_price_history",     "POS — Price History",               "Navigation · POS", "pos"),
+    ("pos.grn.entry",             "Enter GRN (stock in)",              "Actions · POS", "pos"),
+    ("pos.prices.update",         "Update item prices",                "Actions · POS", "pos"),
+    ("pos.customers.credit",      "Adjust customer credit",            "Actions · POS", "pos"),
+    ("nav.pos_promotions",        "POS — Promotions",                  "Navigation · POS", "pos"),
+    ("pos.promotions.manage",     "Manage promotions",                 "Actions · POS", "pos"),
+    ("nav.pos_products",          "POS — Products",                    "Navigation · POS", "pos"),
+    ("nav.pos_low_stock",         "POS — Low Stock",                   "Navigation · POS", "pos"),
+    ("nav.pos_reports",           "POS — Reports (top/profit/tax)",    "Navigation · POS", "pos"),
+    ("nav.pos_expenses",          "POS — Expenses",                    "Navigation · POS", "pos"),
+    ("nav.pos_rts",               "POS — Purchase Returns",            "Navigation · POS", "pos"),
+    ("nav.pos_payables",          "POS — Supplier Payables",           "Navigation · POS", "pos"),
+    ("pos.products.manage",       "Create / edit / delete products",   "Actions · POS", "pos"),
+    ("pos.products.import",       "Bulk-import products via CSV",      "Actions · POS", "pos"),
+    ("pos.rts.manage",            "Enter purchase returns",            "Actions · POS", "pos"),
+    ("pos.expenses.manage",       "Enter expenses",                    "Actions · POS", "pos"),
+    ("pos.payables.manage",       "Record supplier payments",          "Actions · POS", "pos"),
 ]
 
-ALL_CODES = [code for code, _, _ in PERMISSIONS]
+
+def _row(p):
+    """Tolerant unpacker — supports legacy 3-tuples (default system='both')."""
+    if len(p) == 4:
+        return p
+    code, label, category = p
+    return (code, label, category, "both")
+
+
+ALL_CODES = [_row(p)[0] for p in PERMISSIONS]
 ALL_CODES_SET = set(ALL_CODES)
+SYSTEM_BY_CODE = {_row(p)[0]: _row(p)[3] for p in PERMISSIONS}
 
 
 def registry_as_dicts():
     """Return the registry as a list of dicts — used by the frontend."""
-    return [{"code": c, "label": l, "category": cat} for c, l, cat in PERMISSIONS]
+    out = []
+    for p in PERMISSIONS:
+        code, label, category, system = _row(p)
+        out.append({
+            "code": code,
+            "label": label,
+            "category": category,
+            "system": system,
+        })
+    return out
+
+
+def systems_for_codes(codes):
+    """
+    Derive the user's active product systems from a set of permission codes.
+    Cross-product ('both') codes don't count toward 'has stock' or 'has pos'
+    on their own — a user with only Audit Log access shouldn't be told they
+    have either system. Returns a sorted list, possibly empty.
+    """
+    code_set = codes if isinstance(codes, set) else set(codes or [])
+    systems = set()
+    for c in code_set:
+        s = SYSTEM_BY_CODE.get(c)
+        if s in ("stock", "pos"):
+            systems.add(s)
+    return sorted(systems)
 
 
 # Role defaults. "*" means "all permissions" (Super Admin).
@@ -299,6 +353,11 @@ def effective_permissions_for(user) -> list[str]:
     if default == "*":
         return list(ALL_CODES)
     return list(default)
+
+
+def systems_for_user(user) -> list[str]:
+    """Active systems for a user, derived from effective permissions."""
+    return systems_for_codes(effective_permissions_for(user))
 
 
 def user_has_permission(user, code: str) -> bool:

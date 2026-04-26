@@ -2,7 +2,11 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.exceptions import AuthenticationFailed
 from rest_framework import serializers
 from .models import User
-from .permission_registry import effective_permissions_for, ALL_CODES_SET
+from .permission_registry import (
+    effective_permissions_for,
+    systems_for_user,
+    ALL_CODES_SET,
+)
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -26,12 +30,13 @@ class UserSerializer(serializers.ModelSerializer):
     outlet_name = serializers.CharField(source="outlet.outlet_name", read_only=True)
     permissions = serializers.SerializerMethodField()
     permissions_overridden = serializers.SerializerMethodField()
+    systems = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             "id", "username", "role", "outlet_id", "outlet_name",
-            "is_active", "permissions", "permissions_overridden",
+            "is_active", "permissions", "permissions_overridden", "systems",
         ]
 
     def get_permissions(self, obj):
@@ -39,6 +44,9 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_permissions_overridden(self, obj):
         return obj.permissions_override is not None
+
+    def get_systems(self, obj):
+        return systems_for_user(obj)
 
 
 class UserCreateSerializer(serializers.ModelSerializer):

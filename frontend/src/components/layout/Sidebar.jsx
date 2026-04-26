@@ -3,15 +3,35 @@ import { Link, useLocation } from "react-router-dom";
 import {
   Box, Drawer, List, ListItemButton, ListItemIcon, ListItemText,
   Typography, IconButton, Tooltip, Collapse, Avatar, useTheme, useMediaQuery,
+  ToggleButton, ToggleButtonGroup,
 } from "@mui/material";
 import MenuOpenIcon from "@mui/icons-material/MenuOpen";
 import InventoryIcon from "@mui/icons-material/Inventory";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import LogoutIcon from "@mui/icons-material/Logout";
 import { useAuth } from "../../contexts/AuthContext";
-import { routesForPermissions, GROUP_ORDER, DEFAULT_EXPANDED_GROUPS } from "../../routes/config";
+import {
+  routesForPermissions,
+  GROUP_ORDER,
+  DEFAULT_EXPANDED_GROUPS,
+  ACTIVE_SYSTEM_STORAGE_KEY,
+} from "../../routes/config";
 
 const EXPANDED_STORAGE_KEY = "sidebar_expanded_groups_v1";
+
+function loadActiveSystem(systems) {
+  try {
+    const saved = localStorage.getItem(ACTIVE_SYSTEM_STORAGE_KEY);
+    if (saved && systems.includes(saved)) return saved;
+  } catch { /* ignore */ }
+  return systems[0] || null;
+}
+
+function saveActiveSystem(value) {
+  try {
+    if (value) localStorage.setItem(ACTIVE_SYSTEM_STORAGE_KEY, value);
+  } catch { /* ignore */ }
+}
 
 function loadExpandedState() {
   try {
@@ -35,7 +55,33 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }) 
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const { user, logout } = useAuth();
   const location = useLocation();
-  const items = routesForPermissions(user?.permissions);
+
+  // Two-product split. The user's `systems` is derived server-side from their
+  // effective permissions; values are "stock" / "pos". When they have only one,
+  // there's no toggle. When they have both, the toggle controls which set of
+  // routes is visible (cross-product entries — system: "both" — show in both).
+  const userSystems = useMemo(() => user?.systems || [], [user]);
+  const [activeSystem, setActiveSystem] = useState(() => loadActiveSystem(userSystems));
+
+  // If the user object updates (e.g. fresh /api/me) and the persisted choice
+  // is no longer valid, reset to the first system they actually have.
+  useEffect(() => {
+    if (userSystems.length === 0) {
+      setActiveSystem(null);
+      return;
+    }
+    if (!activeSystem || !userSystems.includes(activeSystem)) {
+      setActiveSystem(userSystems[0]);
+    }
+  }, [userSystems]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSystemChange = (_e, value) => {
+    if (!value || value === activeSystem) return;
+    setActiveSystem(value);
+    saveActiveSystem(value);
+  };
+
+  const items = routesForPermissions(user?.permissions, activeSystem);
 
   const grouped = GROUP_ORDER.map((g) => ({
     group: g,
@@ -132,6 +178,36 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }) 
           </Tooltip>
         )}
       </Box>
+
+      {/* Two-product system toggle — only shown when the user has access to both. */}
+      {userSystems.length > 1 && !isCollapsedRail && (
+        <Box sx={{ px: 2, pb: 1.5 }}>
+          <ToggleButtonGroup
+            value={activeSystem}
+            exclusive
+            onChange={handleSystemChange}
+            size="small"
+            fullWidth
+            sx={{
+              "& .MuiToggleButton-root": {
+                py: 0.5,
+                fontSize: "0.7rem",
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                color: "text.secondary",
+                "&.Mui-selected": {
+                  bgcolor: "primary.lighter",
+                  color: "primary.dark",
+                  "&:hover": { bgcolor: "primary.lighter" },
+                },
+              },
+            }}
+          >
+            <ToggleButton value="stock">STOCK</ToggleButton>
+            <ToggleButton value="pos">POS</ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
+      )}
 
       {/* Nav */}
       <Box sx={{ flex: 1, overflowY: "auto", px: 1, py: 1 }}>

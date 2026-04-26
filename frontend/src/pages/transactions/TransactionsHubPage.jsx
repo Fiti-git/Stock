@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
-import { Grid, Button, Alert, Stack, Box } from "@mui/material";
+import { Grid, Button, Alert, Stack, Box, Typography, Divider } from "@mui/material";
 import BrokenImageIcon from "@mui/icons-material/BrokenImage";
 import AssignmentIcon from "@mui/icons-material/Assignment";
 import FactCheckOutlinedIcon from "@mui/icons-material/FactCheckOutlined";
@@ -11,6 +11,8 @@ import PointOfSaleIcon from "@mui/icons-material/PointOfSale";
 import AssignmentReturnIcon from "@mui/icons-material/AssignmentReturn";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import HistoryIcon from "@mui/icons-material/History";
+import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedIn";
+import Inventory2Icon from "@mui/icons-material/Inventory2";
 import Layout from "../../components/Layout";
 import { PageHeader, HubCard, LoadingState } from "../../components/ui";
 import { useAuth } from "../../contexts/AuthContext";
@@ -101,15 +103,107 @@ function TypeCard({ type }) {
   );
 }
 
+// POS-Snapshot cards — the daily stock-balance XLS upload, its approvals
+// queue, and history. They previously lived as their own sidebar entries
+// (Upload XLS / Upload History / Upload Approvals) but were folded into
+// this hub so all daily-work uploads sit in one place.
+const SNAPSHOT_CARDS = [
+  {
+    key: "snapshot_upload",
+    title: "POS Snapshot — Upload",
+    description: "Upload today's stock-balance XLS exported from POS.",
+    icon: UploadFileIcon,
+    accent: "primary",
+    permission: "nav.upload",
+    to: "/upload",
+    actionLabel: "Open uploader",
+    actionIcon: UploadFileIcon,
+  },
+  {
+    key: "snapshot_approvals",
+    title: "POS Snapshot — Approvals",
+    description: "Review and approve back-dated uploads waiting on admin sign-off.",
+    icon: AssignmentTurnedInIcon,
+    accent: "warning",
+    permission: "nav.upload_approvals",
+    to: "/admin/upload-approvals",
+    actionLabel: "Open approvals",
+    actionIcon: AssignmentTurnedInIcon,
+  },
+  {
+    key: "snapshot_history",
+    title: "POS Snapshot — History",
+    description: "Browse past snapshot uploads, diffs, and reversal options.",
+    icon: HistoryIcon,
+    accent: "info",
+    permission: "nav.upload_history",
+    to: "/upload/history",
+    actionLabel: "Open history",
+    actionIcon: HistoryIcon,
+  },
+];
+
+function SnapshotCard({ card }) {
+  const ActionIcon = card.actionIcon;
+  return (
+    <HubCard
+      icon={card.icon}
+      title={card.title}
+      accent={card.accent}
+      description={card.description}
+      primaryAction={
+        <Button
+          fullWidth
+          variant="contained"
+          color={card.accent}
+          startIcon={<ActionIcon />}
+          component={RouterLink}
+          to={card.to}
+        >
+          {card.actionLabel}
+        </Button>
+      }
+    />
+  );
+}
+
 export default function TransactionsHubPage() {
   const { user } = useAuth();
+  const perms = new Set(user?.permissions || []);
+  const visibleSnapshots = SNAPSHOT_CARDS.filter((c) => perms.has(c.permission));
   return (
     <Layout>
       <PageHeader
         title="Transactions"
-        subtitle={`${user?.username ?? ""} · Pick a report type to upload or review history.`}
+        subtitle={`${user?.username ?? ""} · Daily stock snapshot + per-report uploads in one place.`}
         icon={<ReceiptLongIcon />}
       />
+
+      {visibleSnapshots.length > 0 && (
+        <Box sx={{ mb: 3 }}>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+            <Inventory2Icon fontSize="small" color="primary" />
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, letterSpacing: "0.04em" }}>
+              POS SNAPSHOT (DAILY STOCK BALANCE)
+            </Typography>
+          </Stack>
+          <Grid container spacing={2.5}>
+            {visibleSnapshots.map((c) => (
+              <Grid key={c.key} item xs={12} sm={6} md={4}>
+                <SnapshotCard card={c} />
+              </Grid>
+            ))}
+          </Grid>
+          <Divider sx={{ mt: 3 }} />
+        </Box>
+      )}
+
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+        <ReceiptLongIcon fontSize="small" color="action" />
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, letterSpacing: "0.04em" }}>
+          PER-REPORT UPLOADS
+        </Typography>
+      </Stack>
       <Grid container spacing={2.5}>
         {TYPES.map((t) => (
           <Grid key={t.key} item xs={12} sm={6} md={4}>
