@@ -1,3 +1,5 @@
+import logging
+import traceback
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -17,6 +19,8 @@ from utils.xls_parser import validate_file, parse_xls
 
 from .models import PosSnapshot, UploadLog, AuditLog
 from .serializers import UploadLogSerializer, AuditLogSerializer
+
+logger = logging.getLogger(__name__)
 
 
 def _outlet_mismatch(parsed_outlet_name, target_outlet):
@@ -324,40 +328,56 @@ def approve_upload(request, log_id):
     if not log.stored_file:
         return Response({"detail": "No stored file found for this log."}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Re-parse the stored file
-    log.stored_file.open("rb")
-    parsed = parse_xls(log.stored_file, log.filename)
-    log.stored_file.close()
+    try:
+        # Re-parse the stored file
+        log.stored_file.open("rb")
+        try:
+            parsed = parse_xls(log.stored_file, log.filename)
+        finally:
+            log.stored_file.close()
 
-    if not parsed.rows:
-        return Response({"detail": "Could not parse stored file."}, status=status.HTTP_400_BAD_REQUEST)
+        if not parsed.rows:
+            return Response({"detail": "Could not parse stored file."}, status=status.HTTP_400_BAD_REQUEST)
 
-    outlet = log.outlet
+        outlet = log.outlet
 
-    # Remove existing snapshots for this date if any (overwrite semantics)
-    PosSnapshot.objects.filter(outlet=outlet, snapshot_date=log.snapshot_date).delete()
+        # Remove existing snapshots for this date if any (overwrite semantics)
+        PosSnapshot.objects.filter(outlet=outlet, snapshot_date=log.snapshot_date).delete()
 
-    result = _process_upload(
-        parsed, outlet, log.uploaded_by, log.snapshot_date, overwrite=True, filename=log.filename,
-        existing_log=log,
-    )
+        result = _process_upload(
+            parsed, outlet, log.uploaded_by, log.snapshot_date, overwrite=True, filename=log.filename,
+            existing_log=log,
+        )
 
-    # Mark log approved
-    log.approval_status = UploadLog.ApprovalStatus.APPROVED
-    log.approved_by = request.user
-    log.approved_at = timezone.now()
-    log.stored_file.delete(save=False)
-    log.save(update_fields=["approval_status", "approved_by", "approved_at", "stored_file"])
+        # Mark log approved
+        log.approval_status = UploadLog.ApprovalStatus.APPROVED
+        log.approved_by = request.user
+        log.approved_at = timezone.now()
+        try:
+            log.stored_file.delete(save=False)
+        except Exception:
+            logger.warning("approve_upload: failed to delete stored_file for log %s", log.id, exc_info=True)
+            log.stored_file = None
+        log.save(update_fields=["approval_status", "approved_by", "approved_at", "stored_file"])
 
-    AuditLog.objects.create(
-        user=request.user,
-        action="approve_upload",
-        entity_type="upload_log",
-        entity_id=str(log.id),
-        details={"outlet": outlet.outlet_name, "date": str(log.snapshot_date)},
-    )
+        AuditLog.objects.create(
+            user=request.user,
+            action="approve_upload",
+            entity_type="upload_log",
+            entity_id=str(log.id),
+            details={"outlet": outlet.outlet_name, "date": str(log.snapshot_date)},
+        )
 
-    return result
+        return result
+    except Exception as exc:
+        logger.exception("approve_upload failed for log %s", log_id)
+        return Response(
+            {
+                "detail": f"Approval failed: {exc.__class__.__name__}: {exc}",
+                "trace": traceback.format_exc().splitlines()[-6:],
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 @api_view(["POST"])
@@ -1158,9 +1178,18 @@ def upload_diff(request, log_id):
     if not log.stored_file:
         return Response({"detail": "No stored file found."}, status=status.HTTP_400_BAD_REQUEST)
 
-    log.stored_file.open("rb")
-    parsed = parse_xls(log.stored_file, log.filename)
-    log.stored_file.close()
+    try:
+        log.stored_file.open("rb")
+        try:
+            parsed = parse_xls(log.stored_file, log.filename)
+        finally:
+            log.stored_file.close()
+    except Exception as exc:
+        logger.exception("upload_diff: parse failed for log %s", log_id)
+        return Response(
+            {"detail": f"Could not parse stored file: {exc.__class__.__name__}: {exc}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
     if not parsed.rows:
         return Response({"detail": "Could not parse stored file."}, status=status.HTTP_400_BAD_REQUEST)

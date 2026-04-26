@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import {
   AppBar, Toolbar, IconButton, Box, Button, Tooltip, Select, MenuItem,
   InputBase, Avatar, Menu, MenuItem as MuiMenuItem, Divider, ListItemIcon, Typography, useTheme, useMediaQuery,
@@ -13,6 +14,12 @@ import { useOutlet } from "../../contexts/OutletContext";
 import { getOutlets } from "../../api/outlets";
 import Breadcrumbs from "./Breadcrumbs";
 
+// Routes where the global outlet selector is irrelevant — the page either
+// already covers all outlets or has its own picker.
+const HIDE_OUTLET_SELECTOR_ON = [
+  "/admin/upload-approvals",
+];
+
 export default function TopBar({ onMenuClick, onOpenPalette }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
@@ -20,6 +27,8 @@ export default function TopBar({ onMenuClick, onOpenPalette }) {
   const { selectedOutlet, setSelectedOutlet } = useOutlet();
   const [outlets, setOutlets] = useState([]);
   const [anchor, setAnchor] = useState(null);
+  const { pathname } = useLocation();
+  const showOutletSelector = !HIDE_OUTLET_SELECTOR_ON.some((p) => pathname.startsWith(p));
 
   useEffect(() => {
     if (user?.role === "admin") {
@@ -100,7 +109,7 @@ export default function TopBar({ onMenuClick, onOpenPalette }) {
           <SearchIcon />
         </IconButton>
 
-        {user?.role === "admin" && outlets.length > 0 && (
+        {user?.role === "admin" && outlets.length > 0 && showOutletSelector && (
           <Select
             size="small"
             value={selectedOutlet?.id ?? ""}
