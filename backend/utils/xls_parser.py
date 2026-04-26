@@ -20,12 +20,25 @@ import xlrd
 
 # ---------------------------------------------------------------------------
 # Column indices
+#
+# Two POS export layouts exist in the wild — both must be supported because
+# users can't be told which version of the report to run:
+#
+#   "v1" (11 cols, includes a 'TTL LTR' total-litres column):
+#       0=item_code  2=name  5=TTL_LTR  6=COST  7=SELLING  8=SIH  9/10=values
+#
+#   "v2" (10 cols, 'TTL LTR' column removed — newer POS build):
+#       0=item_code  2=name  4=TTL_LTR  5=COST  6=SELLING  7=SIH  8/9=values
+#
+# Layout is auto-detected from the ITEM header row (the one containing
+# 'COST' and 'SELLING'). Falls back to v1 if nothing matches.
 # ---------------------------------------------------------------------------
 COL_ITEM_CODE = 0
 COL_ITEM_NAME = 2
-COL_COST = 6
-COL_SELLING = 7
-COL_SIH = 8
+
+LAYOUT_V1 = {"cost": 6, "selling": 7, "sih": 8}
+LAYOUT_V2 = {"cost": 5, "selling": 6, "sih": 7}
+DEFAULT_LAYOUT = LAYOUT_V1
 
 ITEM_CODE_PATTERN = re.compile(r"^[A-Z]{2,}[\d]+$")
 
@@ -77,21 +90,24 @@ def _normalise_cell(val) -> str:
 # ---------------------------------------------------------------------------
 # Row-type classification
 # ---------------------------------------------------------------------------
-def classify_row(cells: list) -> str:
+def classify_row(cells: list, layout: dict = DEFAULT_LAYOUT) -> str:
     """Return one of: 'data', 'category', 'total', 'blank'."""
     col0 = _normalise_cell(cells[0] if len(cells) > 0 else "")
-    col4 = _normalise_cell(cells[4] if len(cells) > 4 else "")
-    col8 = cells[8] if len(cells) > 8 else None
+    sih_idx = layout["sih"]
+    sih_cell = cells[sih_idx] if len(cells) > sih_idx else None
 
     if not any(_normalise_cell(c) for c in cells):
         return "blank"
 
-    if col4.startswith("TOTAL FOR"):
-        return "total"
+    # 'TOTAL FOR :' label can appear in different columns depending on layout
+    # (col 4 in v1, col 7 in v2). Scan all cells.
+    for c in cells:
+        if _normalise_cell(c).startswith("TOTAL FOR"):
+            return "total"
 
-    if _is_item_code(col0) and col8 is not None and col8 != "":
+    if _is_item_code(col0) and sih_cell is not None and sih_cell != "":
         try:
-            float(col8)
+            float(sih_cell)
             return "data"
         except (TypeError, ValueError):
             pass
@@ -100,6 +116,33 @@ def classify_row(cells: list) -> str:
         return "category"
 
     return "blank"
+
+
+def _detect_layout(rows: list) -> dict:
+    """
+    Find the ITEM header row (contains 'COST' and 'SELLING') in the first
+    ~25 rows and infer the column layout from the position of 'COST'.
+    Falls back to v1 if no such header found.
+    """
+    for row in rows[:25]:
+        normalised = [_normalise_cell(c).upper() for c in row]
+        if "COST" in normalised and "SELLING" in normalised:
+            cost_idx = normalised.index("COST")
+            if cost_idx == LAYOUT_V2["cost"]:
+                return LAYOUT_V2
+            if cost_idx == LAYOUT_V1["cost"]:
+                return LAYOUT_V1
+            # Unknown offset — derive dynamically from the header row.
+            selling_idx = normalised.index("SELLING")
+            sih_idx = None
+            for i, h in enumerate(normalised):
+                if h == "SIH":
+                    sih_idx = i
+                    break
+            if sih_idx is None:
+                sih_idx = selling_idx + 1
+            return {"cost": cost_idx, "selling": selling_idx, "sih": sih_idx}
+    return DEFAULT_LAYOUT
 
 
 # ---------------------------------------------------------------------------
@@ -235,27 +278,28 @@ def parse_xls(file, filename: str) -> ParseResult:
         return result
 
     result.snapshot_date, result.outlet_name = _extract_headers(all_rows)
+    layout = _detect_layout(all_rows)
 
     current_category = ""
     for raw_row in all_rows:
         # Pad row to at least 11 columns
         row = list(raw_row) + [None] * max(0, 11 - len(raw_row))
-        kind = classify_row(row)
+        kind = classify_row(row, layout)
 
         if kind == "category":
             current_category = _normalise_cell(row[COL_ITEM_CODE]).upper()
         elif kind == "data":
             item_code = _normalise_cell(row[COL_ITEM_CODE])
             item_name = _normalise_cell(row[COL_ITEM_NAME])
-            pos_qty = _to_float(row[COL_SIH])
+            pos_qty = _to_float(row[layout["sih"]])
             if pos_qty is None:
                 continue
             result.rows.append(
                 ParsedRow(
                     item_code=item_code,
                     item_name=item_name,
-                    cost_price=_to_float(row[COL_COST]),
-                    selling_price=_to_float(row[COL_SELLING]),
+                    cost_price=_to_float(row[layout["cost"]]),
+                    selling_price=_to_float(row[layout["selling"]]),
                     pos_quantity=pos_qty,
                     category=current_category,
                 )
