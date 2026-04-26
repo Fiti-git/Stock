@@ -1,47 +1,21 @@
-import { useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useState } from "react";
 import {
-  AppBar, Toolbar, IconButton, Box, Button, Tooltip, Select, MenuItem,
-  InputBase, Avatar, Menu, MenuItem as MuiMenuItem, Divider, ListItemIcon, Typography, useTheme, useMediaQuery,
+  AppBar, Toolbar, IconButton, Box, Button, Tooltip,
+  Avatar, Menu, MenuItem as MuiMenuItem, Divider, ListItemIcon, Typography, useTheme, useMediaQuery,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import SearchIcon from "@mui/icons-material/Search";
 import LogoutIcon from "@mui/icons-material/Logout";
 import PersonIcon from "@mui/icons-material/Person";
-import StorefrontIcon from "@mui/icons-material/Storefront";
 import { useAuth } from "../../contexts/AuthContext";
-import { useOutlet } from "../../contexts/OutletContext";
-import { getOutlets } from "../../api/outlets";
 import Breadcrumbs from "./Breadcrumbs";
-
-// Routes where the global outlet selector is irrelevant — the page either
-// already covers all outlets or has its own picker.
-const HIDE_OUTLET_SELECTOR_ON = [
-  "/admin/upload-approvals",
-];
 
 export default function TopBar({ onMenuClick, onOpenPalette }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const { user, logout } = useAuth();
-  const { selectedOutlet, setSelectedOutlet } = useOutlet();
-  const [outlets, setOutlets] = useState([]);
   const [anchor, setAnchor] = useState(null);
-  const { pathname } = useLocation();
-  const showOutletSelector = !HIDE_OUTLET_SELECTOR_ON.some((p) => pathname.startsWith(p));
-
-  useEffect(() => {
-    if (user?.role === "admin") {
-      getOutlets()
-        .then(({ data }) => {
-          setOutlets(data);
-          if (!selectedOutlet && data.length > 0) {
-            setSelectedOutlet({ id: data[0].id, name: data[0].outlet_name });
-          }
-        })
-        .catch(() => {});
-    }
-  }, [user?.role]); // eslint-disable-line
+  // Outlet selector now lives pinned in the Sidebar — no duplicate here.
 
   const initials = (user?.username || "?").slice(0, 2).toUpperCase();
 
@@ -108,23 +82,6 @@ export default function TopBar({ onMenuClick, onOpenPalette }) {
         <IconButton onClick={onOpenPalette} sx={{ display: { xs: "inline-flex", sm: "none" } }}>
           <SearchIcon />
         </IconButton>
-
-        {user?.role === "admin" && outlets.length > 0 && showOutletSelector && (
-          <Select
-            size="small"
-            value={selectedOutlet?.id ?? ""}
-            onChange={(e) => {
-              const found = outlets.find((o) => o.id === Number(e.target.value));
-              if (found) setSelectedOutlet({ id: found.id, name: found.outlet_name });
-            }}
-            startAdornment={<StorefrontIcon fontSize="small" sx={{ mr: 0.5, color: "text.secondary" }} />}
-            sx={{ minWidth: 160, display: { xs: "none", md: "inline-flex" } }}
-          >
-            {outlets.map((o) => (
-              <MenuItem key={o.id} value={o.id}>{o.outlet_name}</MenuItem>
-            ))}
-          </Select>
-        )}
 
         <Tooltip title={user?.username || "Account"}>
           <IconButton onClick={(e) => setAnchor(e.currentTarget)} sx={{ p: 0.5 }}>

@@ -2,30 +2,100 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Dialog, DialogContent, InputBase, Box, List, ListItemButton, ListItemIcon,
-  ListItemText, Typography, Divider,
+  ListItemText, Typography, Divider, Chip,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
+import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import { useAuth } from "../../contexts/AuthContext";
-import { routesForPermissions } from "../../routes/config";
+import { searchableRoutes, ACTIVE_SYSTEM_STORAGE_KEY } from "../../routes/config";
 
+/**
+ * Cmd-K / Ctrl-K command palette.
+ *
+ * - Lists every route the user has permission for, including ones hidden
+ *   from the sidebar (Upload XLS, Approvals, Stock Count, transaction
+ *   sub-pages, etc.). The whole point of a palette is to reach pages
+ *   that aren't in the menu.
+ * - Filters by the user's active system (the STOCK/POS toggle). Cross-
+ *   product routes (system: "both") show in either mode.
+ * - For users with both systems, prepends a "Switch to STOCK / POS"
+ *   command at the top. Selecting it flips the active system in
+ *   localStorage and reloads so every consumer (sidebar, palette,
+ *   page guards) re-derives from the new value.
+ */
 export default function CommandPalette({ open, onClose }) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [query, setQuery] = useState("");
   const [hover, setHover] = useState(0);
 
-  const all = useMemo(() => routesForPermissions(user?.permissions), [user?.permissions]);
+  // Read active system fresh on every open — it can change between opens
+  // via the sidebar toggle, and we don't want a stale snapshot.
+  const activeSystem = useMemo(() => {
+    if (!open) return null;
+    try {
+      const saved = localStorage.getItem(ACTIVE_SYSTEM_STORAGE_KEY);
+      const userSystems = user?.systems || [];
+      if (saved && userSystems.includes(saved)) return saved;
+      return userSystems[0] || null;
+    } catch {
+      return user?.systems?.[0] || null;
+    }
+  }, [open, user]);
+
+  const userHasBothSystems = (user?.systems || []).length > 1;
+  const otherSystem = activeSystem === "stock" ? "pos" : "stock";
+
+  // Build the searchable command list. Order: system-switch (if applicable),
+  // then routes. The route list intentionally includes hidden entries so a
+  // user can `Cmd-K → upload` and jump straight to /upload even though the
+  // sidebar no longer surfaces it.
+  const all = useMemo(() => {
+    const routes = searchableRoutes(user?.permissions, activeSystem).map((r) => ({
+      kind: "route",
+      key: r.path,
+      label: r.label,
+      group: r.group,
+      icon: r.icon,
+      hint: r.path,
+    }));
+    const switchCmd = userHasBothSystems ? [{
+      kind: "system",
+      key: "system:switch",
+      label: `Switch to ${otherSystem.toUpperCase()}`,
+      group: "System",
+      icon: SwapHorizIcon,
+      hint: `currently ${activeSystem?.toUpperCase()}`,
+    }] : [];
+    return [...switchCmd, ...routes];
+  }, [user?.permissions, activeSystem, userHasBothSystems, otherSystem]);
+
   const results = useMemo(() => {
-    if (!query) return all.slice(0, 10);
+    if (!query) return all.slice(0, 12);
     const q = query.toLowerCase();
     return all
-      .filter((r) => r.label.toLowerCase().includes(q) || r.path.toLowerCase().includes(q) || (r.group || "").toLowerCase().includes(q))
-      .slice(0, 12);
+      .filter((r) =>
+        r.label.toLowerCase().includes(q) ||
+        (r.hint || "").toLowerCase().includes(q) ||
+        (r.group || "").toLowerCase().includes(q)
+      )
+      .slice(0, 14);
   }, [query, all]);
 
   useEffect(() => { if (open) { setQuery(""); setHover(0); } }, [open]);
 
-  const go = (r) => { onClose?.(); navigate(r.path); };
+  const select = (cmd) => {
+    onClose?.();
+    if (cmd.kind === "system") {
+      try { localStorage.setItem(ACTIVE_SYSTEM_STORAGE_KEY, otherSystem); } catch { /* ignore */ }
+      // Hard reload so the sidebar, route guards, and page bundles pick up
+      // the new active system uniformly. Switching mid-session without a
+      // reload would require every consumer to subscribe to a global signal.
+      window.location.reload();
+      return;
+    }
+    navigate(cmd.key);
+  };
 
   return (
     <Dialog
@@ -46,11 +116,19 @@ export default function CommandPalette({ open, onClose }) {
           onKeyDown={(e) => {
             if (e.key === "ArrowDown") { e.preventDefault(); setHover((h) => Math.min(h + 1, results.length - 1)); }
             else if (e.key === "ArrowUp") { e.preventDefault(); setHover((h) => Math.max(h - 1, 0)); }
-            else if (e.key === "Enter" && results[hover]) { e.preventDefault(); go(results[hover]); }
+            else if (e.key === "Enter" && results[hover]) { e.preventDefault(); select(results[hover]); }
           }}
           sx={{ fontSize: "0.95rem" }}
         />
-        <Box component="kbd" sx={{ ml: 1, px: 0.75, fontSize: "0.7rem", color: "text.secondary", border: "1px solid", borderColor: "divider", borderRadius: 1 }}>ESC</Box>
+        {activeSystem && (
+          <Chip
+            size="small"
+            label={activeSystem.toUpperCase()}
+            color={activeSystem === "stock" ? "primary" : "secondary"}
+            sx={{ mr: 1, fontWeight: 700, letterSpacing: "0.06em" }}
+          />
+        )}
+        <Box component="kbd" sx={{ px: 0.75, fontSize: "0.7rem", color: "text.secondary", border: "1px solid", borderColor: "divider", borderRadius: 1 }}>ESC</Box>
       </Box>
       <DialogContent sx={{ p: 0, maxHeight: 400 }}>
         {results.length === 0 ? (
@@ -63,10 +141,10 @@ export default function CommandPalette({ open, onClose }) {
               const Icon = r.icon;
               return (
                 <ListItemButton
-                  key={r.path}
+                  key={r.key}
                   selected={i === hover}
                   onMouseEnter={() => setHover(i)}
-                  onClick={() => go(r)}
+                  onClick={() => select(r)}
                 >
                   <ListItemIcon sx={{ minWidth: 36 }}>{Icon ? <Icon fontSize="small" /> : null}</ListItemIcon>
                   <ListItemText
@@ -75,7 +153,7 @@ export default function CommandPalette({ open, onClose }) {
                     primaryTypographyProps={{ fontSize: "0.875rem", fontWeight: 500 }}
                     secondaryTypographyProps={{ fontSize: "0.72rem" }}
                   />
-                  <Typography variant="caption" color="text.secondary">{r.path}</Typography>
+                  <Typography variant="caption" color="text.secondary">{r.hint}</Typography>
                 </ListItemButton>
               );
             })}

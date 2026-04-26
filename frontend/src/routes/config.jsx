@@ -67,24 +67,26 @@ export const routes = [
   { path: "/variance-reconciliation",   code: "nav.variance_reconciliation", label: "Variance Reconciliation", icon: ChecklistIcon,    roles: ["manager","admin","super_admin"],                       group: "Operate", system: "stock" },
 
   // ------------------------- POS -------------------------
-  { path: "/pos",                       code: "nav.pos_terminal",         label: "POS Terminal",       icon: PointOfSaleIcon,        roles: ["store_user","staff","manager","admin","super_admin"], group: "POS", system: "pos" },
-  { path: "/pos/shifts",                code: "nav.pos_shifts",           label: "POS — Shifts",       icon: ReceiptLongIcon,        roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/bills",                 code: "nav.pos_bills",            label: "POS — Bills",        icon: ReceiptLongIcon,        roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/daily-sales",           code: "nav.pos_daily_sales",      label: "POS — Daily Sales",  icon: QueryStatsIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/customers",             code: "nav.pos_customers",        label: "POS — Customers",    icon: PeopleAltIcon,          roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/stock",                 code: "nav.pos_stock",            label: "POS — Stock",        icon: Inventory2Icon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/outlet-settings",       code: "nav.pos_outlet_settings",  label: "POS — Outlet Setup", icon: StorefrontIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/grn",                   code: "nav.pos_grn_entry",        label: "POS — GRN Entry",    icon: MoveToInboxIcon,        roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/prices/bulk",           code: "nav.pos_bulk_price",       label: "POS — Bulk Price",   icon: EditNoteIcon,           roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/prices/history",        code: "nav.pos_price_history",    label: "POS — Price History",icon: HistoryIcon,            roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/promotions",            code: "nav.pos_promotions",       label: "POS — Promotions",   icon: AssessmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/products",              code: "nav.pos_products",         label: "POS — Products",     icon: Inventory2Icon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/low-stock",             code: "nav.pos_low_stock",        label: "POS — Low Stock",    icon: ReportProblemIcon,      roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/reports",               code: "nav.pos_reports",          label: "POS — Reports",      icon: QueryStatsIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/expenses",              code: "nav.pos_expenses",         label: "POS — Expenses",     icon: AssignmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/purchase-returns",      code: "nav.pos_rts",              label: "POS — RTS",          icon: KeyboardReturnIcon,     roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/payables",              code: "nav.pos_payables",         label: "POS — Payables",     icon: AssessmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/z-report",              code: "nav.pos_shifts",           label: "POS — Z Report",     icon: ReceiptLongIcon,        roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  // Labels intentionally drop the "POS — " prefix. The system-toggle in the
+  // sidebar already establishes context; the prefix was redundant noise.
+  { path: "/pos",                       code: "nav.pos_terminal",         label: "Terminal",           icon: PointOfSaleIcon,        roles: ["store_user","staff","manager","admin","super_admin"], group: "POS", system: "pos" },
+  { path: "/pos/shifts",                code: "nav.pos_shifts",           label: "Shifts",             icon: ReceiptLongIcon,        roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/bills",                 code: "nav.pos_bills",            label: "Bills",              icon: ReceiptLongIcon,        roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/daily-sales",           code: "nav.pos_daily_sales",      label: "Daily Sales",        icon: QueryStatsIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/customers",             code: "nav.pos_customers",        label: "Customers",          icon: PeopleAltIcon,          roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/stock",                 code: "nav.pos_stock",            label: "Stock",              icon: Inventory2Icon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/outlet-settings",       code: "nav.pos_outlet_settings",  label: "Outlet Setup",       icon: StorefrontIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/grn",                   code: "nav.pos_grn_entry",        label: "GRN Entry",          icon: MoveToInboxIcon,        roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/prices/bulk",           code: "nav.pos_bulk_price",       label: "Bulk Price",         icon: EditNoteIcon,           roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/prices/history",        code: "nav.pos_price_history",    label: "Price History",      icon: HistoryIcon,            roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/promotions",            code: "nav.pos_promotions",       label: "Promotions",         icon: AssessmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/products",              code: "nav.pos_products",         label: "Products",           icon: Inventory2Icon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/low-stock",             code: "nav.pos_low_stock",        label: "Low Stock",          icon: ReportProblemIcon,      roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/reports",               code: "nav.pos_reports",          label: "Reports",            icon: QueryStatsIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/expenses",              code: "nav.pos_expenses",         label: "Expenses",           icon: AssignmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/purchase-returns",      code: "nav.pos_rts",              label: "Purchase Returns",   icon: KeyboardReturnIcon,     roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/payables",              code: "nav.pos_payables",         label: "Payables",           icon: AssessmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/z-report",              code: "nav.pos_shifts",           label: "Z Report",           icon: ReceiptLongIcon,        roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
 
   // ------------------------- ANALYZE -------------------------
   { path: "/admin/dashboard",           code: "nav.admin_dashboard",      label: "Admin Dashboard",    icon: DashboardIcon,          roles: ["admin","super_admin"],                        group: "Analyze", system: "stock" },
@@ -165,6 +167,26 @@ export function routesForPermissions(permissions, activeSystem = null) {
   return routes.filter((r) => {
     if (r.showInNav === false) return false;
     if (!r.code || !set.has(r.code)) return false;
+    if (!activeSystem) return true;
+    return !r.system || r.system === "both" || r.system === activeSystem;
+  });
+}
+
+/**
+ * Like routesForPermissions, but ALSO includes routes that are hidden from
+ * the sidebar (showInNav: false) — used by the Cmd-K command palette so
+ * users can jump straight to URL-reachable pages that no longer have a
+ * sidebar entry (Upload XLS, Upload Approvals, Stock Count, transaction
+ * sub-pages, etc.). Skips parameterised routes (e.g. /items/:id) and
+ * internal-only entries (login, license setup) that have no `code`.
+ */
+export function searchableRoutes(permissions, activeSystem = null) {
+  const set = permissions instanceof Set ? permissions : new Set(permissions || []);
+  return routes.filter((r) => {
+    if (!r.code) return false;
+    if (!r.label) return false;
+    if (r.path.includes(":")) return false;
+    if (!set.has(r.code)) return false;
     if (!activeSystem) return true;
     return !r.system || r.system === "both" || r.system === activeSystem;
   });

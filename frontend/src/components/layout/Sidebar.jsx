@@ -16,6 +16,7 @@ import {
   DEFAULT_EXPANDED_GROUPS,
   ACTIVE_SYSTEM_STORAGE_KEY,
 } from "../../routes/config";
+import OutletSwitcher from "./OutletSwitcher";
 
 const EXPANDED_STORAGE_KEY = "sidebar_expanded_groups_v1";
 
@@ -177,6 +178,13 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }) 
             </IconButton>
           </Tooltip>
         )}
+      </Box>
+
+      {/* Outlet selector — pinned so the active outlet is always visible.
+          Admins get a dropdown; non-admins see a read-only chip. Collapsed
+          rail mode renders an icon instead. */}
+      <Box sx={{ pb: 1 }}>
+        <OutletSwitcher variant="sidebar" collapsed={isCollapsedRail} />
       </Box>
 
       {/* Two-product system toggle — only shown when the user has access to both. */}
