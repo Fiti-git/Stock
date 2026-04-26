@@ -21,26 +21,37 @@ import xlrd
 # ---------------------------------------------------------------------------
 # Column indices
 #
-# Two POS export layouts exist in the wild — both must be supported because
-# users can't be told which version of the report to run:
+# At least three POS export layouts exist in the wild and users can't be
+# told which version of the report to run, so the parser must auto-detect:
 #
-#   "v1" (11 cols, includes a 'TTL LTR' total-litres column):
+#   "v1" (11 cols, includes a 'TTL LTR' column, alpha-prefix item codes):
 #       0=item_code  2=name  5=TTL_LTR  6=COST  7=SELLING  8=SIH  9/10=values
 #
-#   "v2" (10 cols, 'TTL LTR' column removed — newer POS build):
+#   "v2" (10 cols, 'TTL LTR' removed, alpha-prefix item codes):
 #       0=item_code  2=name  4=TTL_LTR  5=COST  6=SELLING  7=SIH  8/9=values
 #
-# Layout is auto-detected from the ITEM header row (the one containing
-# 'COST' and 'SELLING'). Falls back to v1 if nothing matches.
+#   "v3" (11 cols, includes 'EXP. DATE', digit-only item codes,
+#         header LIES about column positions — header says cost=6 but the
+#         actual numeric block is at cols 5-7 with col 8 blank):
+#       0=item_code  1=name  5=COST  6=SELLING  7=SIH  9/10=values
+#
+# Detection strategy: find the first row whose col-0 matches an item-code
+# pattern, then locate the actual SIH column by walking left from the
+# rightmost numeric cells looking for three contiguous numbers. This
+# overrides the header when they disagree (v3 case).
 # ---------------------------------------------------------------------------
 COL_ITEM_CODE = 0
-COL_ITEM_NAME = 2
+COL_ITEM_NAME_DEFAULT = 2
 
-LAYOUT_V1 = {"cost": 6, "selling": 7, "sih": 8}
-LAYOUT_V2 = {"cost": 5, "selling": 6, "sih": 7}
+LAYOUT_V1 = {"cost": 6, "selling": 7, "sih": 8, "name": 2}
+LAYOUT_V2 = {"cost": 5, "selling": 6, "sih": 7, "name": 2}
+LAYOUT_V3 = {"cost": 5, "selling": 6, "sih": 7, "name": 1}
 DEFAULT_LAYOUT = LAYOUT_V1
 
-ITEM_CODE_PATTERN = re.compile(r"^[A-Z]{2,}[\d]+$")
+# Accepts alpha-prefixed codes (AR00003244, WGHE000380, ASFAKFITI001) and
+# pure-digit codes (013252, 009766). Requires at least three trailing
+# digits to avoid false matches against tokens like "NO" or "ITEM".
+ITEM_CODE_PATTERN = re.compile(r"^[A-Z]*\d{3,}$")
 
 
 # ---------------------------------------------------------------------------
@@ -118,30 +129,91 @@ def classify_row(cells: list, layout: dict = DEFAULT_LAYOUT) -> str:
     return "blank"
 
 
-def _detect_layout(rows: list) -> dict:
+def _is_number(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _layout_from_header(rows: list):
     """
-    Find the ITEM header row (contains 'COST' and 'SELLING') in the first
-    ~25 rows and infer the column layout from the position of 'COST'.
-    Falls back to v1 if no such header found.
+    Return a layout dict from the ITEM header row, or None if no usable
+    header found. The header is ADVISORY only — caller validates against
+    a sample data row and overrides if they disagree (v3 ships a header
+    that doesn't match its own data layout).
     """
     for row in rows[:25]:
         normalised = [_normalise_cell(c).upper() for c in row]
         if "COST" in normalised and "SELLING" in normalised:
             cost_idx = normalised.index("COST")
-            if cost_idx == LAYOUT_V2["cost"]:
-                return LAYOUT_V2
-            if cost_idx == LAYOUT_V1["cost"]:
-                return LAYOUT_V1
-            # Unknown offset — derive dynamically from the header row.
             selling_idx = normalised.index("SELLING")
-            sih_idx = None
-            for i, h in enumerate(normalised):
-                if h == "SIH":
-                    sih_idx = i
-                    break
-            if sih_idx is None:
-                sih_idx = selling_idx + 1
-            return {"cost": cost_idx, "selling": selling_idx, "sih": sih_idx}
+            sih_idx = normalised.index("SIH") if "SIH" in normalised else selling_idx + 1
+            return {"cost": cost_idx, "selling": selling_idx, "sih": sih_idx, "name": COL_ITEM_NAME_DEFAULT}
+    return None
+
+
+def _layout_from_data(rows: list):
+    """
+    Probe the first item-code row to find the real numeric layout.
+
+    POS exports always end every data row with two value columns
+    (cost_value, selling_value). SIH sits one or two columns to the LEFT
+    of cost_value (one in v1/v2, two in v3 because v3 leaves a blank
+    cell between SIH and cost_value). SELLING and COST are immediately
+    left of SIH.
+
+    Returns a layout dict or None if no valid data row found.
+    """
+    for raw in rows:
+        row = list(raw)
+        if not row:
+            continue
+        c0 = _normalise_cell(row[0])
+        if not _is_item_code(c0):
+            continue
+
+        # Find numeric column indices.
+        num_indices = [i for i, v in enumerate(row) if _is_number(v)]
+        if len(num_indices) < 3:
+            continue
+
+        # Rightmost two numerics = (cost_value, selling_value).
+        cost_value_idx = num_indices[-2]
+
+        # SIH is the rightmost numeric strictly left of cost_value such that
+        # the two cells immediately left of it are also numeric (cost+selling).
+        for sih_try in range(cost_value_idx - 1, max(-1, cost_value_idx - 4), -1):
+            if sih_try < 2:
+                break
+            if _is_number(row[sih_try]) and _is_number(row[sih_try - 1]) and _is_number(row[sih_try - 2]):
+                # Item name = first non-empty, non-numeric cell after col 0.
+                name_idx = COL_ITEM_NAME_DEFAULT
+                for i in range(1, min(len(row), 6)):
+                    v = row[i]
+                    if isinstance(v, str) and v.strip() and not _is_number(v):
+                        name_idx = i
+                        break
+                return {
+                    "cost": sih_try - 2,
+                    "selling": sih_try - 1,
+                    "sih": sih_try,
+                    "name": name_idx,
+                }
+        # Found an item-code row but couldn't locate a 3-numeric run — give
+        # up rather than guessing; the next item-code row may parse cleaner.
+    return None
+
+
+def _detect_layout(rows: list) -> dict:
+    """
+    Pick the column layout for this file. The data probe is the source of
+    truth because it actually inspects values; the header is used only if
+    the probe finds no item-code rows (e.g. an empty export).
+    """
+    data_layout = _layout_from_data(rows)
+    if data_layout is not None:
+        return data_layout
+    header_layout = _layout_from_header(rows)
+    if header_layout is not None:
+        return header_layout
     return DEFAULT_LAYOUT
 
 
@@ -290,7 +362,8 @@ def parse_xls(file, filename: str) -> ParseResult:
             current_category = _normalise_cell(row[COL_ITEM_CODE]).upper()
         elif kind == "data":
             item_code = _normalise_cell(row[COL_ITEM_CODE])
-            item_name = _normalise_cell(row[COL_ITEM_NAME])
+            name_idx = layout.get("name", COL_ITEM_NAME_DEFAULT)
+            item_name = _normalise_cell(row[name_idx]) if name_idx < len(row) else ""
             pos_qty = _to_float(row[layout["sih"]])
             if pos_qty is None:
                 continue
