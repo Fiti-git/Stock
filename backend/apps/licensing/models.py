@@ -17,6 +17,10 @@ class LicenseConfiguration(models.Model):
 
     class Meta:
         verbose_name = 'License Configuration'
+        # Pinned to the existing prod table name (Django default for the
+        # original app_label "licensing"). Phase 2 may move this app under
+        # services/identity/ — pinning prevents Django from auto-renaming.
+        db_table = 'licensing_licenseconfiguration'
 
     def save(self, *args, **kwargs):
         if not self.pk and LicenseConfiguration.objects.exists():
@@ -44,6 +48,8 @@ class CachedLicense(models.Model):
 
     class Meta:
         verbose_name = 'Cached License'
+        # Pinned to existing prod table — see LicenseConfiguration above.
+        db_table = 'licensing_cachedlicense'
 
     def save(self, *args, **kwargs):
         if not self.pk and CachedLicense.objects.exists():
@@ -73,6 +79,8 @@ class LicenseConfigAuditLog(models.Model):
 
     class Meta:
         ordering = ['-timestamp']
+        # Pinned to existing prod table — see LicenseConfiguration above.
+        db_table = 'licensing_licenseconfigauditlog'
 
     def __str__(self):
         return f'{self.action} by {self.actor} at {self.timestamp}'
