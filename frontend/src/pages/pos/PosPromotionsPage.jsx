@@ -23,6 +23,11 @@ const emptyForm = () => ({
   starts_at: dtLocal(new Date()),
   ends_at: dtLocal(new Date(Date.now() + 14 * 864e5)),
   max_usage: 0, is_active: true,
+  // Phase 2 Agent 7 — extended kinds
+  buy_qty: "", get_qty: "", get_item: "",
+  combo_items: "", combo_price: "",
+  tiers: "",
+  time_from: "", time_to: "", weekdays: "",
 });
 
 export default function PosPromotionsPage() {
@@ -58,6 +63,12 @@ export default function PosPromotionsPage() {
       min_bill_amount: String(p.min_bill_amount || 0),
       starts_at: dtLocal(p.starts_at), ends_at: dtLocal(p.ends_at),
       max_usage: p.max_usage, is_active: p.is_active,
+      buy_qty: p.buy_qty ?? "", get_qty: p.get_qty ?? "", get_item: p.get_item ?? "",
+      combo_items: Array.isArray(p.combo_items) ? p.combo_items.join(",") : (p.combo_items || ""),
+      combo_price: p.combo_price ?? "",
+      tiers: p.tiers ? (typeof p.tiers === "string" ? p.tiers : JSON.stringify(p.tiers, null, 2)) : "",
+      time_from: p.time_from || "", time_to: p.time_to || "",
+      weekdays: Array.isArray(p.weekdays) ? p.weekdays.join(",") : (p.weekdays || ""),
     });
     setEditOpen(true);
   };
@@ -80,6 +91,28 @@ export default function PosPromotionsPage() {
       max_usage: Number(form.max_usage) || 0,
       is_active: !!form.is_active,
     };
+    // Phase 2 Agent 7 — extended kinds
+    if (form.kind === "bogo") {
+      payload.buy_qty = Number(form.buy_qty) || 0;
+      payload.get_qty = Number(form.get_qty) || 0;
+      if (form.get_item) payload.get_item = Number(form.get_item) || null;
+    } else if (form.kind === "combo") {
+      payload.combo_items = (form.combo_items || "")
+        .split(",").map((s) => Number(s.trim())).filter((n) => Number.isFinite(n) && n > 0);
+      payload.combo_price = form.combo_price;
+    } else if (form.kind === "tiered") {
+      try {
+        payload.tiers = form.tiers ? JSON.parse(form.tiers) : [];
+      } catch {
+        notify("Tiers must be valid JSON.", "error");
+        return;
+      }
+    } else if (form.kind === "happy_hour") {
+      payload.time_from = form.time_from || null;
+      payload.time_to = form.time_to || null;
+      payload.weekdays = (form.weekdays || "")
+        .split(",").map((s) => Number(s.trim())).filter((n) => Number.isFinite(n));
+    }
     try {
       if (editing) await updatePromotion(editing.id, payload);
       else await createPromotion(payload);
@@ -140,9 +173,53 @@ export default function PosPromotionsPage() {
               <TextField select label="Kind" value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })} sx={{ flex: 1 }}>
                 <MenuItem value="percent">% off</MenuItem>
                 <MenuItem value="amount">LKR off</MenuItem>
+                <MenuItem value="bogo">BOGO</MenuItem>
+                <MenuItem value="combo">Combo</MenuItem>
+                <MenuItem value="tiered">Tiered</MenuItem>
+                <MenuItem value="happy_hour">Happy hour</MenuItem>
               </TextField>
               <TextField label="Value" value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} sx={{ flex: 1 }} inputProps={{ inputMode: "decimal" }} />
             </Stack>
+            {form.kind === "bogo" && (
+              <Stack direction="row" spacing={2}>
+                <TextField label="Buy qty" value={form.buy_qty}
+                  onChange={(e) => setForm({ ...form, buy_qty: e.target.value })} sx={{ flex: 1 }}
+                  inputProps={{ inputMode: "decimal" }} />
+                <TextField label="Get qty" value={form.get_qty}
+                  onChange={(e) => setForm({ ...form, get_qty: e.target.value })} sx={{ flex: 1 }}
+                  inputProps={{ inputMode: "decimal" }} />
+                <TextField label="Get item id (optional)" value={form.get_item}
+                  onChange={(e) => setForm({ ...form, get_item: e.target.value })} sx={{ flex: 1 }} />
+              </Stack>
+            )}
+            {form.kind === "combo" && (
+              <Stack spacing={1.5}>
+                <TextField label="Combo item ids (comma-separated)" value={form.combo_items}
+                  onChange={(e) => setForm({ ...form, combo_items: e.target.value })}
+                  helperText="e.g. 12,34,56" />
+                <TextField label="Combo price (LKR)" value={form.combo_price}
+                  onChange={(e) => setForm({ ...form, combo_price: e.target.value })}
+                  inputProps={{ inputMode: "decimal" }} />
+              </Stack>
+            )}
+            {form.kind === "tiered" && (
+              <TextField label="Tiers (JSON)" value={form.tiers} multiline minRows={3}
+                onChange={(e) => setForm({ ...form, tiers: e.target.value })}
+                helperText='e.g. [{"min_qty":3,"discount_pct":10}]' />
+            )}
+            {form.kind === "happy_hour" && (
+              <Stack direction="row" spacing={2}>
+                <TextField label="From (HH:MM)" value={form.time_from}
+                  onChange={(e) => setForm({ ...form, time_from: e.target.value })} sx={{ flex: 1 }}
+                  placeholder="14:00" />
+                <TextField label="To (HH:MM)" value={form.time_to}
+                  onChange={(e) => setForm({ ...form, time_to: e.target.value })} sx={{ flex: 1 }}
+                  placeholder="17:00" />
+                <TextField label="Weekdays" value={form.weekdays}
+                  onChange={(e) => setForm({ ...form, weekdays: e.target.value })} sx={{ flex: 1 }}
+                  placeholder="0,1,2,3,4" helperText="0=Mon" />
+              </Stack>
+            )}
             <TextField select label="Scope" value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })}>
               <MenuItem value="bill">Whole bill</MenuItem>
               <MenuItem value="item">Single item</MenuItem>

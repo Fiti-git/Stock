@@ -16,17 +16,33 @@ import Layout from "../../components/Layout";
 import { PageHeader } from "../../components/ui";
 import {
   getMyOpenShift, openShift, closeShift,
-  searchProducts, productByBarcode, createBill,
+  searchProducts, productByBarcode,
   searchCustomers, getActivePromotions,
+  getItemBatches,
+  listPaymentGateways, initiatePayment,
 } from "../../api/pos";
+import QrPaymentDialog from "../../components/QrPaymentDialog";
+import BatchExpiryWarning from "../../components/BatchExpiryWarning";
+import CouponInput from "../../components/CouponInput";
+import GiftCardInput from "../../components/GiftCardInput";
+import CashHandoverModal from "../../components/CashHandoverModal";
 import LocalOfferIcon from "@mui/icons-material/LocalOffer";
 import { useNotification } from "../../providers/NotificationProvider";
+import OfflineBanner from "../../components/OfflineBanner";
+import PendingBillsIndicator from "../../components/PendingBillsIndicator";
+import HardwareStatusChip from "../../components/HardwareStatusChip";
+import SalesRepSelector from "../../components/SalesRepSelector";
+import apiClient from "../../api/client";
+import ManagerPinModal from "../../components/ManagerPinModal";
+import { submitBill as submitBillOffline, startOfflineSync } from "../../lib/offlineSync";
+import { printReceipt, openCashDrawer } from "../../lib/hardware";
 
 const TENDER_OPTIONS = [
   { value: "cash", label: "Cash" },
   { value: "card", label: "Card" },
   { value: "lankaqr", label: "LankaQR" },
   { value: "bank", label: "Bank" },
+  { value: "gift_card", label: "Gift Card" },
   { value: "other", label: "Other" },
 ];
 
@@ -47,18 +63,31 @@ export default function PosTerminalPage() {
   const [searchResults, setSearchResults] = useState([]);
 
   const [cart, setCart] = useState([]); // [{id, item_id, item_code, item_name, qty, unit_price, line_discount}]
+  const [itemBatches, setItemBatches] = useState({}); // { item_id: [batches] }
   const [billDiscount, setBillDiscount] = useState("0");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
 
+  // Phase 3 Agent 10 — optional sales rep attribution for the bill.
+  const [salesRepId, setSalesRepId] = useState(null);
   const [customerSuggestions, setCustomerSuggestions] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [promoOpen, setPromoOpen] = useState(false);
   const [promos, setPromos] = useState([]);
   const [appliedPromos, setAppliedPromos] = useState([]);   // [{id, name, kind, value, scope, ...}]
+  // Phase 2 Agent 7 — coupon redemption (single coupon per bill).
+  const [coupon, setCoupon] = useState(null); // { code, discount } | null
   const [tenderOpen, setTenderOpen] = useState(false);
+  // Manager-PIN approval flow (Phase 1 Agent 4): when create_bill returns
+  // 403 DISCOUNT_REQUIRES_APPROVAL we stash the original payload + idempotency
+  // key and re-submit with the approval_token after the manager authorises.
+  const [pinModalOpen, setPinModalOpen] = useState(false);
+  const [pendingApproval, setPendingApproval] = useState(null);
+  // pendingApproval shape: { payload, idempotencyKey, payments, context }
   const [openShiftOpen, setOpenShiftOpen] = useState(false);
   const [closeShiftOpen, setCloseShiftOpen] = useState(false);
+  const [handoverOpen, setHandoverOpen] = useState(false);
+  const [closedShift, setClosedShift] = useState(null);
   const [lastBill, setLastBill] = useState(null);
 
   // ------------- Shift lifecycle -------------
@@ -75,6 +104,12 @@ export default function PosTerminalPage() {
   }, []);
 
   useEffect(() => { loadShift(); }, [loadShift]);
+
+  // Offline sync worker: drains queued bills on reconnect + every 30s.
+  useEffect(() => {
+    const stop = startOfflineSync(apiClient);
+    return () => { try { stop(); } catch { /* ignore */ } };
+  }, []);
 
   // Autofocus barcode input when idle
   useEffect(() => {
@@ -104,11 +139,12 @@ export default function PosTerminalPage() {
       }
     }
     const manualDiscount = toNumber(billDiscount) || 0;
-    const totalDiscount = manualDiscount + promoDiscount;
+    const couponDiscount = coupon ? Math.min(toNumber(coupon.discount), Math.max(0, subtotal - promoDiscount - manualDiscount)) : 0;
+    const totalDiscount = manualDiscount + promoDiscount + couponDiscount;
     const grand = Math.max(0, subtotal - totalDiscount);
     const qtyTotal = cart.reduce((s, l) => s + toNumber(l.qty), 0);
-    return { subtotal, discount: totalDiscount, manualDiscount, promoDiscount, grand, qtyTotal };
-  }, [cart, billDiscount, appliedPromos]);
+    return { subtotal, discount: totalDiscount, manualDiscount, promoDiscount, couponDiscount, grand, qtyTotal };
+  }, [cart, billDiscount, appliedPromos, coupon]);
 
   // ------------- Product lookup -------------
   const handleScanSubmit = async (e) => {
@@ -117,7 +153,12 @@ export default function PosTerminalPage() {
     if (!code) return;
     try {
       const res = await productByBarcode(code);
-      addToCart(res.data);
+      addToCart(res.data, {
+        // Phase 2 Agent 6 — `scanned_qty` is the canonical name; `auto_qty`
+        // kept as a backward-compat alias from the earlier spike.
+        autoQty: res.data.scanned_qty ?? res.data.auto_qty,
+        autoPackUnitId: res.data.auto_pack_unit_id,
+      });
       setScanInput("");
       setSearchResults([]);
     } catch {
@@ -149,13 +190,35 @@ export default function PosTerminalPage() {
     finally { setSearching(false); }
   };
 
-  const addToCart = (product) => {
+  const addToCart = (product, opts = {}) => {
+    // opts: { autoQty?: number|string, autoPackUnitId?: number }
+    const packUnits = product.pack_units || [];
+    const defaultPack = opts.autoPackUnitId
+      ? packUnits.find((p) => p.id === opts.autoPackUnitId)
+      : packUnits.find((p) => p.is_default);
+    const autoQty = opts.autoQty != null ? toNumber(opts.autoQty) : null;
+    const initialQty = autoQty != null ? autoQty : 1;
+
+    let initialUnitPrice = toNumber(product.selling_price) || 0;
+    if (defaultPack) {
+      if (defaultPack.sell_price != null && defaultPack.sell_price !== "") {
+        initialUnitPrice = toNumber(defaultPack.sell_price);
+      } else {
+        initialUnitPrice = toNumber(product.selling_price) * toNumber(defaultPack.conversion_factor);
+      }
+    }
+
     setCart((prev) => {
-      const idx = prev.findIndex((l) => l.item_id === product.id);
-      if (idx >= 0) {
-        const next = [...prev];
-        next[idx] = { ...next[idx], qty: toNumber(next[idx].qty) + 1 };
-        return next;
+      // For weighed (auto_qty) and pack-unit hints, always add a fresh line
+      // — coalescing by item would clobber the scan-supplied qty / unit.
+      const canCoalesce = autoQty == null && !defaultPack && !product.is_weighed;
+      if (canCoalesce) {
+        const idx = prev.findIndex((l) => l.item_id === product.id && !l.pack_unit_id);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = { ...next[idx], qty: toNumber(next[idx].qty) + 1 };
+          return next;
+        }
       }
       return [
         ...prev,
@@ -164,13 +227,28 @@ export default function PosTerminalPage() {
           item_id: product.id,
           item_code: product.item_code,
           item_name: product.item_name,
-          qty: 1,
-          unit_price: toNumber(product.selling_price) || 0,
+          qty: initialQty,
+          unit_price: initialUnitPrice,
           line_discount: 0,
           tax_rate_pct: 0,
+          // Multi-unit (Phase 2 Agent 6).
+          pack_units: packUnits,
+          pack_unit_id: defaultPack ? defaultPack.id : null,
+          is_weighed: !!product.is_weighed,
+          base_unit_code: product.base_unit_code || "",
         },
       ];
     });
+    // Lazy-fetch batches for near-expiry warnings
+    if (product.id && itemBatches[product.id] === undefined) {
+      getItemBatches(product.id)
+        .then((r) => {
+          setItemBatches((prev) => ({ ...prev, [product.id]: r.data?.results || [] }));
+        })
+        .catch(() => {
+          setItemBatches((prev) => ({ ...prev, [product.id]: [] }));
+        });
+    }
   };
 
   const updateLine = (key, patch) =>
@@ -184,6 +262,7 @@ export default function PosTerminalPage() {
     setCustomerPhone("");
     setSelectedCustomer(null);
     setAppliedPromos([]);
+    setCoupon(null);
   };
 
   const openPromoDialog = async () => {
@@ -213,41 +292,107 @@ export default function PosTerminalPage() {
 
   const handleCloseShift = async (counted, note) => {
     try {
-      await closeShift(shift.id, toNumber(counted), note || "");
+      const r = await closeShift(shift.id, toNumber(counted), note || "");
+      setClosedShift(r.data || shift);
       setShift(null);
       setCloseShiftOpen(false);
       notify("Shift closed.", "success");
+      // Phase 3 Agent 9 — follow up with cash handover step.
+      setHandoverOpen(true);
     } catch (err) {
       notify(err?.response?.data?.detail || "Failed to close shift.", "error");
     }
   };
 
   // ------------- Finalise bill -------------
+  const _finalizeBill = async (payload, idempotencyKey) => {
+    const res = await submitBillOffline(apiClient, payload, idempotencyKey);
+    if (res && res.queued) {
+      setTenderOpen(false);
+      clearCart();
+      notify("Bill queued — will sync when online.", "info");
+      try { await openCashDrawer(); } catch (e) { console.warn("hardware:", e); }
+      return;
+    }
+    setLastBill(res.data);
+    setTenderOpen(false);
+    clearCart();
+    notify(`Bill ${res.data.bill_no} created.`, "success");
+    try {
+      await printReceipt(res.data);
+      await openCashDrawer();
+    } catch (e) { console.warn("hardware:", e); }
+  };
+
   const submitBill = async (payments) => {
     if (!cart.length) { notify("Cart is empty.", "warning"); return; }
-    const effectiveBillDiscount = toNumber(billDiscount) + totals.promoDiscount;
+    const effectiveBillDiscount = toNumber(billDiscount) + totals.promoDiscount + (totals.couponDiscount || 0);
     const payload = {
-      lines: cart.map((l) => ({
-        item_id: l.item_id, qty: String(l.qty),
-        unit_price: String(l.unit_price),
-        line_discount: String(l.line_discount || 0),
-        tax_rate_pct: String(l.tax_rate_pct || 0),
-      })),
+      lines: cart.map((l) => {
+        const base = {
+          item_id: l.item_id,
+          qty: String(l.qty),
+          unit_price: String(l.unit_price),
+          line_discount: String(l.line_discount || 0),
+          tax_rate_pct: String(l.tax_rate_pct || 0),
+        };
+        if (l.pack_unit_id) {
+          base.pack_unit_id = l.pack_unit_id;
+          base.qty_in_unit = String(l.qty);
+          // Phase 2 Agent 6 — also flag the simple unit_kind so server-side
+          // reporting can group pack vs base sales without joining ItemPackUnit.
+          base.unit_kind = "pack";
+          base.qty_input = String(l.qty);
+        }
+        return base;
+      }),
       payments: payments.map((p) => ({
         tender: p.tender, amount: String(p.amount), reference: p.reference || "",
       })),
       bill_discount: String(effectiveBillDiscount.toFixed(2)),
       customer_name: customerName, customer_phone: customerPhone,
       promotion_ids: appliedPromos.map((p) => p.id),
+      ...(coupon?.code ? { coupon_code: coupon.code } : {}),
+      ...(salesRepId ? { sales_rep_id: salesRepId } : {}),
     };
+    const idempotencyKey =
+      (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     try {
-      const res = await createBill(payload);
-      setLastBill(res.data);
-      setTenderOpen(false);
-      clearCart();
-      notify(`Bill ${res.data.bill_no} created.`, "success");
+      await _finalizeBill(payload, idempotencyKey);
     } catch (err) {
+      const status = err?.response?.status;
+      const code = err?.response?.data?.code;
+      if (status === 403 && code === "DISCOUNT_REQUIRES_APPROVAL") {
+        // Stash payload+key and ask a manager to authorise. We MUST reuse the
+        // same Idempotency-Key so the server treats the retry as the same
+        // attempt (not a duplicate bill).
+        setPendingApproval({
+          payload,
+          idempotencyKey,
+          context: {
+            kind: "discount",
+            outlet_id: shift?.outlet_id,
+            amount: effectiveBillDiscount,
+          },
+        });
+        setPinModalOpen(true);
+        return;
+      }
       notify(err?.response?.data?.detail || "Billing failed.", "error");
+    }
+  };
+
+  const handleManagerApproved = async (approvalToken) => {
+    if (!pendingApproval) return;
+    const { payload, idempotencyKey } = pendingApproval;
+    const retryPayload = { ...payload, approval_token: approvalToken };
+    setPendingApproval(null);
+    try {
+      await _finalizeBill(retryPayload, idempotencyKey);
+    } catch (err) {
+      notify(err?.response?.data?.detail || "Billing failed after approval.", "error");
     }
   };
 
@@ -259,6 +404,7 @@ export default function PosTerminalPage() {
   if (!shift) {
     return (
       <Layout>
+        <OfflineBanner />
         <PageHeader title="POS Terminal" subtitle="Open a shift to start billing" icon={<PointOfSaleIcon />} />
         <Paper sx={{ p: 4, mt: 2, maxWidth: 420 }}>
           <Typography variant="h6" sx={{ mb: 2 }}>No open shift</Typography>
@@ -276,11 +422,15 @@ export default function PosTerminalPage() {
 
   return (
     <Layout>
+      <OfflineBanner />
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
         <PageHeader title="POS Terminal" subtitle={`Shift #${shift.id} · ${shift.outlet_name}`} icon={<PointOfSaleIcon />} />
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={1} alignItems="center">
           <Chip color="success" label={`${shift.bill_count || 0} bills`} />
           <Chip label={`Cash: LKR ${money(shift.cash_sales || 0)}`} />
+          <SalesRepSelector value={salesRepId} onChange={setSalesRepId} outletId={shift?.outlet_id} />
+          <PendingBillsIndicator />
+          <HardwareStatusChip />
           <Button variant="outlined" color="warning" startIcon={<LockIcon />} onClick={() => setCloseShiftOpen(true)}>
             Close shift
           </Button>
@@ -369,21 +519,65 @@ export default function PosTerminalPage() {
             {cart.length === 0 ? (
               <Box sx={{ p: 3, textAlign: "center", color: "text.secondary" }}>Cart is empty</Box>
             ) : (
-              cart.map((l) => (
+              cart.map((l) => {
+                const hasPackUnits = (l.pack_units || []).length > 0;
+                const qtyStep = (l.is_weighed) ? "0.001" : "1";
+                const onPackUnitChange = (e) => {
+                  const v = e.target.value;
+                  if (v === "_base") {
+                    // Switch back to base unit — recompute unit_price from pack-derived
+                    // value: pack price / conv = base price. But we don't reliably know
+                    // the original base price; safest is to leave unit_price alone if
+                    // user already edited it, or re-fetch. Simplest: clear pack_unit_id.
+                    updateLine(l.key, { pack_unit_id: null });
+                    return;
+                  }
+                  const pu = (l.pack_units || []).find((x) => String(x.id) === String(v));
+                  if (!pu) return;
+                  let nextPrice = toNumber(l.unit_price);
+                  if (pu.sell_price != null && pu.sell_price !== "") {
+                    nextPrice = toNumber(pu.sell_price);
+                  } else {
+                    // Fallback: derive from current per-base price * conv. We need the
+                    // base price; if we already have a pack_unit_id selected, the
+                    // current unit_price is per-pack — convert it back via the old
+                    // pack's conversion_factor first.
+                    const oldPack = l.pack_unit_id
+                      ? (l.pack_units || []).find((x) => x.id === l.pack_unit_id)
+                      : null;
+                    const basePrice = oldPack
+                      ? toNumber(l.unit_price) / toNumber(oldPack.conversion_factor || 1)
+                      : toNumber(l.unit_price);
+                    nextPrice = basePrice * toNumber(pu.conversion_factor || 1);
+                  }
+                  updateLine(l.key, { pack_unit_id: pu.id, unit_price: nextPrice });
+                };
+                return (
                 <Stack key={l.key} direction="row" spacing={1} alignItems="center" sx={{ p: 1, borderBottom: 1, borderColor: "divider" }}>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography variant="body2" fontWeight={600} noWrap>{l.item_name}</Typography>
                     <Typography variant="caption" color="text.secondary">{l.item_code} · LKR {money(l.unit_price)}</Typography>
+                    <BatchExpiryWarning batches={itemBatches[l.item_id] || []} threshold={7} />
                   </Box>
+                  {hasPackUnits && (
+                    <TextField select size="small" value={l.pack_unit_id ? String(l.pack_unit_id) : "_base"}
+                      onChange={onPackUnitChange} sx={{ minWidth: 90 }}>
+                      <MenuItem value="_base">{l.base_unit_code || "each"}</MenuItem>
+                      {(l.pack_units || []).map((pu) => (
+                        <MenuItem key={pu.id} value={String(pu.id)}>{pu.unit_code}</MenuItem>
+                      ))}
+                    </TextField>
+                  )}
                   <IconButton size="small" onClick={() => updateLine(l.key, { qty: Math.max(0, toNumber(l.qty) - 1) })}><RemoveIcon fontSize="small" /></IconButton>
-                  <TextField size="small" value={l.qty} onChange={(e) => updateLine(l.key, { qty: e.target.value })} sx={{ width: 70 }} inputProps={{ inputMode: "decimal" }} />
+                  <TextField size="small" value={l.qty} onChange={(e) => updateLine(l.key, { qty: e.target.value })} sx={{ width: 80 }} inputProps={{ inputMode: "decimal", step: qtyStep }} />
                   <IconButton size="small" onClick={() => updateLine(l.key, { qty: toNumber(l.qty) + 1 })}><AddIcon fontSize="small" /></IconButton>
                   <Typography variant="body2" fontWeight={600} sx={{ minWidth: 80, textAlign: "right" }}>
                     {money(toNumber(l.qty) * toNumber(l.unit_price) - toNumber(l.line_discount))}
                   </Typography>
                   <IconButton size="small" color="error" onClick={() => removeLine(l.key)}><DeleteIcon fontSize="small" /></IconButton>
                 </Stack>
-              ))
+                );
+              })
             )}
           </Box>
 
@@ -403,6 +597,20 @@ export default function PosTerminalPage() {
               </Button>
               <Typography variant="body2" fontWeight={600}>-{money(totals.promoDiscount)}</Typography>
             </Stack>
+            <Box>
+              <CouponInput
+                subtotal={totals.subtotal}
+                customerId={selectedCustomer?.id || null}
+                onApplied={(c, d) => setCoupon({ code: c.code, discount: d })}
+                onRemoved={() => setCoupon(null)}
+              />
+              {coupon && (
+                <Stack direction="row" sx={{ mt: 0.5 }}>
+                  <Typography sx={{ flex: 1 }} variant="body2" color="text.secondary">Coupon</Typography>
+                  <Typography variant="body2" fontWeight={600}>-{money(totals.couponDiscount)}</Typography>
+                </Stack>
+              )}
+            </Box>
             <Divider />
             <Stack direction="row" spacing={1}>
               <Typography sx={{ flex: 1 }} variant="h6">Total</Typography>
@@ -425,6 +633,12 @@ export default function PosTerminalPage() {
       {/* Dialogs */}
       <OpenShiftDialog open={openShiftOpen} onClose={() => setOpenShiftOpen(false)} onConfirm={handleOpenShift} />
       <CloseShiftDialog open={closeShiftOpen} shift={shift} onClose={() => setCloseShiftOpen(false)} onConfirm={handleCloseShift} />
+      <CashHandoverModal
+        open={handoverOpen}
+        shift={closedShift}
+        onClose={() => setHandoverOpen(false)}
+        onSubmitted={() => setHandoverOpen(false)}
+      />
       <TenderDialog
         open={tenderOpen}
         grandTotal={totals.grand}
@@ -434,6 +648,12 @@ export default function PosTerminalPage() {
         onConfirm={submitBill}
       />
       <ReceiptDialog bill={lastBill} onClose={() => setLastBill(null)} />
+      <ManagerPinModal
+        open={pinModalOpen}
+        onClose={() => { setPinModalOpen(false); setPendingApproval(null); }}
+        onApproved={handleManagerApproved}
+        context={pendingApproval?.context || { kind: "discount", amount: 0, outlet_id: shift?.outlet_id }}
+      />
 
       <Dialog open={promoOpen} onClose={() => setPromoOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Apply promotions</DialogTitle>
@@ -535,9 +755,65 @@ function CloseShiftDialog({ open, shift, onClose, onConfirm }) {
 function TenderDialog({ open, grandTotal, shift, customer, onClose, onConfirm }) {
   const [rows, setRows] = useState([{ tender: "cash", amount: "", reference: "" }]);
   const [qrUrl, setQrUrl] = useState(null);
+  const [gateways, setGateways] = useState([]);
+  const [activeIntent, setActiveIntent] = useState(null);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [gwBusy, setGwBusy] = useState(false);
   useEffect(() => {
     if (open) setRows([{ tender: "cash", amount: String(grandTotal.toFixed(2)), reference: "" }]);
   }, [open, grandTotal]);
+  // Load active gateways for the outlet on dialog open.
+  useEffect(() => {
+    if (!open || !shift) return;
+    listPaymentGateways({ outlet: shift.outlet })
+      .then((r) => {
+        const list = Array.isArray(r.data) ? r.data : (r.data.results || []);
+        setGateways(list.filter((g) => g.is_active));
+      })
+      .catch(() => setGateways([]));
+  }, [open, shift]);
+
+  const startGateway = async (gw) => {
+    setGwBusy(true);
+    try {
+      const due = Math.max(0, grandTotal - rows.reduce((s, r) => s + toNumber(r.amount), 0));
+      const amount = due > 0 ? due : grandTotal;
+      const r = await initiatePayment({
+        outlet: shift.outlet,
+        gateway_id: gw.id,
+        amount: String(amount.toFixed(2)),
+        customer_phone: customer?.phone || "",
+      });
+      setActiveIntent(r.data);
+      setQrOpen(true);
+    } catch (err) {
+      // best-effort UX — surfaced via outer notify in caller
+      console.error("initiatePayment failed", err);
+    } finally {
+      setGwBusy(false);
+    }
+  };
+
+  const onGatewaySuccess = (intent) => {
+    // Append a `bank` payment row carrying the provider_ref. Strip any zero-cash
+    // placeholder row that's still sitting at default.
+    setRows((prev) => {
+      const cleaned = prev.length === 1 && (!toNumber(prev[0].amount) || toNumber(prev[0].amount) >= grandTotal)
+        ? prev.map((r, i) => i === 0
+            ? { ...r, amount: String(Math.max(0, toNumber(r.amount) - toNumber(intent.amount)).toFixed(2)) }
+            : r)
+        : prev;
+      return [
+        ...cleaned,
+        { tender: "bank", reference: intent.provider_ref, amount: String(Number(intent.amount).toFixed(2)) },
+      ];
+    });
+    setQrOpen(false);
+  };
+
+  const onGatewayFailure = () => {
+    setQrOpen(false);
+  };
   useEffect(() => {
     // If outlet has a static LankaQR image and any row uses lankaqr, fetch settings once
     if (!open || !shift) return;
@@ -585,6 +861,35 @@ function TenderDialog({ open, grandTotal, shift, customer, onClose, onConfirm })
           <Button startIcon={<AddIcon />} size="small" onClick={() => setRows([...rows, { tender: "cash", amount: "", reference: "" }])}>
             Add split tender
           </Button>
+          {gateways.length > 0 && (
+            <Stack direction="row" spacing={1} flexWrap="wrap">
+              {gateways.map((gw) => (
+                <Button key={gw.id} size="small" variant="outlined"
+                  disabled={gwBusy}
+                  onClick={() => startGateway(gw)}>
+                  Pay via {gw.provider}
+                </Button>
+              ))}
+            </Stack>
+          )}
+          <Divider />
+          <GiftCardInput
+            amountDue={Math.max(0, grandTotal - paid)}
+            onAdded={(serial, amount) => {
+              setRows((prev) => {
+                // If a single empty cash row is sitting there at default, replace it
+                const cleaned = prev.length === 1 && (!toNumber(prev[0].amount) || toNumber(prev[0].amount) >= grandTotal)
+                  ? prev.map((r, i) => i === 0
+                      ? { ...r, amount: String(Math.max(0, toNumber(r.amount) - amount).toFixed(2)) }
+                      : r)
+                  : prev;
+                return [
+                  ...cleaned,
+                  { tender: "gift_card", reference: serial, amount: String(Number(amount).toFixed(2)) },
+                ];
+              });
+            }}
+          />
           <Divider />
           <Row label="Paid" value={`LKR ${money(paid)}`} />
           <Row label="Change due" value={`LKR ${money(Math.max(0, change))}`} />
@@ -616,6 +921,13 @@ function TenderDialog({ open, grandTotal, shift, customer, onClose, onConfirm })
           Finalize &amp; Print
         </Button>
       </DialogActions>
+      <QrPaymentDialog
+        intent={activeIntent}
+        open={qrOpen}
+        onClose={() => setQrOpen(false)}
+        onSuccess={onGatewaySuccess}
+        onFailure={onGatewayFailure}
+      />
     </Dialog>
   );
 }

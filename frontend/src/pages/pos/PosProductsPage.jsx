@@ -2,21 +2,26 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Stack, TextField, Button, Typography, InputAdornment, Chip,
   Dialog, DialogTitle, DialogContent, DialogActions, Box, Alert,
+  MenuItem, Checkbox, FormControlLabel, IconButton,
 } from "@mui/material";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import SearchIcon from "@mui/icons-material/Search";
 import AddIcon from "@mui/icons-material/Add";
+import DeleteIcon from "@mui/icons-material/Delete";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import Layout from "../../components/Layout";
 import { PageHeader, DataTable } from "../../components/ui";
-import { listProducts, createProduct, updateProduct, deleteProduct, importProductsCsv } from "../../api/pos";
+import { listProducts, createProduct, updateProduct, deleteProduct, importProductsCsv, listUnits } from "../../api/pos";
 import { useNotification } from "../../providers/NotificationProvider";
 
 const empty = () => ({
   item_code: "", item_name: "", barcode: "", category: "",
   sell_price: "0", cost_price: "0", tax_rate_pct: "0",
   on_hand: "0", reorder_level: "0",
+  base_unit_code: "", is_weighed: false, weighed_barcode_prefix: "",
+  pack_units: [],
+  pack_unit_code: "", pack_size: "0", pack_sell_price: "0", plu_code: "",
 });
 
 export default function PosProductsPage() {
@@ -31,7 +36,12 @@ export default function PosProductsPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const [importResult, setImportResult] = useState(null);
+  const [units, setUnits] = useState([]);
   const PAGE_SIZE = 50;
+
+  useEffect(() => {
+    listUnits().then((r) => setUnits(r.data?.results || [])).catch(() => setUnits([]));
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -145,6 +155,80 @@ export default function PosProductsPage() {
             {editing && (
               <Alert severity="info">On-hand shown: <b>{editing.on_hand}</b>. To adjust, use Stock → Adjust Stock (keeps full audit).</Alert>
             )}
+
+            <Stack direction="row" spacing={2} alignItems="center">
+              <TextField select label="Base unit" value={form.base_unit_code || ""} onChange={(e) => setF("base_unit_code", e.target.value)} sx={{ flex: 1 }}>
+                <MenuItem value="">—</MenuItem>
+                {units.map((u) => <MenuItem key={u.id} value={u.code}>{u.code} — {u.name}</MenuItem>)}
+              </TextField>
+              <FormControlLabel
+                control={<Checkbox checked={!!form.is_weighed} onChange={(e) => setF("is_weighed", e.target.checked)} />}
+                label="Sold by weight"
+              />
+              <TextField label="Weighed PLU (5 digit)" value={form.weighed_barcode_prefix || form.plu_code || ""}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/\D/g, "").slice(0, 5);
+                  setForm({ ...form, weighed_barcode_prefix: v, plu_code: v });
+                }}
+                disabled={!form.is_weighed}
+                sx={{ width: 160 }} inputProps={{ maxLength: 5 }} />
+            </Stack>
+
+            <Stack direction="row" spacing={2} alignItems="center">
+              <TextField select label="Pack unit" value={form.pack_unit_code || ""}
+                onChange={(e) => setF("pack_unit_code", e.target.value)} sx={{ flex: 1 }}>
+                <MenuItem value="">—</MenuItem>
+                {units.map((u) => <MenuItem key={u.id} value={u.code}>{u.code} — {u.name}</MenuItem>)}
+              </TextField>
+              <TextField label="Pack size (× base)" value={form.pack_size || "0"}
+                onChange={(e) => setF("pack_size", e.target.value)}
+                sx={{ flex: 1 }} inputProps={{ inputMode: "decimal" }} />
+              <TextField label="Pack sell price (0 = compute)" value={form.pack_sell_price || "0"}
+                onChange={(e) => setF("pack_sell_price", e.target.value)}
+                sx={{ flex: 1 }} inputProps={{ inputMode: "decimal" }} />
+            </Stack>
+
+            <Box>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                <Typography variant="subtitle2" sx={{ flex: 1 }}>Pack units</Typography>
+                <Button size="small" startIcon={<AddIcon />} onClick={() => setF("pack_units", [...(form.pack_units || []), { unit_code: "", conversion_factor: "1", sell_price: "", barcode: "", is_default: false }])}>
+                  Add pack unit
+                </Button>
+              </Stack>
+              {(form.pack_units || []).length === 0 ? (
+                <Typography variant="caption" color="text.secondary">
+                  None — item is sold only in its base unit.
+                </Typography>
+              ) : (
+                <Stack spacing={1}>
+                  {(form.pack_units || []).map((pu, i) => (
+                    <Stack key={i} direction="row" spacing={1} alignItems="center">
+                      <TextField select size="small" label="Unit" value={pu.unit_code || ""} sx={{ minWidth: 120 }}
+                        onChange={(e) => {
+                          const next = [...form.pack_units];
+                          next[i] = { ...next[i], unit_code: e.target.value };
+                          setF("pack_units", next);
+                        }}>
+                        {units.map((u) => <MenuItem key={u.id} value={u.code}>{u.code}</MenuItem>)}
+                      </TextField>
+                      <TextField size="small" label="× base" value={pu.conversion_factor || ""} sx={{ width: 90 }} inputProps={{ inputMode: "decimal" }}
+                        onChange={(e) => { const next = [...form.pack_units]; next[i] = { ...next[i], conversion_factor: e.target.value }; setF("pack_units", next); }} />
+                      <TextField size="small" label="Pack price" value={pu.sell_price || ""} sx={{ width: 110 }} inputProps={{ inputMode: "decimal" }}
+                        onChange={(e) => { const next = [...form.pack_units]; next[i] = { ...next[i], sell_price: e.target.value }; setF("pack_units", next); }} />
+                      <TextField size="small" label="Barcode" value={pu.barcode || ""} sx={{ flex: 1 }}
+                        onChange={(e) => { const next = [...form.pack_units]; next[i] = { ...next[i], barcode: e.target.value }; setF("pack_units", next); }} />
+                      <FormControlLabel
+                        control={<Checkbox checked={!!pu.is_default} onChange={(e) => { const next = form.pack_units.map((x, j) => ({ ...x, is_default: j === i ? e.target.checked : false })); setF("pack_units", next); }} />}
+                        label="Default" />
+                      <IconButton size="small" color="error"
+                        onClick={() => setF("pack_units", form.pack_units.filter((_, j) => j !== i))}>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                  ))}
+                </Stack>
+              )}
+            </Box>
           </Stack>
         </DialogContent>
         <DialogActions>

@@ -162,6 +162,16 @@ PERMISSIONS = [
     ("pos.rts.manage",            "Enter purchase returns",            "Actions · POS", "pos"),
     ("pos.expenses.manage",       "Enter expenses",                    "Actions · POS", "pos"),
     ("pos.payables.manage",       "Record supplier payments",          "Actions · POS", "pos"),
+
+    # --- Transfers (inter-outlet) ---
+    ("nav.transfers",             "Transfers",                         "Navigation · Transfers", "stock"),
+    ("nav.transfers_request",     "Transfers — Request",                "Navigation · Transfers", "stock"),
+    ("nav.transfers_dispatch",    "Transfers — Dispatch",               "Navigation · Transfers", "stock"),
+    ("nav.transfers_receive",     "Transfers — Receive",                "Navigation · Transfers", "stock"),
+    ("transfers.request",         "Create / request transfer",          "Actions · Transfers", "stock"),
+    ("transfers.dispatch",        "Dispatch transfer (source manager)", "Actions · Transfers", "stock"),
+    ("transfers.receive",         "Receive transfer (dest manager)",    "Actions · Transfers", "stock"),
+    ("transfers.close",           "Close / cancel transfer",            "Actions · Transfers", "stock"),
 ]
 
 
@@ -262,6 +272,9 @@ ROLE_DEFAULTS = {
         "pos.promotions.manage",
         "pos.products.manage", "pos.products.import",
         "pos.rts.manage", "pos.expenses.manage", "pos.payables.manage",
+        # Transfers
+        "nav.transfers", "nav.transfers_request", "nav.transfers_dispatch", "nav.transfers_receive",
+        "transfers.request", "transfers.dispatch", "transfers.receive", "transfers.close",
     ],
 
     "manager": [
@@ -301,6 +314,9 @@ ROLE_DEFAULTS = {
         "pos.promotions.manage",
         "pos.products.manage", "pos.products.import",
         "pos.rts.manage", "pos.expenses.manage", "pos.payables.manage",
+        # Transfers
+        "nav.transfers", "nav.transfers_request", "nav.transfers_dispatch", "nav.transfers_receive",
+        "transfers.request", "transfers.dispatch", "transfers.receive", "transfers.close",
     ],
 
     "store_user": [
@@ -318,6 +334,9 @@ ROLE_DEFAULTS = {
         # POS — store users sell and manage their own shift
         "nav.pos_terminal",
         "pos.sell", "pos.shift_open", "pos.shift_close",
+        # Transfers — store users may submit requests for their outlet
+        "nav.transfers", "nav.transfers_request",
+        "transfers.request",
     ],
 
     "staff": [

@@ -37,6 +37,8 @@ import StoreIcon from "@mui/icons-material/Store";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import CategoryIcon from "@mui/icons-material/Category";
 import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
+import LocalOfferIcon from "@mui/icons-material/LocalOffer";
+import CardGiftcardIcon from "@mui/icons-material/CardGiftcard";
 
 /**
  * Single source of truth for routes. Consumed by Sidebar, Breadcrumbs, CommandPalette.
@@ -76,17 +78,35 @@ export const routes = [
   { path: "/pos/customers",             code: "nav.pos_customers",        label: "Customers",          icon: PeopleAltIcon,          roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
   { path: "/pos/stock",                 code: "nav.pos_stock",            label: "Stock",              icon: Inventory2Icon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
   { path: "/pos/outlet-settings",       code: "nav.pos_outlet_settings",  label: "Outlet Setup",       icon: StorefrontIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/tax-components",        code: "nav.pos_outlet_settings",  label: "Tax Components",     icon: ReceiptLongIcon,        roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
   { path: "/pos/grn",                   code: "nav.pos_grn_entry",        label: "GRN Entry",          icon: MoveToInboxIcon,        roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/purchase-orders",       code: "nav.pos_grn_entry",        label: "Purchase Orders",    icon: AssignmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
   { path: "/pos/prices/bulk",           code: "nav.pos_bulk_price",       label: "Bulk Price",         icon: EditNoteIcon,           roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
   { path: "/pos/prices/history",        code: "nav.pos_price_history",    label: "Price History",      icon: HistoryIcon,            roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
   { path: "/pos/promotions",            code: "nav.pos_promotions",       label: "Promotions",         icon: AssessmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/coupons",               code: "nav.pos_promotions",       label: "Coupons",            icon: LocalOfferIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/gift-cards",            code: "nav.pos_promotions",       label: "Gift Cards",         icon: CardGiftcardIcon,       roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
   { path: "/pos/products",              code: "nav.pos_products",         label: "Products",           icon: Inventory2Icon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
   { path: "/pos/low-stock",             code: "nav.pos_low_stock",        label: "Low Stock",          icon: ReportProblemIcon,      roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/near-expiry",           code: "nav.pos_near_expiry",      label: "Near-Expiry",        icon: ReportProblemIcon,      roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
   { path: "/pos/reports",               code: "nav.pos_reports",          label: "Reports",            icon: QueryStatsIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
   { path: "/pos/expenses",              code: "nav.pos_expenses",         label: "Expenses",           icon: AssignmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
   { path: "/pos/purchase-returns",      code: "nav.pos_rts",              label: "Purchase Returns",   icon: KeyboardReturnIcon,     roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
   { path: "/pos/payables",              code: "nav.pos_payables",         label: "Payables",           icon: AssessmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
   { path: "/pos/z-report",              code: "nav.pos_shifts",           label: "Z Report",           icon: ReceiptLongIcon,        roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/gl-accounts",           code: "nav.pos_outlet_settings",  label: "GL Accounts",        icon: AssessmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/gl-export",             code: "nav.pos_reports",          label: "GL Export",          icon: AssessmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/cash-handovers",        code: "nav.pos_reports",          label: "Cash Handovers",     icon: ReceiptLongIcon,        roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/commission-rules",      code: "nav.pos_outlet_settings",  label: "Commission Rules",   icon: ReceiptLongIcon,        roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/commission-report",     code: "nav.pos_reports",          label: "Commission Report",  icon: AssessmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
+  { path: "/pos/payment-gateways",      code: "nav.pos_outlet_settings",  label: "Payment Gateways",   icon: PointOfSaleIcon,        roles: ["admin","super_admin"],                                 group: "POS", system: "pos" },
+  { path: "/pos/sms-config",            code: "nav.pos_outlet_settings",  label: "SMS Configuration",  icon: ReceiptLongIcon,        roles: ["admin","super_admin"],                                 group: "POS", system: "pos" },
+
+  // ------------------------- TRANSFERS -------------------------
+  { path: "/transfers/request",  code: "nav.transfers_request",  label: "Request Transfer",  icon: MoveToInboxIcon,    roles: ["store_user","staff","manager","admin","super_admin"], group: "Transfers", system: "stock" },
+  { path: "/transfers/dispatch", code: "nav.transfers_dispatch", label: "Dispatch Outgoing", icon: LocalShippingIcon,  roles: ["manager","admin","super_admin"],                       group: "Transfers", system: "stock" },
+  { path: "/transfers/receive",  code: "nav.transfers_receive",  label: "Receive Incoming",  icon: AssignmentTurnedInIcon, roles: ["manager","admin","super_admin"],                  group: "Transfers", system: "stock" },
+  { path: "/transfers/:id",      code: "nav.transfers",          label: "Transfer Detail",   icon: ReceiptLongIcon,    roles: ["store_user","staff","manager","admin","super_admin"], group: "Transfers", system: "stock", showInNav: false },
 
   // ------------------------- ANALYZE -------------------------
   { path: "/admin/dashboard",           code: "nav.admin_dashboard",      label: "Admin Dashboard",    icon: DashboardIcon,          roles: ["admin","super_admin"],                        group: "Analyze", system: "stock" },
@@ -206,9 +226,9 @@ export function findRoute(pathname) {
   });
 }
 
-export const GROUP_ORDER = ["Operate", "POS", "Analyze", "Organize", "Configure"];
+export const GROUP_ORDER = ["Operate", "Transfers", "POS", "Analyze", "Organize", "Configure"];
 
 // Groups that start expanded. POS is collapsed by default (it has many links);
 // the others auto-open. The user's per-group collapse state is persisted in
 // localStorage after the first visit.
-export const DEFAULT_EXPANDED_GROUPS = new Set(["Operate", "Analyze", "Organize", "Configure"]);
+export const DEFAULT_EXPANDED_GROUPS = new Set(["Operate", "Transfers", "Analyze", "Organize", "Configure"]);

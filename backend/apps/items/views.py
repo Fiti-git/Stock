@@ -5,12 +5,30 @@ from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from apps.accounts.permissions import IsAdmin, IsManager, IsStoreUser
 from apps.accounts.device_utils import touch_device, get_device_uuid
 from apps.uploads.models import AuditLog, PosSnapshot
-from .models import Item, ItemBarcode, PendingItem
+from .models import Item, ItemBarcode, PendingItem, UnitOfMeasure
 from .serializers import ItemSerializer, PendingItemSerializer, AssignBarcodeSerializer, ItemDetailSerializer, ItemUpdateSerializer
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def units_list(request):
+    """List all UnitOfMeasure rows — used by product create/edit forms."""
+    rows = UnitOfMeasure.objects.all().order_by("code")
+    return Response([
+        {
+            "id": u.id,
+            "code": u.code,
+            "name": u.name,
+            "is_weighed": bool(u.is_weight),
+            "precision": u.precision,
+        }
+        for u in rows
+    ])
 
 
 class ItemListPagination(PageNumberPagination):

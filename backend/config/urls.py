@@ -14,4 +14,5 @@ urlpatterns = [
     path("api/db/", include("apps.dbops.urls")),
     path("api/org/", include("apps.org_catalog.urls")),
     path("api/pos/", include("apps.pos.urls")),
+    path("api/transfers/", include("apps.transfers.urls")),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

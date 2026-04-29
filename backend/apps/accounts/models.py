@@ -1,3 +1,4 @@
+from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 
@@ -46,6 +47,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     # Editable only by Super Admin via /api/auth/user-permissions/.
     permissions_override = models.JSONField(null=True, blank=True, default=None)
 
+    # Hashed numeric PIN used by managers/admins to authorise over-cap actions
+    # at the POS (e.g. discount overrides). Empty string = no PIN set.
+    # Never exposed via API responses.
+    manager_pin_hash = models.CharField(max_length=128, blank=True, default="")
+
     objects = UserManager()
 
     USERNAME_FIELD = "username"
@@ -56,6 +62,17 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return f"{self.username} ({self.role})"
+
+    def set_manager_pin(self, raw_pin):
+        """Hash and persist a numeric manager PIN."""
+        self.manager_pin_hash = make_password(str(raw_pin))
+        self.save(update_fields=["manager_pin_hash"])
+
+    def check_manager_pin(self, raw_pin):
+        """Return True iff raw_pin matches stored manager_pin_hash."""
+        if not self.manager_pin_hash:
+            return False
+        return check_password(str(raw_pin), self.manager_pin_hash)
 
 
 class MobileDevice(models.Model):

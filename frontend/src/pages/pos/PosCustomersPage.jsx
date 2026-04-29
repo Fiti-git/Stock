@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Stack, TextField, Button, Chip, Typography, InputAdornment, Box,
   Dialog, DialogTitle, DialogContent, DialogActions, MenuItem,
+  FormControlLabel, Checkbox,
 } from "@mui/material";
 import PersonIcon from "@mui/icons-material/Person";
 import SearchIcon from "@mui/icons-material/Search";
@@ -23,7 +24,7 @@ export default function PosCustomersPage() {
   const [loading, setLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", note: "" });
+  const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", note: "", tax_exempt: false, tax_exempt_reason: "" });
   const [creditTarget, setCreditTarget] = useState(null);
   const [creditForm, setCreditForm] = useState({ amount: "", kind: "topup", note: "" });
   const [historyTarget, setHistoryTarget] = useState(null);
@@ -47,12 +48,16 @@ export default function PosCustomersPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: "", phone: "", email: "", address: "", note: "" });
+    setForm({ name: "", phone: "", email: "", address: "", note: "", tax_exempt: false, tax_exempt_reason: "" });
     setEditOpen(true);
   };
   const openEdit = (c) => {
     setEditing(c);
-    setForm({ name: c.name || "", phone: c.phone || "", email: c.email || "", address: c.address || "", note: c.note || "" });
+    setForm({
+      name: c.name || "", phone: c.phone || "", email: c.email || "",
+      address: c.address || "", note: c.note || "",
+      tax_exempt: !!c.tax_exempt, tax_exempt_reason: c.tax_exempt_reason || "",
+    });
     setEditOpen(true);
   };
 
@@ -193,6 +198,14 @@ export default function PosCustomersPage() {
             <TextField label="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
             <TextField label="Address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
             <TextField label="Note" multiline minRows={2} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+            <FormControlLabel
+              control={<Checkbox checked={!!form.tax_exempt} onChange={(e) => setForm({ ...form, tax_exempt: e.target.checked })} />}
+              label="Tax exempt"
+            />
+            {form.tax_exempt && (
+              <TextField label="Tax exempt reason" value={form.tax_exempt_reason}
+                onChange={(e) => setForm({ ...form, tax_exempt_reason: e.target.value })} />
+            )}
           </Stack>
         </DialogContent>
         <DialogActions>

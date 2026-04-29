@@ -8,6 +8,7 @@ from .views import (
     LoginEventListView,
     PermissionRegistryView,
     UserPermissionsDetailView,
+    SetManagerPinView,
 )
 
 urlpatterns = [
@@ -16,6 +17,7 @@ urlpatterns = [
     path("me/", MeView.as_view(), name="me"),
     path("users/", UserListCreateView.as_view(), name="user-list"),
     path("users/<int:pk>/", UserDetailView.as_view(), name="user-detail"),
+    path("users/<int:pk>/set-manager-pin/", SetManagerPinView.as_view(), name="user-set-manager-pin"),
     path("login-events/", LoginEventListView.as_view(), name="login-events"),
     path("permissions/", PermissionRegistryView.as_view(), name="permission-registry"),
     path("user-permissions/<int:pk>/", UserPermissionsDetailView.as_view(), name="user-permissions-detail"),

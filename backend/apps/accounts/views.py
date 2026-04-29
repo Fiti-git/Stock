@@ -216,6 +216,44 @@ class UserDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class SetManagerPinView(APIView):
+    """
+    POST /api/auth/users/<id>/set-manager-pin/ — set or rotate a user's
+    numeric manager PIN. Body: {"pin": "1234"} (4–6 digits).
+
+    Authorization: admin/super_admin can set anyone's PIN; any user can set
+    their own. PIN itself is never logged.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            target = User.objects.get(pk=pk)
+        except User.DoesNotExist:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        is_admin = request.user.role in (User.Role.ADMIN, User.Role.SUPER_ADMIN)
+        if not (is_admin or request.user.id == target.id):
+            return Response({"detail": "Forbidden."}, status=status.HTTP_403_FORBIDDEN)
+
+        pin = str(request.data.get("pin") or "").strip()
+        if not pin.isdigit() or not (4 <= len(pin) <= 6):
+            return Response(
+                {"detail": "PIN must be 4–6 digits."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        target.set_manager_pin(pin)
+        AuditLog.objects.create(
+            user=request.user,
+            action="accounts.manager_pin_set",
+            entity_type="user",
+            entity_id=str(target.id),
+            details={"username": target.username, "self": request.user.id == target.id},
+        )
+        return Response({"ok": True})
+
+
 class PermissionRegistryView(APIView):
     """GET the catalog of permission codes (Super Admin only)."""
     permission_classes = [IsSuperAdmin]

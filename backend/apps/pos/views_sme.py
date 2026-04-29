@@ -25,7 +25,7 @@ from rest_framework.response import Response
 
 from apps.accounts.models import User
 from apps.accounts.permission_registry import user_has_permission
-from apps.items.models import Item, StockMovement
+from apps.items.models import Item, StockMovement, UnitOfMeasure, ItemPackUnit
 from apps.items.inventory import apply_movement
 from apps.items.pricing import set_prices
 from apps.outlets.models import Outlet
@@ -75,6 +75,26 @@ def _parse_date(raw, default=None):
 # -------------------------------------------------------------------
 
 def _item_dict(it):
+    pack_units = []
+    try:
+        for pu in it.pack_units.all().select_related("unit"):
+            pack_units.append({
+                "id": pu.id,
+                "unit_code": pu.unit.code,
+                "unit_name": pu.unit.name,
+                "conversion_factor": str(pu.conversion_factor),
+                "sell_price": str(pu.sell_price) if pu.sell_price is not None else None,
+                "barcode": pu.barcode or "",
+                "is_default": pu.is_default,
+            })
+    except Exception:
+        pack_units = []
+    base_unit_code = ""
+    try:
+        if it.base_unit_id and it.base_unit:
+            base_unit_code = it.base_unit.code
+    except Exception:
+        base_unit_code = ""
     return {
         "id": it.id,
         "item_code": it.item_code,
@@ -90,7 +110,62 @@ def _item_dict(it):
         "reorder_level": str(it.reorder_level or 0),
         "is_nbci": it.is_nbci,
         "status": it.status,
+        "base_unit_code": base_unit_code,
+        "is_weighed": bool(getattr(it, "is_weighed", False)),
+        "weighed_barcode_prefix": getattr(it, "weighed_barcode_prefix", "") or "",
+        "pack_units": pack_units,
     }
+
+
+def _resolve_unit(code):
+    if not code:
+        return None
+    return UnitOfMeasure.objects.filter(code=code.strip().upper()).first()
+
+
+def _upsert_pack_units(item, raw_pack_units):
+    """Replace the item's pack_units with the supplied list (delete-and-recreate)."""
+    if raw_pack_units is None:
+        return
+    item.pack_units.all().delete()
+    for pu in raw_pack_units or []:
+        unit_code = (pu.get("unit_code") or "").strip().upper()
+        if not unit_code:
+            continue
+        unit = _resolve_unit(unit_code)
+        if not unit:
+            continue
+        try:
+            conv = Decimal(str(pu.get("conversion_factor") or 0))
+        except Exception:
+            continue
+        if conv <= 0:
+            continue
+        sell_price = pu.get("sell_price")
+        sp_dec = None
+        if sell_price not in (None, "", "null"):
+            try:
+                sp_dec = Decimal(str(sell_price))
+            except Exception:
+                sp_dec = None
+        ItemPackUnit.objects.create(
+            item=item, unit=unit,
+            conversion_factor=conv,
+            sell_price=sp_dec,
+            barcode=(pu.get("barcode") or "").strip(),
+            is_default=bool(pu.get("is_default")),
+        )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def units_list(request):
+    """List UnitOfMeasure rows (for product-form dropdowns)."""
+    rows = [{
+        "id": u.id, "code": u.code, "name": u.name,
+        "is_weight": u.is_weight, "precision": u.precision,
+    } for u in UnitOfMeasure.objects.all()]
+    return Response({"count": len(rows), "results": rows})
 
 
 @api_view(["GET", "POST"])
@@ -140,6 +215,7 @@ def product_list_create(request):
         return Response({"detail": "item_code already exists in this outlet."}, status=400)
 
     opening = Decimal(str(data.get("on_hand") or 0))
+    base_unit = _resolve_unit(data.get("base_unit_code"))
     it = Item.objects.create(
         outlet=outlet,
         item_code=code, item_name=name,
@@ -152,8 +228,12 @@ def product_list_create(request):
         tax_rate_pct=Decimal(str(data.get("tax_rate_pct") or 0)),
         reorder_level=Decimal(str(data.get("reorder_level") or 0)),
         is_nbci=bool(data.get("is_nbci")),
+        is_weighed=bool(data.get("is_weighed")),
+        weighed_barcode_prefix=(data.get("weighed_barcode_prefix") or "").strip(),
+        base_unit=base_unit,
         status=Item.Status.ACTIVE,
     )
+    _upsert_pack_units(it, data.get("pack_units"))
     if opening > 0:
         apply_movement(
             item=it, outlet=outlet, kind=StockMovement.Kind.OPENING,
@@ -186,18 +266,23 @@ def product_detail(request, item_id):
     # PATCH
     data = request.data
     editable_direct = ["item_name", "barcode", "category", "rack_number", "shelf",
-                       "tax_rate_pct", "reorder_level", "is_nbci", "cost_price"]
+                       "tax_rate_pct", "reorder_level", "is_nbci", "cost_price",
+                       "is_weighed", "weighed_barcode_prefix"]
     for k in editable_direct:
         if k in data:
             val = data[k]
             if k in ("tax_rate_pct", "reorder_level", "cost_price"):
                 val = Decimal(str(val or 0))
             setattr(it, k, val if val is not None else "")
+    if "base_unit_code" in data:
+        it.base_unit = _resolve_unit(data.get("base_unit_code"))
     if "sell_price" in data:
         set_prices(item=it, outlet=outlet, new_sell=Decimal(str(data["sell_price"] or 0)),
                    user=request.user, source="manual", note="Product edit")
     else:
         it.save()
+    if "pack_units" in data:
+        _upsert_pack_units(it, data.get("pack_units"))
     _audit(request.user, "pos.product_update", it, {"changes": list(data.keys())})
     it.refresh_from_db()
     return Response(_item_dict(it))
@@ -460,9 +545,37 @@ def tax_summary_report(request):
         "taxable_base": str(sum((Decimal(r["taxable_base"]) for r in rows), Decimal("0"))),
         "tax_amount": str(sum((Decimal(r["tax_amount"]) for r in rows), Decimal("0"))),
     }
+
+    # Phase 3 Agent 8 — per-component totals from Bill.tax_breakdown JSONField.
+    component_totals = {}   # code -> {code, name, total_tax}
+    bills_in_range = Bill.objects.filter(
+        outlet=outlet, status=Bill.Status.CLOSED,
+        created_at__date__gte=date_from, created_at__date__lte=date_to,
+    ).values_list("tax_breakdown", flat=True)
+    for tb in bills_in_range:
+        for comp in (tb or []):
+            code = comp.get("code") or ""
+            if not code:
+                continue
+            agg = component_totals.setdefault(code, {
+                "code": code,
+                "name": comp.get("name") or code,
+                "total_tax": Decimal("0"),
+            })
+            try:
+                agg["total_tax"] += Decimal(str(comp.get("amount") or 0))
+            except Exception:
+                pass
+    components = [
+        {"code": c["code"], "name": c["name"], "total_tax": str(c["total_tax"])}
+        for c in component_totals.values()
+    ]
+    components.sort(key=lambda c: c["code"])
+
     return Response({
         "date_from": str(date_from), "date_to": str(date_to),
         "totals": totals, "results": rows,
+        "components": components,
     })
 
 

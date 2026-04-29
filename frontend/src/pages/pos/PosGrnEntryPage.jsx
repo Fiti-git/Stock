@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   Stack, TextField, Button, Typography, Paper, Box, IconButton,
-  Alert, Divider,
+  Alert, Divider, FormControl, InputLabel, Select, MenuItem,
 } from "@mui/material";
 import MoveToInboxIcon from "@mui/icons-material/MoveToInbox";
 import AddIcon from "@mui/icons-material/Add";
@@ -9,7 +9,10 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import SaveIcon from "@mui/icons-material/Save";
 import Layout from "../../components/Layout";
 import { PageHeader } from "../../components/ui";
-import { searchProducts, submitGrnEntry, searchSuppliers } from "../../api/pos";
+import {
+  searchProducts, submitGrnEntry, searchSuppliers,
+  listPurchaseOrders, getPoOutstandingLines,
+} from "../../api/pos";
 import { useNotification } from "../../providers/NotificationProvider";
 
 const toN = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -28,6 +31,35 @@ export default function PosGrnEntryPage() {
   const [itemSearch, setItemSearch] = useState("");
   const [results, setResults] = useState([]);
   const [saving, setSaving] = useState(false);
+  // PO linkage (Phase 4 Agent 12)
+  const [openPos, setOpenPos] = useState([]);
+  const [poId, setPoId] = useState("");
+
+  // Refresh open/partial POs whenever a supplier is picked.
+  const refreshOpenPos = async (sid) => {
+    if (!sid) { setOpenPos([]); setPoId(""); return; }
+    try {
+      const r = await listPurchaseOrders({ supplier: sid, status: "open,partial" });
+      setOpenPos(r.data?.results || []);
+    } catch { setOpenPos([]); }
+  };
+
+  const pickPo = async (id) => {
+    setPoId(id);
+    if (!id) return;
+    try {
+      const r = await getPoOutstandingLines(id);
+      const pls = r.data?.lines || [];
+      // Prefill lines: qty defaults to qty_remaining, unit_cost from PO.
+      setLines(pls.map((pl) => ({
+        key: Math.random().toString(36).slice(2),
+        item_id: pl.item_id, item_code: pl.item_code, item_name: pl.item_name,
+        qty: pl.qty_remaining, cost_price: pl.unit_cost, sell_price: "",
+        batch_no: "", expiry_date: "",
+        po_line_id: pl.id,
+      })));
+    } catch (err) { notify(err?.response?.data?.detail || "Failed to load PO lines.", "error"); }
+  };
 
   const searchItem = async (q) => {
     setItemSearch(q);
@@ -42,6 +74,7 @@ export default function PosGrnEntryPage() {
   };
   const pickSupplier = (s) => {
     setSupplier(s.name); setSupplierId(s.id); setSupplierCode(s.code); setSupplierResults([]);
+    refreshOpenPos(s.id);
   };
 
   const addLine = (item) => {
@@ -53,6 +86,7 @@ export default function PosGrnEntryPage() {
         item_code: item.item_code,
         item_name: item.item_name,
         qty: 1, cost_price: "", sell_price: item.selling_price || "",
+        batch_no: "", expiry_date: "",
       },
     ]);
     setItemSearch(""); setResults([]);
@@ -72,14 +106,19 @@ export default function PosGrnEntryPage() {
         supplier_code: supplierCode || undefined,
         supplier_name: supplier,
         invoice_no: invoiceNo, received_date: receivedDate, note,
+        purchase_order_id: poId || undefined,
         lines: lines.map((l) => ({
           item_id: l.item_id, qty: String(l.qty),
           cost_price: l.cost_price !== "" ? String(l.cost_price) : null,
           sell_price: l.sell_price !== "" ? String(l.sell_price) : null,
+          batch_no: l.batch_no || undefined,
+          expiry_date: l.expiry_date || undefined,
+          po_line_id: l.po_line_id || undefined,
         })),
       });
       notify(`GRN saved: ${res.data.ref} · ${res.data.movements_created} movements · ${res.data.price_changes} price changes.`, "success");
       setLines([]); setSupplier(""); setSupplierId(null); setSupplierCode(""); setInvoiceNo(""); setNote("");
+      setPoId(""); setOpenPos([]);
     } catch (err) {
       notify(err?.response?.data?.detail || "Save failed.", "error");
     } finally {
@@ -112,6 +151,20 @@ export default function PosGrnEntryPage() {
             value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} />
         </Stack>
         <TextField label="Note" fullWidth multiline minRows={1} value={note} onChange={(e) => setNote(e.target.value)} sx={{ mb: 2 }} />
+
+        {supplierId && openPos.length > 0 && (
+          <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+            <InputLabel>Pick a Purchase Order (optional)</InputLabel>
+            <Select label="Pick a Purchase Order (optional)" value={poId} onChange={(e) => pickPo(e.target.value)}>
+              <MenuItem value="">— Free-form GRN (no PO) —</MenuItem>
+              {openPos.map((p) => (
+                <MenuItem key={p.id} value={p.id}>
+                  {p.po_no} · {p.status} · LKR {Number(p.grand_total).toFixed(2)} · expected {p.expected_on || "—"}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        )}
 
         <Divider sx={{ mb: 2 }} />
         <Typography variant="subtitle2" sx={{ mb: 1 }}>Add items</Typography>
@@ -146,6 +199,8 @@ export default function PosGrnEntryPage() {
                 <TextField size="small" label="Qty" value={l.qty} onChange={(e) => updateLine(l.key, { qty: e.target.value })} sx={{ width: 100 }} inputProps={{ inputMode: "decimal" }} />
                 <TextField size="small" label="Cost price" value={l.cost_price} onChange={(e) => updateLine(l.key, { cost_price: e.target.value })} sx={{ width: 120 }} inputProps={{ inputMode: "decimal" }} />
                 <TextField size="small" label="New sell price" value={l.sell_price} onChange={(e) => updateLine(l.key, { sell_price: e.target.value })} sx={{ width: 140 }} inputProps={{ inputMode: "decimal" }} helperText="Leave blank to keep" />
+                <TextField size="small" label="Batch no." value={l.batch_no} onChange={(e) => updateLine(l.key, { batch_no: e.target.value })} sx={{ width: 130 }} helperText="Optional" />
+                <TextField size="small" type="date" label="Expiry" InputLabelProps={{ shrink: true }} value={l.expiry_date} onChange={(e) => updateLine(l.key, { expiry_date: e.target.value })} sx={{ width: 160 }} />
                 <Typography variant="body2" fontWeight={600} sx={{ width: 100, textAlign: "right" }}>
                   {(toN(l.qty) * toN(l.cost_price)).toFixed(2)}
                 </Typography>
