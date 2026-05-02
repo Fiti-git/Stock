@@ -41,9 +41,23 @@ class Command(BaseCommand):
         # default "testserver").
         c = Client(HTTP_HOST="localhost")
 
-        def hit(label, method, url, body=None, **kwargs):
+        # Build an admin JWT once if the user gave us one. DRF auth uses JWT,
+        # not Django sessions — Client.force_login() does not satisfy IsAdmin.
+        admin_jwt = None
+        if opts["admin_user"]:
+            from apps.accounts.models import User
+            from rest_framework_simplejwt.tokens import RefreshToken
+            try:
+                admin = User.objects.get(username=opts["admin_user"])
+            except User.DoesNotExist:
+                raise CommandError(f"Admin user '{opts['admin_user']}' not found.")
+            admin_jwt = str(RefreshToken.for_user(admin).access_token)
+
+        def hit(label, method, url, body=None, auth=False, **kwargs):
             self.stdout.write(self.style.NOTICE(f"\n>>> {label}: {method} {url}"))
             fn = getattr(c, method.lower())
+            if auth and admin_jwt:
+                kwargs["HTTP_AUTHORIZATION"] = f"Bearer {admin_jwt}"
             resp = fn(url, data=json.dumps(body or {}),
                       content_type="application/json", **kwargs)
             self.stdout.write(f"    status: {resp.status_code}")
@@ -76,14 +90,11 @@ class Command(BaseCommand):
         if not order or "number" not in order:
             raise CommandError("Checkout did not return an order.")
 
-        # 4. Confirm payment (admin-gated)
-        if opts["admin_user"]:
-            from apps.accounts.models import User
-            admin = User.objects.get(username=opts["admin_user"])
-            c.force_login(admin)
+        # 4. Confirm payment (admin-gated → needs JWT)
         hit("confirm-payment", "POST",
             f"/api/ecom/orders/{order['number']}/confirm-payment/",
-            {"payment_intent_ref": "smoke-test"})
+            {"payment_intent_ref": "smoke-test"},
+            auth=True)
 
         # 5. Verify ledger row
         from apps.items.models import StockMovement
