@@ -36,7 +36,10 @@ class Command(BaseCommand):
         if not getattr(settings, "ECOM_API_ENABLED", False):
             raise CommandError("ECOM_API_ENABLED is False; flip it before running smoke.")
 
-        c = Client()
+        # HTTP_HOST="localhost" so the request passes ALLOWED_HOSTS in
+        # production settings (which doesn't include the test client's
+        # default "testserver").
+        c = Client(HTTP_HOST="localhost")
 
         def hit(label, method, url, body=None, **kwargs):
             self.stdout.write(self.style.NOTICE(f"\n>>> {label}: {method} {url}"))
