@@ -9,17 +9,22 @@ from .models import EcomAddress, EcomCart, EcomCartItem, EcomOrder, EcomOrderLin
 
 @admin.register(EcomAddress)
 class EcomAddressAdmin(admin.ModelAdmin):
+    """
+    Note: pos.Customer / items.Item don't register search_fields-enabled
+    admins, so autocomplete_fields can't target them. Use raw_id_fields
+    instead — same UX (search popup), no dependency on a sibling admin.
+    """
     list_display = ("recipient_name", "customer", "city", "country", "is_default", "updated_at")
     list_filter = ("country", "is_default")
     search_fields = ("recipient_name", "phone", "line1", "city", "customer__name", "customer__phone")
-    autocomplete_fields = ("customer",)
+    raw_id_fields = ("customer",)
 
 
 class EcomCartItemInline(admin.TabularInline):
     model = EcomCartItem
     extra = 0
     fields = ("item", "qty", "unit_price_snapshot", "reservation")
-    autocomplete_fields = ("item",)
+    raw_id_fields = ("item",)
     readonly_fields = ("reservation",)
 
 
