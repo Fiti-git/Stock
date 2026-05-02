@@ -16,4 +16,5 @@ urlpatterns = [
     path("api/pos/", include("apps.pos.urls")),
     path("api/transfers/", include("apps.transfers.urls")),
     path("api/storefront/", include("apps.catalog_ext.urls")),
+    path("api/ecom/", include("apps.ecom.urls")),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

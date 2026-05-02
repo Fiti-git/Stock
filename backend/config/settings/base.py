@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     "apps.transfers",
     "apps.inventory",
     "apps.catalog_ext",
+    "apps.ecom",
 ]
 
 # ---------------------------------------------------------------------------
@@ -48,6 +49,13 @@ INVENTORY_LEDGER_ENABLED = config("INVENTORY_LEDGER_ENABLED", default=False, cas
 # the "storefront" scope below.
 # ---------------------------------------------------------------------------
 STOREFRONT_API_ENABLED = config("STOREFRONT_API_ENABLED", default=False, cast=bool)
+
+# ---------------------------------------------------------------------------
+# Ecom API (Phase 2). Off by default — every /api/ecom/ endpoint returns 503
+# until this is flipped on. Cart and checkout are anonymous + throttled
+# (storefront scope shared with Phase 1). Payment confirm is admin-gated.
+# ---------------------------------------------------------------------------
+ECOM_API_ENABLED = config("ECOM_API_ENABLED", default=False, cast=bool)
 
 # ---------------------------------------------------------------------------
 # Celery (Phase 0). Optional in dev — if Redis isn't running, the web tier
