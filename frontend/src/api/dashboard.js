@@ -90,6 +90,15 @@ export const getStockVarianceReport = ({ outletId, date } = {}) =>
     params: { outlet: outletId, date },
   });
 
+export const getCountCoverageReport = ({ outletId, dateFrom, dateTo } = {}) =>
+  api.get("/dashboard/count-coverage-report/", {
+    params: {
+      outlet: outletId,
+      ...(dateFrom ? { date_from: dateFrom } : {}),
+      ...(dateTo ? { date_to: dateTo } : {}),
+    },
+  });
+
 export const getCountedItemsReport = ({ outletId, fromDate, toDate } = {}) =>
   api.get("/dashboard/counted-items-report/", {
     params: {

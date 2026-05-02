@@ -35,6 +35,7 @@ const BarcodeMasterPage = lazy(() => import("./pages/admin/BarcodeMasterPage"));
 const ProductHistoryPage = lazy(() => import("./pages/admin/ProductHistoryPage"));
 const DailyUploadReportPage = lazy(() => import("./pages/admin/DailyUploadReportPage"));
 const StockVarianceReportPage = lazy(() => import("./pages/admin/StockVarianceReportPage"));
+const CountCoverageReportPage = lazy(() => import("./pages/admin/CountCoverageReportPage"));
 const CountedItemsReportPage = lazy(() => import("./pages/admin/CountedItemsReportPage"));
 const MobileDevicesPage = lazy(() => import("./pages/admin/MobileDevicesPage"));
 const LoginEventsPage = lazy(() => import("./pages/admin/LoginEventsPage"));
@@ -192,6 +193,7 @@ export default function App() {
                     <Route path="/admin/products/:itemId/history" element={<RoleRoute allowedRoles={["manager","admin","super_admin"]}><ProductHistoryPage /></RoleRoute>} />
                     <Route path="/admin/reports/daily-upload" element={<PermissionRoute code="nav.daily_upload_report"><DailyUploadReportPage /></PermissionRoute>} />
                     <Route path="/admin/reports/stock-variance" element={<PermissionRoute code="nav.stock_variance"><StockVarianceReportPage /></PermissionRoute>} />
+                    <Route path="/admin/reports/count-coverage" element={<PermissionRoute code="nav.count_coverage"><CountCoverageReportPage /></PermissionRoute>} />
                     <Route path="/admin/reports/counted-items" element={<PermissionRoute code="nav.counted_items_report"><CountedItemsReportPage /></PermissionRoute>} />
                     <Route path="/admin/mobile-devices" element={<PermissionRoute code="nav.mobile_devices"><MobileDevicesPage /></PermissionRoute>} />
                     <Route path="/admin/login-events" element={<PermissionRoute code="nav.login_events"><LoginEventsPage /></PermissionRoute>} />

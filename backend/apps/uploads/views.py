@@ -217,24 +217,9 @@ def confirm_upload(request):
     else:
         snapshot_date = parsed.snapshot_date
 
-    # Handle duplicate
-    existing_log = UploadLog.objects.filter(
-        outlet=outlet,
-        snapshot_date=snapshot_date,
-        status=UploadLog.Status.SUCCESS,
-    ).first()
-
-    if existing_log:
-        if not overwrite:
-            return Response(
-                {"detail": "A successful upload already exists for this date. Set overwrite=true to replace."},
-                status=status.HTTP_409_CONFLICT,
-            )
-        if user.role != User.Role.ADMIN:
-            return Response(
-                {"detail": "An upload already exists for today. Contact an admin to override."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+    # Multi-upload per day is now first-class: each upload becomes a distinct
+    # UploadLog batch with its own snapshots, so prior uploads on the same date
+    # are preserved (the report uses the snapshot in effect at each count time).
 
     # Dry-run count of genuinely new items — drives the threshold-based approval gate.
     threshold = getattr(settings, "NEW_ITEMS_APPROVAL_THRESHOLD", 100)
@@ -341,11 +326,10 @@ def approve_upload(request, log_id):
 
         outlet = log.outlet
 
-        # Remove existing snapshots for this date if any (overwrite semantics)
-        PosSnapshot.objects.filter(outlet=outlet, snapshot_date=log.snapshot_date).delete()
-
+        # Approval re-uses the existing UploadLog as the batch; snapshots are
+        # tied to it. Other batches on the same date are not affected.
         result = _process_upload(
-            parsed, outlet, log.uploaded_by, log.snapshot_date, overwrite=True, filename=log.filename,
+            parsed, outlet, log.uploaded_by, log.snapshot_date, overwrite=False, filename=log.filename,
             existing_log=log,
         )
 
@@ -715,9 +699,10 @@ def _deletion_scope(log):
         item_id__in=new_item_ids
     ).exclude(upload_log=log).count() if new_item_ids else 0
 
+    # Snapshots that this batch owns (multi-upload per day: only this batch's
+    # rows will be removed by delete_upload).
     snapshots_for_date = PosSnapshot.objects.filter(
-        outlet=log.outlet,
-        snapshot_date=log.snapshot_date,
+        upload_batch=log,
     ).count()
 
     # Barcodes attached to the items this upload created (cascades on Item delete)
@@ -816,11 +801,10 @@ def delete_upload(request, log_id):
             change_type=PendingItem.ChangeType.NEW_CODE,
         ).delete()
 
-        # 4. Remove remaining PosSnapshots for this outlet+date — covers the
-        # case where this upload added a snapshot for a pre-existing item.
+        # 4. Remove only the PosSnapshots tied to *this* batch. Other batches
+        # for the same outlet+date (multi-upload per day) stay intact.
         snapshots_deleted, _ = PosSnapshot.objects.filter(
-            outlet=log.outlet,
-            snapshot_date=log.snapshot_date,
+            upload_batch=log,
         ).delete()
 
         log.status = UploadLog.Status.DELETED
@@ -1010,10 +994,29 @@ def _build_changed_fields(item: Item, row) -> dict:
 
 
 def _process_upload(parsed, outlet, user, snapshot_date, overwrite, filename, existing_log=None):
-    """Write pos_snapshots + pending_items to DB. Returns a DRF Response."""
+    """Write pos_snapshots + pending_items to DB. Returns a DRF Response.
+
+    Multi-upload per day: each call creates (or reuses) a single UploadLog
+    batch and stamps every PosSnapshot with `upload_batch`. Prior batches on
+    the same date are NOT deleted — they remain for time-based variance lookup.
+    """
     with transaction.atomic():
-        if overwrite:
-            PosSnapshot.objects.filter(outlet=outlet, snapshot_date=snapshot_date).delete()
+        # Create the UploadLog up-front so PosSnapshots can be linked to it.
+        if existing_log is not None:
+            log = existing_log
+        else:
+            log = UploadLog.objects.create(
+                outlet=outlet,
+                snapshot_date=snapshot_date,
+                uploaded_by=user,
+                status=UploadLog.Status.SUCCESS,
+                total_rows=len(parsed.rows),
+                matched_rows=0,
+                new_items_count=0,
+                changed_items_count=0,
+                filename=filename,
+                approval_status=UploadLog.ApprovalStatus.AUTO,
+            )
 
         matched = 0
         new_items = 0
@@ -1040,7 +1043,7 @@ def _process_upload(parsed, outlet, user, snapshot_date, overwrite, filename, ex
                     item_name=row.item_name,
                     category=row.category,
                     status=Item.Status.PENDING_BARCODE,
-                    upload_log=existing_log,  # null on same-day auto path; set below
+                    upload_log=log,
                 )
                 pending_new, pending_created = PendingItem.objects.get_or_create(
                     item_code=row.item_code,
@@ -1049,7 +1052,7 @@ def _process_upload(parsed, outlet, user, snapshot_date, overwrite, filename, ex
                     defaults={
                         "item_name": row.item_name,
                         "item": item,
-                        "upload_log": existing_log,
+                        "upload_log": log,
                     },
                 )
                 if pending_created:
@@ -1074,7 +1077,7 @@ def _process_upload(parsed, outlet, user, snapshot_date, overwrite, filename, ex
                             change_type=PendingItem.ChangeType.DATA_CHANGED,
                             changed_fields=changes,
                             item=item,
-                            upload_log=existing_log,
+                            upload_log=log,
                         )
                         new_pending_to_tag.append(pending_change.id)
                     changed_items += 1
@@ -1090,36 +1093,24 @@ def _process_upload(parsed, outlet, user, snapshot_date, overwrite, filename, ex
                     cost_price=row.cost_price,
                     selling_price=row.selling_price,
                     uploaded_by=user,
+                    upload_batch=log,
                 )
             )
 
+        # Each batch is fresh — no conflicts expected. Use update_conflicts as
+        # a defensive guard against duplicate item_codes within the same XLS.
         PosSnapshot.objects.bulk_create(
             snapshot_list,
             update_conflicts=True,
-            unique_fields=["outlet", "item", "snapshot_date"],
-            update_fields=["pos_quantity", "cost_price", "selling_price", "uploaded_by", "uploaded_at"],
+            unique_fields=["upload_batch", "item"],
+            update_fields=["pos_quantity", "cost_price", "selling_price", "uploaded_by", "uploaded_at", "snapshot_date"],
         )
 
-        if existing_log:
-            existing_log.matched_rows = matched
-            existing_log.new_items_count = new_items
-            existing_log.changed_items_count = changed_items
-            existing_log.total_rows = len(parsed.rows)
-            existing_log.save(update_fields=["matched_rows", "new_items_count", "changed_items_count", "total_rows"])
-            log = existing_log
-        else:
-            log = UploadLog.objects.create(
-                outlet=outlet,
-                snapshot_date=snapshot_date,
-                uploaded_by=user,
-                status=UploadLog.Status.SUCCESS,
-                total_rows=len(parsed.rows),
-                matched_rows=matched,
-                new_items_count=new_items,
-                changed_items_count=changed_items,
-                filename=filename,
-                approval_status=UploadLog.ApprovalStatus.AUTO,
-            )
+        log.matched_rows = matched
+        log.new_items_count = new_items
+        log.changed_items_count = changed_items
+        log.total_rows = len(parsed.rows)
+        log.save(update_fields=["matched_rows", "new_items_count", "changed_items_count", "total_rows"])
 
         # Tag the newly-created Items and PendingItems with this UploadLog so a
         # future delete_upload can cascade-remove everything this upload introduced.

@@ -855,11 +855,13 @@ def stock_variance_report(request):
         return Response({"detail": "outlet is required."}, status=400)
     snap_date = _parse_date(request.query_params.get("date"), date.today())
 
-    # Latest PosSnapshot on or before the date, per item.
+    # Latest PosSnapshot on or before the date, per item. With multiple
+    # uploads/day allowed, we also tiebreak by uploaded_at DESC so the most
+    # recent upload of the day wins.
     snap_qs = (
         PosSnapshot.objects
         .filter(outlet_id=outlet_id, snapshot_date__lte=snap_date)
-        .order_by("item_id", "-snapshot_date")
+        .order_by("item_id", "-snapshot_date", "-uploaded_at")
     )
     pos_map = {}
     for s in snap_qs:
@@ -951,6 +953,175 @@ def stock_variance_report(request):
         "date": str(snap_date),
         "count": len(results),
         "totals": totals,
+        "results": results,
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsManager])
+def count_coverage_report(request):
+    """
+    Outlet- and date-range-wise count coverage.
+
+    For each item with at least one (non-rejected) count whose `counted_at`
+    falls inside the range, attach the latest PosSnapshot for that
+    (outlet, item) where snapshot.uploaded_at <= count.counted_at — i.e. the
+    snapshot the counter was effectively comparing against. Multi-upload per
+    day is fully supported via this temporal match.
+
+    Totals reported:
+      total_items     — active items in outlet (master catalog)
+      counted_items   — distinct items counted in range
+      uncounted_items — total_items - counted_items
+      coverage_pct    — counted / total * 100
+
+    Query params:
+      outlet     : outlet id (required)
+      date_from  : YYYY-MM-DD (defaults to today - 7d)
+      date_to    : YYYY-MM-DD (defaults to today)
+    """
+    outlet_id = request.query_params.get("outlet")
+    if not outlet_id:
+        return Response({"detail": "outlet is required."}, status=400)
+
+    today = date.today()
+    date_from = _parse_date(request.query_params.get("date_from"), today - timedelta(days=7))
+    date_to = _parse_date(request.query_params.get("date_to"), today)
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
+
+    # Range as timestamps: include the whole of date_to.
+    range_start = datetime.combine(date_from, datetime.min.time())
+    range_end = datetime.combine(date_to, datetime.max.time())
+    if timezone.is_aware(timezone.now()):
+        tz = timezone.get_current_timezone()
+        range_start = timezone.make_aware(range_start, tz)
+        range_end = timezone.make_aware(range_end, tz)
+
+    # 1. Aggregate counts in range, per item: total counted_qty, last
+    #    counted_at, location entries.
+    count_rows = (
+        StockCount.objects
+        .filter(outlet_id=outlet_id, counted_at__gte=range_start, counted_at__lte=range_end)
+        .exclude(approval_status=StockCount.ApprovalStatus.REJECTED)
+        .values("item_id")
+        .annotate(
+            counted_qty=Sum("actual_qty"),
+            location_count=Count("id"),
+            last_counted_at=Max("counted_at"),
+        )
+    )
+    count_map = {r["item_id"]: r for r in count_rows}
+
+    if not count_map:
+        # Fast path — nothing counted in range.
+        total_items = Item.objects.filter(outlet_id=outlet_id).count()
+        return Response({
+            "outlet_id": int(outlet_id),
+            "date_from": str(date_from),
+            "date_to": str(date_to),
+            "totals": {
+                "total_items": total_items,
+                "counted_items": 0,
+                "uncounted_items": total_items,
+                "coverage_pct": 0.0,
+            },
+            "results": [],
+        })
+
+    # 2. Per-location detail for the locations dialog.
+    loc_rows = (
+        StockCount.objects
+        .filter(outlet_id=outlet_id, counted_at__gte=range_start, counted_at__lte=range_end)
+        .exclude(approval_status=StockCount.ApprovalStatus.REJECTED)
+        .values("item_id", "location_tag")
+        .annotate(qty=Sum("actual_qty"))
+    )
+    locations_by_item = {}
+    for r in loc_rows:
+        locations_by_item.setdefault(r["item_id"], []).append({
+            "location_tag": r["location_tag"] or "—",
+            "qty": float(r["qty"] or 0),
+        })
+
+    # 3. For each counted item, find the latest snapshot uploaded at or
+    #    before its last_counted_at. Done with a single ORM scan over all
+    #    snapshots for this outlet + items, sliced in Python (cheap: bounded
+    #    by counted_items * batches/day).
+    item_ids = list(count_map.keys())
+    snap_rows = (
+        PosSnapshot.objects
+        .filter(outlet_id=outlet_id, item_id__in=item_ids)
+        .order_by("item_id", "-uploaded_at")
+        .values("item_id", "uploaded_at", "pos_quantity", "cost_price", "selling_price", "snapshot_date")
+    )
+    snaps_by_item = {}
+    for s in snap_rows:
+        snaps_by_item.setdefault(s["item_id"], []).append(s)
+
+    def _pick_snapshot(iid, ref_ts):
+        """Latest snapshot for `iid` with uploaded_at <= ref_ts (or None)."""
+        for s in snaps_by_item.get(iid, []):
+            if s["uploaded_at"] <= ref_ts:
+                return s
+        return None
+
+    # 4. Item master rows (code + name).
+    items = Item.objects.filter(id__in=item_ids).only("id", "item_code", "item_name")
+    item_by_id = {i.id: i for i in items}
+
+    # 5. Build response rows.
+    results = []
+    for iid, cnt in count_map.items():
+        it = item_by_id.get(iid)
+        if not it:
+            continue
+        counted_qty = float(cnt["counted_qty"] or 0)
+        last_counted_at = cnt["last_counted_at"]
+        snap = _pick_snapshot(iid, last_counted_at)
+        pos_qty = float(snap["pos_quantity"]) if snap else None
+        cost = float(snap["cost_price"]) if snap and snap["cost_price"] is not None else None
+        sell = float(snap["selling_price"]) if snap and snap["selling_price"] is not None else None
+        variance_qty = (counted_qty - pos_qty) if pos_qty is not None else None
+        variance_cost = (variance_qty * cost) if (variance_qty is not None and cost is not None) else None
+        variance_sell = (variance_qty * sell) if (variance_qty is not None and sell is not None) else None
+
+        results.append({
+            "item_id": iid,
+            "item_code": it.item_code,
+            "item_name": it.item_name,
+            "pos_qty": pos_qty,
+            "counted_qty": counted_qty,
+            "variance_qty": variance_qty,
+            "cost_price": cost,
+            "selling_price": sell,
+            "variance_cost_value": variance_cost,
+            "variance_selling_value": variance_sell,
+            "location_count": int(cnt["location_count"] or 0),
+            "locations": locations_by_item.get(iid, []),
+            "snapshot_uploaded_at": snap["uploaded_at"].isoformat() if snap else None,
+            "snapshot_date": str(snap["snapshot_date"]) if snap else None,
+            "counted_at": last_counted_at.isoformat() if last_counted_at else None,
+        })
+
+    results.sort(key=lambda r: r["item_code"])
+
+    # 6. Totals.
+    total_items = Item.objects.filter(outlet_id=outlet_id).count()
+    counted_items = len(results)
+    uncounted_items = max(0, total_items - counted_items)
+    coverage_pct = round((counted_items / total_items) * 100, 2) if total_items else 0.0
+
+    return Response({
+        "outlet_id": int(outlet_id),
+        "date_from": str(date_from),
+        "date_to": str(date_to),
+        "totals": {
+            "total_items": total_items,
+            "counted_items": counted_items,
+            "uncounted_items": uncounted_items,
+            "coverage_pct": coverage_pct,
+        },
         "results": results,
     })
 

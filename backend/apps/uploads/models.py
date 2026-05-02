@@ -23,15 +23,23 @@ class PosSnapshot(models.Model):
         related_name="uploads",
     )
     uploaded_at = models.DateTimeField(auto_now_add=True)
+    upload_batch = models.ForeignKey(
+        "uploads.UploadLog",
+        on_delete=models.CASCADE,
+        related_name="snapshots",
+        null=True,
+        blank=True,
+    )
 
     class Meta:
         db_table = "pos_snapshots"
-        unique_together = ("outlet", "item", "snapshot_date")
+        unique_together = ("upload_batch", "item")
         ordering = ["-snapshot_date"]
         indexes = [
             models.Index(fields=["outlet", "snapshot_date"]),
             models.Index(fields=["outlet", "snapshot_date", "pos_quantity"]),
             models.Index(fields=["item", "-snapshot_date"]),
+            models.Index(fields=["outlet", "item", "-uploaded_at"]),
         ]
 
     def __str__(self):

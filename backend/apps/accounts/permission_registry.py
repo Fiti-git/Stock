@@ -54,6 +54,7 @@ PERMISSIONS = [
     ("nav.negative_pos",          "Negative POS",            "Navigation · Reports", "stock"),
     ("nav.stock_variance",        "Stock Variance Report",   "Navigation · Reports", "stock"),
     ("nav.counted_items_report",  "Counted vs Uncounted",    "Navigation · Reports", "stock"),
+    ("nav.count_coverage",        "Count Coverage Report",   "Navigation · Reports", "stock"),
 
     ("nav.catalog",               "Product Catalog",         "Navigation · Catalog", "stock"),
     ("nav.product_master",        "Product Master",          "Navigation · Catalog", "stock"),
@@ -230,7 +231,7 @@ ROLE_DEFAULTS = {
         "nav.count_review", "nav.variance_reconciliation",
         "nav.shrinkage", "nav.item_pos_history",
         "nav.daily_upload_report", "nav.negative_pos", "nav.stock_variance",
-        "nav.counted_items_report",
+        "nav.counted_items_report", "nav.count_coverage",
         "nav.catalog", "nav.product_master", "nav.barcode_master",
         "nav.outlets", "nav.users", "nav.license",
         "nav.audit_log", "nav.mobile_devices", "nav.login_events",
