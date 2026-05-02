@@ -28,7 +28,48 @@ INSTALLED_APPS = [
     "apps.org_catalog",
     "apps.pos",
     "apps.transfers",
+    "apps.inventory",
+    "apps.catalog_ext",
 ]
+
+# ---------------------------------------------------------------------------
+# Inventory ledger (Phase 0). When False (default) the producer signals
+# short-circuit and never write to stock_movements — the live system is
+# unaffected. Flip to True ONLY after running:
+#   python manage.py backfill_movements --verify
+# and confirming SUM(movements) == latest PosSnapshot per (outlet, item).
+# ---------------------------------------------------------------------------
+INVENTORY_LEDGER_ENABLED = config("INVENTORY_LEDGER_ENABLED", default=False, cast=bool)
+
+# ---------------------------------------------------------------------------
+# Storefront API (Phase 1). Off by default — every /api/storefront/ endpoint
+# returns 503 until this is flipped on. Lets the code ship without exposing a
+# half-finished storefront. Public endpoints are anonymous + throttled via
+# the "storefront" scope below.
+# ---------------------------------------------------------------------------
+STOREFRONT_API_ENABLED = config("STOREFRONT_API_ENABLED", default=False, cast=bool)
+
+# ---------------------------------------------------------------------------
+# Celery (Phase 0). Optional in dev — if Redis isn't running, the web tier
+# is unaffected; only background tasks pause.
+# ---------------------------------------------------------------------------
+CELERY_BROKER_URL = config("CELERY_BROKER_URL", default="redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default="redis://localhost:6379/1")
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_ACKS_LATE = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_TASK_TIME_LIMIT = 60 * 60          # 1h hard limit
+CELERY_TASK_SOFT_TIME_LIMIT = 55 * 60
+CELERY_BEAT_SCHEDULE = {
+    "rebuild-stock-balances-hourly": {
+        "task": "apps.inventory.tasks.rebuild_balances",
+        "schedule": 60 * 60,  # every hour
+    },
+    "expire-stale-reservations": {
+        "task": "apps.inventory.tasks.expire_stale_reservations",
+        "schedule": 60,  # every minute
+    },
+}
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -96,6 +137,11 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": (
         "rest_framework.renderers.JSONRenderer",
     ),
+    # Phase 1: throttle the public storefront so it cannot starve the admin
+    # API. Per-IP, anonymous, generous burst.
+    "DEFAULT_THROTTLE_RATES": {
+        "storefront": "120/minute",
+    },
 }
 
 # Uploads that introduce this many or more new items are routed to admin
