@@ -39,6 +39,9 @@ import CategoryIcon from "@mui/icons-material/Category";
 import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
 import LocalOfferIcon from "@mui/icons-material/LocalOffer";
 import CardGiftcardIcon from "@mui/icons-material/CardGiftcard";
+import ShoppingBagIcon from "@mui/icons-material/ShoppingBag";
+import PriceCheckIcon from "@mui/icons-material/PriceCheck";
+import CollectionsIcon from "@mui/icons-material/Collections";
 
 /**
  * Single source of truth for routes. Consumed by Sidebar, Breadcrumbs, CommandPalette.
@@ -101,6 +104,11 @@ export const routes = [
   { path: "/pos/commission-report",     code: "nav.pos_reports",          label: "Commission Report",  icon: AssessmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
   { path: "/pos/payment-gateways",      code: "nav.pos_outlet_settings",  label: "Payment Gateways",   icon: PointOfSaleIcon,        roles: ["admin","super_admin"],                                 group: "POS", system: "pos" },
   { path: "/pos/sms-config",            code: "nav.pos_outlet_settings",  label: "SMS Configuration",  icon: ReceiptLongIcon,        roles: ["admin","super_admin"],                                 group: "POS", system: "pos" },
+
+  // ------------------------- ECOM (Phase 4) -------------------------
+  { path: "/admin/ecom/orders",       code: "nav.ecom_orders",      label: "Orders",              icon: ShoppingBagIcon, roles: ["admin","super_admin","manager"], group: "Ecom", system: "ecom" },
+  { path: "/admin/ecom/products",     code: "nav.ecom_products",    label: "Product Enrichment", icon: CollectionsIcon, roles: ["admin","super_admin","manager"], group: "Ecom", system: "ecom" },
+  { path: "/admin/ecom/price-lists",  code: "nav.ecom_price_lists", label: "Price Lists",         icon: PriceCheckIcon,  roles: ["admin","super_admin","manager"], group: "Ecom", system: "ecom" },
 
   // ------------------------- TRANSFERS -------------------------
   { path: "/transfers/request",  code: "nav.transfers_request",  label: "Request Transfer",  icon: MoveToInboxIcon,    roles: ["store_user","staff","manager","admin","super_admin"], group: "Transfers", system: "stock" },
@@ -178,10 +186,14 @@ export const routes = [
 /**
  * Return visible nav items for the given set of effective permission codes.
  *
- * `activeSystem` (optional) is "stock" | "pos" | null.
+ * `activeSystem` (optional) is "stock" | "pos" | "ecom" | null.
  *   - null  → no system filter (legacy behaviour, used while sidebar wiring catches up)
  *   - else  → keep routes where system === activeSystem OR system === "both"
- *             (cross-product entries like Users, Audit Log show in both modes)
+ *             (cross-product entries like Users, Audit Log show in every mode).
+ *
+ *   Note: "both" historically meant "stock + pos". With ecom added, "both"
+ *   now means "show everywhere" — the cross-product semantics are unchanged
+ *   for users; we just don't introduce a new tag and avoid churn.
  */
 export function routesForPermissions(permissions, activeSystem = null) {
   const set = permissions instanceof Set ? permissions : new Set(permissions || []);
@@ -213,7 +225,7 @@ export function searchableRoutes(permissions, activeSystem = null) {
   });
 }
 
-// Sidebar persists the active system (when the user has both) under this key.
+// Sidebar persists the active system (when the user has more than one) under this key.
 export const ACTIVE_SYSTEM_STORAGE_KEY = "active_system_v1";
 
 export function findRoute(pathname) {
@@ -227,7 +239,7 @@ export function findRoute(pathname) {
   });
 }
 
-export const GROUP_ORDER = ["Operate", "Transfers", "POS", "Analyze", "Organize", "Configure"];
+export const GROUP_ORDER = ["Operate", "Transfers", "POS", "Ecom", "Analyze", "Organize", "Configure"];
 
 // Groups that start expanded. POS is collapsed by default (it has many links);
 // the others auto-open. The user's per-group collapse state is persisted in

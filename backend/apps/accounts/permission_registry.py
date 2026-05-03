@@ -56,6 +56,11 @@ PERMISSIONS = [
     ("nav.counted_items_report",  "Counted vs Uncounted",    "Navigation · Reports", "stock"),
     ("nav.count_coverage",        "Count Coverage Report",   "Navigation · Reports", "stock"),
 
+    # Ecom (Phase 4) — orders, product enrichment, price lists.
+    ("nav.ecom_orders",           "Ecom Orders",             "Navigation · Ecom", "ecom"),
+    ("nav.ecom_products",         "Product Enrichment",      "Navigation · Ecom", "ecom"),
+    ("nav.ecom_price_lists",      "Price Lists",             "Navigation · Ecom", "ecom"),
+
     ("nav.catalog",               "Product Catalog",         "Navigation · Catalog", "stock"),
     ("nav.product_master",        "Product Master",          "Navigation · Catalog", "stock"),
     ("nav.barcode_master",        "Barcode Master",          "Navigation · Catalog", "stock"),
@@ -214,7 +219,7 @@ def systems_for_codes(codes):
     systems = set()
     for c in code_set:
         s = SYSTEM_BY_CODE.get(c)
-        if s in ("stock", "pos"):
+        if s in ("stock", "pos", "ecom"):
             systems.add(s)
     return sorted(systems)
 
@@ -232,6 +237,8 @@ ROLE_DEFAULTS = {
         "nav.shrinkage", "nav.item_pos_history",
         "nav.daily_upload_report", "nav.negative_pos", "nav.stock_variance",
         "nav.counted_items_report", "nav.count_coverage",
+        # Ecom admin (Phase 4)
+        "nav.ecom_orders", "nav.ecom_products", "nav.ecom_price_lists",
         "nav.catalog", "nav.product_master", "nav.barcode_master",
         "nav.outlets", "nav.users", "nav.license",
         "nav.audit_log", "nav.mobile_devices", "nav.login_events",

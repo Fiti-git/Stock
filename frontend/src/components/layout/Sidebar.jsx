@@ -187,7 +187,9 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }) 
         <OutletSwitcher variant="sidebar" collapsed={isCollapsedRail} />
       </Box>
 
-      {/* Two-product system toggle — only shown when the user has access to both. */}
+      {/* System toggle — shown when the user has access to multiple systems
+          (stock / pos / ecom). Each toggle button is rendered only if the
+          user actually has at least one permission in that system. */}
       {userSystems.length > 1 && !isCollapsedRail && (
         <Box sx={{ px: 2, pb: 1.5 }}>
           <ToggleButtonGroup
@@ -211,8 +213,9 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }) 
               },
             }}
           >
-            <ToggleButton value="stock">STOCK</ToggleButton>
-            <ToggleButton value="pos">POS</ToggleButton>
+            {userSystems.includes("stock") && <ToggleButton value="stock">STOCK</ToggleButton>}
+            {userSystems.includes("pos") && <ToggleButton value="pos">POS</ToggleButton>}
+            {userSystems.includes("ecom") && <ToggleButton value="ecom">ECOM</ToggleButton>}
           </ToggleButtonGroup>
         </Box>
       )}

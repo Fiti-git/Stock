@@ -36,6 +36,9 @@ const ProductHistoryPage = lazy(() => import("./pages/admin/ProductHistoryPage")
 const DailyUploadReportPage = lazy(() => import("./pages/admin/DailyUploadReportPage"));
 const StockVarianceReportPage = lazy(() => import("./pages/admin/StockVarianceReportPage"));
 const CountCoverageReportPage = lazy(() => import("./pages/admin/CountCoverageReportPage"));
+const EcomOrdersPage = lazy(() => import("./pages/admin/ecom/OrdersPage"));
+const EcomProductEnrichmentPage = lazy(() => import("./pages/admin/ecom/ProductEnrichmentPage"));
+const EcomPriceListsPage = lazy(() => import("./pages/admin/ecom/PriceListsPage"));
 const CountedItemsReportPage = lazy(() => import("./pages/admin/CountedItemsReportPage"));
 const MobileDevicesPage = lazy(() => import("./pages/admin/MobileDevicesPage"));
 const LoginEventsPage = lazy(() => import("./pages/admin/LoginEventsPage"));
@@ -194,6 +197,9 @@ export default function App() {
                     <Route path="/admin/reports/daily-upload" element={<PermissionRoute code="nav.daily_upload_report"><DailyUploadReportPage /></PermissionRoute>} />
                     <Route path="/admin/reports/stock-variance" element={<PermissionRoute code="nav.stock_variance"><StockVarianceReportPage /></PermissionRoute>} />
                     <Route path="/admin/reports/count-coverage" element={<PermissionRoute code="nav.count_coverage"><CountCoverageReportPage /></PermissionRoute>} />
+                    <Route path="/admin/ecom/orders" element={<PermissionRoute code="nav.ecom_orders"><EcomOrdersPage /></PermissionRoute>} />
+                    <Route path="/admin/ecom/products" element={<PermissionRoute code="nav.ecom_products"><EcomProductEnrichmentPage /></PermissionRoute>} />
+                    <Route path="/admin/ecom/price-lists" element={<PermissionRoute code="nav.ecom_price_lists"><EcomPriceListsPage /></PermissionRoute>} />
                     <Route path="/admin/reports/counted-items" element={<PermissionRoute code="nav.counted_items_report"><CountedItemsReportPage /></PermissionRoute>} />
                     <Route path="/admin/mobile-devices" element={<PermissionRoute code="nav.mobile_devices"><MobileDevicesPage /></PermissionRoute>} />
                     <Route path="/admin/login-events" element={<PermissionRoute code="nav.login_events"><LoginEventsPage /></PermissionRoute>} />
