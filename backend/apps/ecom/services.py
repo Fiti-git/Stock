@@ -175,9 +175,9 @@ def begin_checkout(*, cart: EcomCart, shipping_address: dict,
     """
     cart_items = list(
         EcomCartItem.objects
-        .select_for_update()
         .filter(cart=cart)
         .select_related("item")
+        .select_for_update(of=("self",))
     )
     if not cart_items:
         raise CheckoutError("Cart is empty.")
@@ -288,11 +288,16 @@ def payment_committed(*, order: EcomOrder, payment=None,
             f"Cannot commit payment on order in status {order.status}"
         )
 
+    # select_for_update(of=("self",)) restricts the row lock to ecom_order_lines
+    # itself — Postgres rejects FOR UPDATE on the nullable side of an outer
+    # join, which the `reservation` FK (null=True) would otherwise produce.
+    # `item` is non-nullable so its INNER JOIN would be safe to lock, but we
+    # don't need to lock items either; just the order line.
     lines = list(
         EcomOrderLine.objects
-        .select_for_update()
         .filter(order=order, is_committed=False)
         .select_related("item", "reservation")
+        .select_for_update(of=("self",))
     )
 
     now = timezone.now()
