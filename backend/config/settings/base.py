@@ -55,7 +55,7 @@ STOREFRONT_API_ENABLED = config("STOREFRONT_API_ENABLED", default=False, cast=bo
 # ---------------------------------------------------------------------------
 CELERY_BROKER_URL = config("CELERY_BROKER_URL", default="redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default="redis://localhost:6379/1")
-CELERY_TIMEZONE = TIME_ZONE
+CELERY_TIMEZONE = "Asia/Colombo"  # mirrors TIME_ZONE; hard-coded here because TIME_ZONE is defined later in this file
 CELERY_TASK_ACKS_LATE = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_TASK_TIME_LIMIT = 60 * 60          # 1h hard limit
