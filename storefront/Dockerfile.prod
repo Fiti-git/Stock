@@ -1,0 +1,29 @@
+# Multi-stage build for Next.js (standalone output).
+# Build phase: install deps + compile.
+FROM node:20-alpine AS deps
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm install --no-audit --no-fund
+
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+# These env vars are baked into the static bundle at build time.
+ARG NEXT_PUBLIC_API_BASE
+ARG NEXT_PUBLIC_DEFAULT_OUTLET_ID
+ENV NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
+ENV NEXT_PUBLIC_DEFAULT_OUTLET_ID=$NEXT_PUBLIC_DEFAULT_OUTLET_ID
+RUN npm run build
+
+# Runtime image: minimal, only the standalone server + static assets.
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=3000
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+EXPOSE 3000
+CMD ["node", "server.js"]

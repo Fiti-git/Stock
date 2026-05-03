@@ -106,6 +106,33 @@ services:
         condition: service_healthy
     command: ["celery", "-A", "config", "beat", "-l", "info"]
 
+  # ---------------------------------------------------------------------
+  # Phase 3 — public-facing storefront (Next.js). Talks to the backend
+  # at the path served from the storefront's own host (so /api/... goes
+  # through the storefront's reverse-proxied API path), OR if the user
+  # configures STOREFRONT_API_BASE explicitly, that wins.
+  #
+  # In dev, set STOREFRONT_API_BASE to the externally-visible backend
+  # URL (e.g. http://<vps-ip>:1606/api). For prod the recommendation is
+  # Caddy + subdomains (Phase 6) — see deployment notes.
+  # ---------------------------------------------------------------------
+  storefront:
+    build:
+      context: ./storefront
+      dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_API_BASE: ${STOREFRONT_API_BASE:-http://localhost:8001/api}
+        NEXT_PUBLIC_DEFAULT_OUTLET_ID: ${STOREFRONT_DEFAULT_OUTLET_ID:-1}
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_BASE: ${STOREFRONT_API_BASE:-http://localhost:8001/api}
+      API_INTERNAL_BASE: http://backend:8000/api
+      NEXT_PUBLIC_DEFAULT_OUTLET_ID: ${STOREFRONT_DEFAULT_OUTLET_ID:-1}
+    ports:
+      - "${STOREFRONT_PORT:-8003}:3000"
+    depends_on:
+      - backend
+
 volumes:
   postgres_data:
   media_files:
