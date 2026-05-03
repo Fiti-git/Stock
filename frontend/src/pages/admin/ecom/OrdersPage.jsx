@@ -84,11 +84,23 @@ function OrderDrawer({ number, onClose, onChanged }) {
               </Typography>
             </Box>
             <Box>
-              <Typography variant="subtitle2">Shipping</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "pre-line" }}>
-                {[order.shipping_address?.recipient_name, order.shipping_address?.line1,
-                  order.shipping_address?.line2, order.shipping_address?.city,
-                  order.shipping_address?.country].filter(Boolean).join("\n") || "—"}
+              <Typography variant="subtitle2">
+                {order.fulfilment_method === "pickup" ? "Fulfilment · Pickup" : "Shipping"}
+              </Typography>
+              {order.fulfilment_method === "pickup" ? (
+                <Typography variant="body2" color="text.secondary">
+                  Customer will collect from <b>{order.pickup_outlet_name || "outlet #" + order.pickup_outlet_id}</b>.
+                </Typography>
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "pre-line" }}>
+                  {[order.shipping_address?.recipient_name, order.shipping_address?.line1,
+                    order.shipping_address?.line2, order.shipping_address?.city,
+                    order.shipping_address?.country].filter(Boolean).join("\n") || "—"}
+                </Typography>
+              )}
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+                Payment: {(order.payment_method || "").replace("_", " ")}
+                {order.payhere_payment_id ? ` · PayHere #${order.payhere_payment_id}` : ""}
               </Typography>
             </Box>
             <Box>

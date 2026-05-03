@@ -165,11 +165,37 @@ export const checkout = (token: string, payload: {
   shipping_address: any;
   guest_name?: string; guest_email?: string; guest_phone?: string;
   shipping_total?: string; tax_rate?: string;
+  fulfilment_method?: "delivery" | "pickup";
+  pickup_outlet_id?: number | null;
+  payment_method?: "payhere" | "store_cash" | "store_card";
 }) =>
-  apiClient<Order>(`/ecom/cart/${token}/checkout/`, {
+  apiClient<Order & {
+    fulfilment_method: string;
+    pickup_outlet_id: number | null;
+    pickup_outlet_name: string;
+    payment_method: string;
+  }>(`/ecom/cart/${token}/checkout/`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
 
 export const getOrder = (number: string) =>
-  apiClient<Order>(`/ecom/orders/${number}/`);
+  apiClient<Order & {
+    fulfilment_method?: string;
+    pickup_outlet_id?: number | null;
+    pickup_outlet_name?: string;
+    payment_method?: string;
+  }>(`/ecom/orders/${number}/`);
+
+// Public outlets list (for pickup picker)
+export const listOutlets = () =>
+  apiServer<{ results: { id: number; outlet_name: string; address: string; phone: string }[] }>(
+    `/storefront/outlets/`,
+  );
+
+// PayHere initiate — returns the form fields to auto-POST to PayHere.
+export const initiatePayHere = (number: string) =>
+  apiClient<{ checkout_url: string; fields: Record<string, string> }>(
+    `/ecom/orders/${number}/payhere/initiate/`,
+    { method: "POST", body: "{}" },
+  );

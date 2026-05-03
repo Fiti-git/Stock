@@ -18,6 +18,10 @@ urlpatterns = [
     path("orders/<str:number>/confirm-payment/", views.confirm_payment, name="ecom-confirm-payment"),
     path("orders/<str:number>/cancel/", views.cancel, name="ecom-cancel"),
 
+    # PayHere (Phase 5)
+    path("orders/<str:number>/payhere/initiate/", views.payhere_initiate, name="ecom-payhere-initiate"),
+    path("payhere/notify/", views.payhere_notify, name="ecom-payhere-notify"),
+
     # Admin (Phase 4) — used by the existing admin frontend
     path("admin/orders/", admin_views.admin_list_orders, name="ecom-admin-orders"),
     path("admin/products/", admin_views.admin_list_products, name="ecom-admin-products"),

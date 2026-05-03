@@ -173,6 +173,21 @@ def checkout(request, session_token):
     except ValueError as exc:
         return Response({"detail": str(exc)}, status=400)
 
+    fulfilment_method = (request.data.get("fulfilment_method") or "delivery").strip()
+    if fulfilment_method not in ("delivery", "pickup"):
+        return Response({"detail": "fulfilment_method must be 'delivery' or 'pickup'."}, status=400)
+
+    payment_method = (request.data.get("payment_method") or "payhere").strip()
+    if payment_method not in ("payhere", "store_cash", "store_card"):
+        return Response({"detail": "payment_method must be payhere | store_cash | store_card."}, status=400)
+
+    pickup_outlet_id = request.data.get("pickup_outlet_id")
+    if pickup_outlet_id:
+        try:
+            pickup_outlet_id = int(pickup_outlet_id)
+        except (TypeError, ValueError):
+            return Response({"detail": "pickup_outlet_id must be an integer."}, status=400)
+
     try:
         order = services.begin_checkout(
             cart=cart,
@@ -183,6 +198,9 @@ def checkout(request, session_token):
             guest_phone=request.data.get("guest_phone", "") or "",
             shipping_total=shipping_total,
             tax_rate=tax_rate,
+            fulfilment_method=fulfilment_method,
+            pickup_outlet_id=pickup_outlet_id,
+            payment_method=payment_method,
         )
     except services.CheckoutError as exc:
         return Response({"detail": str(exc)}, status=409)
@@ -253,3 +271,87 @@ def cancel(request, number):
 @throttle_classes([EcomAnonThrottle])
 def health(request):
     return Response({"ok": True, "enabled": _enabled()})
+
+
+# ---------------------------------------------------------------------------
+# PayHere endpoints
+# ---------------------------------------------------------------------------
+from . import payhere as ph
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+@throttle_classes([EcomAnonThrottle])
+def payhere_initiate(request, number):
+    """
+    POST /api/ecom/orders/<number>/payhere/initiate/
+
+    Returns the form fields + checkout URL the storefront should auto-POST
+    to PayHere. Anonymous because the customer just placed the order in the
+    same browser session — PayHere's hash is what authenticates the request.
+    """
+    if not _enabled():
+        return _disabled()
+    if not ph.is_configured():
+        return Response({"detail": "PayHere is not configured on this server."}, status=503)
+    order = get_object_or_404(EcomOrder, number=number)
+    if order.status != EcomOrder.Status.PENDING_PAYMENT:
+        return Response(
+            {"detail": f"Order is in status {order.status}; cannot initiate payment."},
+            status=409,
+        )
+    if order.payment_method != EcomOrder.PaymentMethod.PAYHERE:
+        return Response(
+            {"detail": f"Order payment_method is {order.payment_method}, not payhere."},
+            status=409,
+        )
+    return Response({
+        "checkout_url": ph.checkout_url(),
+        "fields": ph.build_initiate_payload(order),
+    })
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def payhere_notify(request):
+    """
+    POST /api/ecom/payhere/notify/   (server-to-server, called by PayHere)
+
+    Verify md5sig + status_code, then idempotently commit the payment.
+    Returns plain "OK" on success — PayHere only checks for HTTP 200.
+    """
+    if not _enabled():
+        return _disabled()
+    data = request.data if isinstance(request.data, dict) else dict(request.POST.items())
+    if not ph.verify_notify(data):
+        return Response({"detail": "invalid signature"}, status=400)
+
+    status_code = (data.get("status_code") or "").strip()
+    order_number = data.get("order_id") or ""
+    payment_id = data.get("payment_id") or ""
+
+    try:
+        order = EcomOrder.objects.get(number=order_number)
+    except EcomOrder.DoesNotExist:
+        return Response({"detail": "order not found"}, status=404)
+
+    if status_code == ph.STATUS_SUCCESS:
+        try:
+            services.payment_committed(
+                order=order,
+                payment_intent_ref=f"payhere:{payment_id}",
+            )
+            EcomOrder.objects.filter(pk=order.pk).update(payhere_payment_id=payment_id)
+        except services.PaymentCommitError as exc:
+            # Already-paid is fine; anything else is a real error.
+            if "Already" not in str(exc) and "already" not in str(exc):
+                return Response({"detail": str(exc)}, status=409)
+    elif status_code in (ph.STATUS_FAILED, ph.STATUS_CANCELED):
+        # PayHere reports a terminal failure. Mark the order cancelled so
+        # reservations are released and stock returns to the available pool.
+        try:
+            services.cancel_order(order=order, reason=f"payhere:{status_code}")
+        except services.PaymentCommitError:
+            pass
+
+    return Response({"ok": True})

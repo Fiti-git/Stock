@@ -130,6 +130,15 @@ class EcomOrder(models.Model):
         CANCELLED = "cancelled", "Cancelled"
         REFUNDED = "refunded", "Refunded"
 
+    class Fulfilment(models.TextChoices):
+        DELIVERY = "delivery", "Home delivery"
+        PICKUP = "pickup", "Store pickup"
+
+    class PaymentMethod(models.TextChoices):
+        PAYHERE = "payhere", "PayHere (online)"
+        STORE_CASH = "store_cash", "Pay at store (cash)"
+        STORE_CARD = "store_card", "Pay at store (card)"
+
     number = models.CharField(max_length=32, unique=True, db_index=True)
     outlet = models.ForeignKey(
         "outlets.Outlet", on_delete=models.PROTECT, related_name="ecom_orders",
@@ -170,6 +179,23 @@ class EcomOrder(models.Model):
     payment = models.ForeignKey(
         "pos.Payment", on_delete=models.SET_NULL,
         null=True, blank=True, related_name="ecom_orders",
+    )
+
+    # Phase 5: fulfilment + payment selection
+    fulfilment_method = models.CharField(
+        max_length=12, choices=Fulfilment.choices, default=Fulfilment.DELIVERY,
+    )
+    pickup_outlet = models.ForeignKey(
+        "outlets.Outlet", on_delete=models.PROTECT,
+        null=True, blank=True, related_name="ecom_pickup_orders",
+        help_text="Outlet the customer will collect from. Required when fulfilment_method=pickup.",
+    )
+    payment_method = models.CharField(
+        max_length=12, choices=PaymentMethod.choices, default=PaymentMethod.PAYHERE,
+    )
+    payhere_payment_id = models.CharField(
+        max_length=64, blank=True, default="",
+        help_text="The id PayHere assigns to a successful charge (from the notify webhook).",
     )
 
     notes = models.CharField(max_length=500, blank=True, default="")

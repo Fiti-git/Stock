@@ -53,6 +53,7 @@ class OrderLineSerializer(serializers.ModelSerializer):
 
 class OrderSerializer(serializers.ModelSerializer):
     lines = OrderLineSerializer(many=True, read_only=True)
+    pickup_outlet_name = serializers.SerializerMethodField()
 
     class Meta:
         model = EcomOrder
@@ -63,7 +64,12 @@ class OrderSerializer(serializers.ModelSerializer):
             "subtotal", "shipping_total", "tax_total",
             "discount_total", "grand_total", "currency",
             "payment_intent_ref", "notes",
+            "fulfilment_method", "pickup_outlet_id", "pickup_outlet_name",
+            "payment_method", "payhere_payment_id",
             "lines",
             "created_at", "paid_at", "fulfilled_at",
             "shipped_at", "delivered_at", "cancelled_at",
         )
+
+    def get_pickup_outlet_name(self, obj):
+        return obj.pickup_outlet.outlet_name if obj.pickup_outlet_id else ""

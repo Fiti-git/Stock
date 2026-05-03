@@ -162,3 +162,22 @@ def health(request):
         "ok": True,
         "enabled": _enabled(),
     })
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+@throttle_classes([StorefrontAnonThrottle])
+def list_outlets(request):
+    """
+    GET /api/storefront/outlets/ — public list of outlets that accept pickup.
+    Used by the storefront's checkout page to render the pickup-location
+    selector. Returns id + name + minimal contact info.
+    """
+    if not _enabled():
+        return _disabled_response()
+    from apps.outlets.models import Outlet
+    rows = list(
+        Outlet.objects.all().order_by("outlet_name")
+        .values("id", "outlet_name", "address", "phone")
+    )
+    return Response({"results": rows})

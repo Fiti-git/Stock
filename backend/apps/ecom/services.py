@@ -164,7 +164,10 @@ def begin_checkout(*, cart: EcomCart, shipping_address: dict,
                    guest_name: str = "", guest_email: str = "",
                    guest_phone: str = "",
                    shipping_total: Decimal = Decimal("0"),
-                   tax_rate: Decimal = Decimal("0")) -> EcomOrder:
+                   tax_rate: Decimal = Decimal("0"),
+                   fulfilment_method: str = "delivery",
+                   pickup_outlet_id: int | None = None,
+                   payment_method: str = "payhere") -> EcomOrder:
     """
     Create an EcomOrder + EcomOrderLines from the cart. For every line:
       1. Verify available_qty >= line.qty (else raise CheckoutError).
@@ -191,6 +194,10 @@ def begin_checkout(*, cart: EcomCart, shipping_address: dict,
                 f"(requested {ci.qty}, available {avail})."
             )
 
+    # Pickup orders MUST have a pickup outlet; default to the cart's outlet.
+    if fulfilment_method == EcomOrder.Fulfilment.PICKUP and not pickup_outlet_id:
+        pickup_outlet_id = cart.outlet_id
+
     # 2. Create the order shell.
     order = EcomOrder.objects.create(
         number=_next_order_number(),
@@ -203,6 +210,9 @@ def begin_checkout(*, cart: EcomCart, shipping_address: dict,
         billing_address=billing_address or shipping_address,
         shipping_total=shipping_total,
         currency="LKR",
+        fulfilment_method=fulfilment_method,
+        pickup_outlet_id=pickup_outlet_id,
+        payment_method=payment_method,
     )
 
     # 3. Reservations + order lines.

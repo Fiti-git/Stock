@@ -99,15 +99,38 @@ export default function OrderPage({ params }: { params: { number: string } }) {
         </table>
       </div>
 
-      <div className="mt-8">
-        <h2 className="text-base font-semibold mb-2">Shipping to</h2>
-        <div className="text-sm text-neutral-700 whitespace-pre-line">
-          {[
-            order.shipping_address?.recipient_name,
-            order.shipping_address?.line1, order.shipping_address?.line2,
-            order.shipping_address?.city, order.shipping_address?.country,
-            order.shipping_address?.phone,
-          ].filter(Boolean).join("\n")}
+      <div className="mt-8 grid sm:grid-cols-2 gap-6">
+        <div>
+          <h2 className="text-base font-semibold mb-2">
+            {order.fulfilment_method === "pickup" ? "Pickup at" : "Shipping to"}
+          </h2>
+          {order.fulfilment_method === "pickup" ? (
+            <div className="text-sm text-neutral-700">
+              <div className="font-semibold">{order.pickup_outlet_name || "Outlet"}</div>
+              <div className="text-neutral-500">Show this order number when you collect.</div>
+            </div>
+          ) : (
+            <div className="text-sm text-neutral-700 whitespace-pre-line">
+              {[
+                order.shipping_address?.recipient_name,
+                order.shipping_address?.line1, order.shipping_address?.line2,
+                order.shipping_address?.city, order.shipping_address?.country,
+                order.shipping_address?.phone,
+              ].filter(Boolean).join("\n")}
+            </div>
+          )}
+        </div>
+        <div>
+          <h2 className="text-base font-semibold mb-2">Payment</h2>
+          <div className="text-sm text-neutral-700">
+            {order.payment_method === "payhere"
+              ? (order.status === "paid"
+                ? `Paid online via PayHere${order.payhere_payment_id ? ` (#${order.payhere_payment_id})` : ""}`
+                : "Pending — complete payment in PayHere to finalize.")
+              : order.payment_method === "store_cash"
+                ? "Pay in cash at the store / on delivery."
+                : "Pay by card at the store."}
+          </div>
         </div>
       </div>
 

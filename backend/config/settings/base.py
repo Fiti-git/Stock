@@ -58,6 +58,19 @@ STOREFRONT_API_ENABLED = config("STOREFRONT_API_ENABLED", default=False, cast=bo
 ECOM_API_ENABLED = config("ECOM_API_ENABLED", default=False, cast=bool)
 
 # ---------------------------------------------------------------------------
+# PayHere (Phase 5). Single-tenant for now — multi-outlet config can move
+# into apps.pos.PaymentGatewayConfig later. When the merchant id/secret are
+# blank, /api/ecom/orders/<n>/payhere/initiate/ returns 503 and the
+# storefront falls back to "pay at store" only.
+# ---------------------------------------------------------------------------
+PAYHERE_MERCHANT_ID = config("PAYHERE_MERCHANT_ID", default="")
+PAYHERE_MERCHANT_SECRET = config("PAYHERE_MERCHANT_SECRET", default="")
+PAYHERE_SANDBOX = config("PAYHERE_SANDBOX", default=True, cast=bool)
+PAYHERE_RETURN_URL = config("PAYHERE_RETURN_URL", default="")
+PAYHERE_CANCEL_URL = config("PAYHERE_CANCEL_URL", default="")
+PAYHERE_NOTIFY_URL = config("PAYHERE_NOTIFY_URL", default="")
+
+# ---------------------------------------------------------------------------
 # Celery (Phase 0). Optional in dev — if Redis isn't running, the web tier
 # is unaffected; only background tasks pause.
 # ---------------------------------------------------------------------------
