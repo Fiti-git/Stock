@@ -96,13 +96,26 @@ export default function CountReviewPage() {
     }
   };
 
+  const splitLocVariant = (tag) => {
+    if (!tag) return { loc: "", variant: "" };
+    const idx = tag.indexOf("|");
+    if (idx === -1) return { loc: tag, variant: "" };
+    return { loc: tag.slice(0, idx), variant: tag.slice(idx + 1) };
+  };
+
   const columns = [
     { field: "count_date", headerName: "Date", flex: 0.7, minWidth: 110 },
     { field: "item_code", headerName: "Item Code", flex: 0.8, minWidth: 110 },
     { field: "item_name", headerName: "Item Name", flex: 1.6, minWidth: 220 },
     {
       field: "location_tag", headerName: "Location", flex: 0.6, minWidth: 100,
+      valueGetter: (v, row) => splitLocVariant(row.location_tag).loc,
       renderCell: (p) => p.value ? <Chip size="small" label={p.value} variant="outlined" /> : "—",
+    },
+    {
+      field: "_variant", headerName: "Variant", flex: 0.6, minWidth: 100, sortable: false,
+      valueGetter: (v, row) => splitLocVariant(row.location_tag).variant,
+      renderCell: (p) => p.value ? <Chip size="small" label={p.value} color="info" variant="outlined" /> : "—",
     },
     {
       field: "actual_qty", headerName: "Qty", type: "number", flex: 0.5, minWidth: 80,
@@ -116,6 +129,28 @@ export default function CountReviewPage() {
           )}
         </Stack>
       ),
+    },
+    {
+      field: "last_snapshot_qty", headerName: "Last Qty", type: "number", flex: 0.5, minWidth: 90,
+      renderCell: (p) => {
+        if (p.value == null) return <span style={{ color: "#999" }}>—</span>;
+        return (
+          <Tooltip title={`Last approved on ${p.row.last_snapshot_date} (same location/variant)`}>
+            <span>{p.value}</span>
+          </Tooltip>
+        );
+      },
+    },
+    {
+      field: "_delta", headerName: "Δ", type: "number", flex: 0.5, minWidth: 80, sortable: false,
+      valueGetter: (v, row) => row.last_snapshot_qty == null ? null : row.actual_qty - row.last_snapshot_qty,
+      renderCell: (p) => {
+        if (p.value == null) return <span style={{ color: "#999" }}>—</span>;
+        const v = Number(p.value);
+        const color = v > 0 ? "success" : v < 0 ? "error" : "default";
+        const sign = v > 0 ? "+" : "";
+        return <Chip size="small" label={`${sign}${v}`} color={color} variant="outlined" />;
+      },
     },
     { field: "counted_by_username", headerName: "By", flex: 0.7, minWidth: 100, valueGetter: (v) => v || "—" },
     {

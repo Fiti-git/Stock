@@ -129,7 +129,7 @@ services:
       API_INTERNAL_BASE: http://backend:8000/api
       NEXT_PUBLIC_DEFAULT_OUTLET_ID: ${STOREFRONT_DEFAULT_OUTLET_ID:-1}
     ports:
-      - "${STOREFRONT_PORT:-8003}:3000"
+      - "${STOREFRONT_PORT:-5050}:3000"
     depends_on:
       - backend
 

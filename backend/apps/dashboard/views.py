@@ -584,16 +584,41 @@ def daily_counts(request):
 
     total = qs.count()
     offset = (page - 1) * page_size
-    page_qs = qs[offset: offset + page_size]
+    page_qs = list(qs[offset: offset + page_size])
 
-    results = [
-        {
+    snapshot_map = {}
+    if page_qs:
+        item_ids = {sc.item_id for sc in page_qs}
+        prior_rows = (
+            StockCount.objects.filter(
+                outlet=outlet,
+                item_id__in=item_ids,
+                approval_status=StockCount.ApprovalStatus.APPROVED,
+            )
+            .order_by("-count_date", "-counted_at")
+            .values("item_id", "location_tag", "count_date", "actual_qty")
+        )
+        prior_by_key = {}
+        for row in prior_rows:
+            prior_by_key.setdefault((row["item_id"], row["location_tag"]), []).append(row)
+        for sc in page_qs:
+            for row in prior_by_key.get((sc.item_id, sc.location_tag), []):
+                if row["count_date"] < sc.count_date:
+                    snapshot_map[(sc.item_id, sc.location_tag, sc.count_date)] = row
+                    break
+
+    results = []
+    for sc in page_qs:
+        snap = snapshot_map.get((sc.item_id, sc.location_tag, sc.count_date))
+        results.append({
             "id": sc.id,
             "item_code": sc.item.item_code,
             "item_name": sc.item.item_name,
             "category": sc.item.category,
             "location_tag": sc.location_tag,
             "actual_qty": float(sc.actual_qty),
+            "last_snapshot_qty": float(snap["actual_qty"]) if snap else None,
+            "last_snapshot_date": str(snap["count_date"]) if snap else None,
             "counted_by_username": sc.counted_by.username if sc.counted_by else None,
             "counted_at": sc.counted_at.isoformat(),
             "count_date": str(sc.count_date),
@@ -604,9 +629,7 @@ def daily_counts(request):
             "rejection_reason": sc.rejection_reason,
             "flagged_outlier": sc.flagged_outlier,
             "session_id": sc.session_id,
-        }
-        for sc in page_qs
-    ]
+        })
 
     return Response({
         "count": total,
