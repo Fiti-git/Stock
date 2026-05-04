@@ -607,18 +607,52 @@ def daily_counts(request):
                     snapshot_map[(sc.item_id, sc.location_tag, sc.count_date)] = row
                     break
 
+    # POS qty in effect at the moment of each count: walk the page's items
+    # once and pick the latest PosSnapshot for (outlet, item) with
+    # uploaded_at <= sc.counted_at. Same temporal-match logic as Count
+    # Coverage Report. Bounded scan: items_on_page * snapshots_per_item.
+    pos_snap_by_count = {}
+    if page_qs:
+        item_ids = list({sc.item_id for sc in page_qs})
+        snap_rows = (
+            PosSnapshot.objects
+            .filter(outlet=outlet, item_id__in=item_ids)
+            .order_by("item_id", "-uploaded_at")
+            .values("item_id", "uploaded_at", "pos_quantity", "snapshot_date")
+        )
+        snaps_by_item = {}
+        for s in snap_rows:
+            snaps_by_item.setdefault(s["item_id"], []).append(s)
+        for sc in page_qs:
+            for s in snaps_by_item.get(sc.item_id, []):
+                if s["uploaded_at"] <= sc.counted_at:
+                    pos_snap_by_count[sc.id] = s
+                    break
+
     results = []
     for sc in page_qs:
         snap = snapshot_map.get((sc.item_id, sc.location_tag, sc.count_date))
+        pos_snap = pos_snap_by_count.get(sc.id)
+        actual_q = float(sc.actual_qty)
+        pos_q = float(pos_snap["pos_quantity"]) if pos_snap else None
         results.append({
             "id": sc.id,
             "item_code": sc.item.item_code,
             "item_name": sc.item.item_name,
             "category": sc.item.category,
             "location_tag": sc.location_tag,
-            "actual_qty": float(sc.actual_qty),
+            "actual_qty": actual_q,
             "last_snapshot_qty": float(snap["actual_qty"]) if snap else None,
             "last_snapshot_date": str(snap["count_date"]) if snap else None,
+            # POS qty in effect when this count was taken (multi-upload aware).
+            "pos_qty_at_count": pos_q,
+            "pos_snapshot_uploaded_at": (
+                pos_snap["uploaded_at"].isoformat() if pos_snap else None
+            ),
+            "pos_snapshot_date": (
+                str(pos_snap["snapshot_date"]) if pos_snap else None
+            ),
+            "variance_qty": (actual_q - pos_q) if pos_q is not None else None,
             "counted_by_username": sc.counted_by.username if sc.counted_by else None,
             "counted_at": sc.counted_at.isoformat(),
             "count_date": str(sc.count_date),

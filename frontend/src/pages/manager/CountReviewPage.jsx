@@ -118,7 +118,19 @@ export default function CountReviewPage() {
       renderCell: (p) => p.value ? <Chip size="small" label={p.value} color="info" variant="outlined" /> : "—",
     },
     {
-      field: "actual_qty", headerName: "Qty", type: "number", flex: 0.5, minWidth: 80,
+      field: "counted_at", headerName: "Counted At", flex: 0.9, minWidth: 150,
+      renderCell: (p) => {
+        if (!p.value) return "—";
+        const d = new Date(p.value);
+        return isNaN(d) ? "—" : (
+          <Tooltip title={d.toLocaleString()}>
+            <span>{d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+          </Tooltip>
+        );
+      },
+    },
+    {
+      field: "actual_qty", headerName: "Counted Qty", type: "number", flex: 0.55, minWidth: 100,
       renderCell: (p) => (
         <Stack direction="row" spacing={0.5} alignItems="center">
           <span>{p.value}</span>
@@ -131,25 +143,39 @@ export default function CountReviewPage() {
       ),
     },
     {
-      field: "last_snapshot_qty", headerName: "Last Qty", type: "number", flex: 0.5, minWidth: 90,
+      field: "pos_qty_at_count", headerName: "MyPOS Qty", type: "number", flex: 0.55, minWidth: 100,
       renderCell: (p) => {
         if (p.value == null) return <span style={{ color: "#999" }}>—</span>;
+        const uploadedAt = p.row.pos_snapshot_uploaded_at;
+        const tip = uploadedAt
+          ? `From snapshot uploaded ${new Date(uploadedAt).toLocaleString()}`
+          : "POS snapshot in effect when this count was taken";
         return (
-          <Tooltip title={`Last approved on ${p.row.last_snapshot_date} (same location/variant)`}>
-            <span>{p.value}</span>
+          <Tooltip title={tip}>
+            <span>{Number(p.value).toLocaleString(undefined, { maximumFractionDigits: 3 })}</span>
           </Tooltip>
         );
       },
     },
     {
-      field: "_delta", headerName: "Δ", type: "number", flex: 0.5, minWidth: 80, sortable: false,
-      valueGetter: (v, row) => row.last_snapshot_qty == null ? null : row.actual_qty - row.last_snapshot_qty,
+      field: "variance_qty", headerName: "Variance", type: "number", flex: 0.5, minWidth: 90, sortable: true,
       renderCell: (p) => {
         if (p.value == null) return <span style={{ color: "#999" }}>—</span>;
         const v = Number(p.value);
-        const color = v > 0 ? "success" : v < 0 ? "error" : "default";
+        const color = v === 0 ? "default" : v > 0 ? "success" : "error";
         const sign = v > 0 ? "+" : "";
-        return <Chip size="small" label={`${sign}${v}`} color={color} variant="outlined" />;
+        return <Chip size="small" label={`${sign}${v.toLocaleString(undefined, { maximumFractionDigits: 3 })}`} color={color} variant="outlined" />;
+      },
+    },
+    {
+      field: "last_snapshot_qty", headerName: "Prev Count", type: "number", flex: 0.5, minWidth: 90,
+      renderCell: (p) => {
+        if (p.value == null) return <span style={{ color: "#999" }}>—</span>;
+        return (
+          <Tooltip title={`Last approved count on ${p.row.last_snapshot_date} (same location/variant)`}>
+            <span>{p.value}</span>
+          </Tooltip>
+        );
       },
     },
     { field: "counted_by_username", headerName: "By", flex: 0.7, minWidth: 100, valueGetter: (v) => v || "—" },
