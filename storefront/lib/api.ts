@@ -133,6 +133,11 @@ export type Order = {
   paid_at: string | null;
   cancelled_at: string | null;
   created_at: string;
+  fulfilment_method?: "delivery" | "pickup";
+  pickup_outlet_id?: number | null;
+  pickup_outlet_name?: string;
+  payment_method?: "payhere" | "store_cash" | "store_card";
+  payhere_payment_id?: string;
 };
 
 export const createCart = (outletId: number, sessionToken?: string) =>
