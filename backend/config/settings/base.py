@@ -49,6 +49,10 @@ INVENTORY_LEDGER_ENABLED = config("INVENTORY_LEDGER_ENABLED", default=False, cas
 # the "storefront" scope below.
 # ---------------------------------------------------------------------------
 STOREFRONT_API_ENABLED = config("STOREFRONT_API_ENABLED", default=False, cast=bool)
+# Public origin used to build absolute media URLs (so SSR fetches don't bake
+# the internal "http://backend:8000" host into product image URLs). Leave
+# empty in dev to fall back to request.build_absolute_uri.
+PUBLIC_MEDIA_BASE = config("PUBLIC_MEDIA_BASE", default="")
 
 # ---------------------------------------------------------------------------
 # Ecom API (Phase 2). Off by default — every /api/ecom/ endpoint returns 503

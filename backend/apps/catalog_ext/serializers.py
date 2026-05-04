@@ -2,6 +2,7 @@
 Storefront serializers. These read from existing Item + new catalog_ext
 tables and shape a customer-friendly product payload.
 """
+from django.conf import settings
 from rest_framework import serializers
 
 from apps.items.models import Item
@@ -17,11 +18,14 @@ class ProductImageSerializer(serializers.ModelSerializer):
         fields = ("id", "url", "alt_text", "sort_order")
 
     def get_url(self, obj):
-        request = self.context.get("request")
         try:
             url = obj.image.url
         except Exception:
             return None
+        public_base = getattr(settings, "PUBLIC_MEDIA_BASE", "") or ""
+        if public_base:
+            return public_base.rstrip("/") + url
+        request = self.context.get("request")
         return request.build_absolute_uri(url) if request else url
 
 
