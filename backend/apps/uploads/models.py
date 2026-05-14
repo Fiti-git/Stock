@@ -589,6 +589,59 @@ class Supplier(models.Model):
         return f"{self.code} {self.name or ''}".strip()
 
 
+class UploadedSheet(models.Model):
+    """
+    One row per XLS upload across every pipeline (POS, Damage, Office,
+    Verification, GRN, RTS, Sales, SalesReturns). Stores the raw parsed
+    rows so the unified Uploaded-Sheets page can render the exact table
+    the manager uploaded — independent of the pipeline's normalized
+    line tables.
+    """
+
+    class Pipeline(models.TextChoices):
+        POS = "pos", "POS Snapshot"
+        DAMAGE = "damage", "Damage / Wastage"
+        OFFICE = "office", "Office Use"
+        VERIFICATION = "verification", "Verification"
+        GRN = "grn", "GRN"
+        RTS = "rts", "Return to Supplier"
+        SALES = "sales", "Sales"
+        SALES_RETURNS = "sales_returns", "Sales Returns"
+
+    class ApprovalStatus(models.TextChoices):
+        AUTO = "auto", "Auto-approved"
+        PENDING = "pending", "Pending Approval"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+
+    pipeline = models.CharField(max_length=20, choices=Pipeline.choices)
+    batch_id = models.IntegerField(help_text="PK of the pipeline-specific batch/log row")
+    outlet = models.ForeignKey("outlets.Outlet", on_delete=models.CASCADE, related_name="uploaded_sheets")
+    business_date = models.DateField(help_text="snapshot_date for POS, date_from for range pipelines")
+    business_date_to = models.DateField(null=True, blank=True, help_text="date_to for range pipelines")
+    uploaded_by = models.ForeignKey("accounts.User", on_delete=models.SET_NULL, null=True, related_name="uploaded_sheets")
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    filename = models.CharField(max_length=255, blank=True)
+    row_count = models.IntegerField(default=0)
+    approval_status = models.CharField(max_length=10, choices=ApprovalStatus.choices, default=ApprovalStatus.AUTO)
+    approval_reason = models.CharField(max_length=80, blank=True)
+    columns = models.JSONField(default=list)
+    rows = models.JSONField(default=list)
+
+    class Meta:
+        db_table = "uploaded_sheets"
+        ordering = ["-uploaded_at"]
+        indexes = [
+            models.Index(fields=["pipeline", "batch_id"]),
+            models.Index(fields=["outlet", "-uploaded_at"]),
+            models.Index(fields=["approval_status"]),
+            models.Index(fields=["business_date"]),
+        ]
+
+    def __str__(self):
+        return f"{self.pipeline}#{self.batch_id} {self.outlet_id} {self.business_date}"
+
+
 class AuditLog(models.Model):
     user = models.ForeignKey(
         "accounts.User",

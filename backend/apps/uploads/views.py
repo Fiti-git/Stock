@@ -17,8 +17,10 @@ from apps.outlets.models import Outlet
 from apps.items.models import Item, PendingItem
 from utils.xls_parser import validate_file, parse_xls
 
-from .models import PosSnapshot, UploadLog, AuditLog
+from .models import PosSnapshot, UploadLog, AuditLog, UploadedSheet
 from .serializers import UploadLogSerializer, AuditLogSerializer
+from .approval_logic import decide_pos
+from .sheet_recorder import record_uploaded_sheet
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +53,7 @@ def _outlet_mismatch(parsed_outlet_name, target_outlet):
 # Validate upload (no DB writes)
 # ---------------------------------------------------------------------------
 @api_view(["POST"])
-@permission_classes([IsStoreUser])
+@permission_classes([IsManager])
 @parser_classes([MultiPartParser])
 def validate_upload(request):
     """
@@ -138,18 +140,10 @@ def validate_upload(request):
         result["preview"]["new_items"] = new_count
         result["preview"]["changed_items"] = changed_count
 
-    past_date = snapshot_date is not None and snapshot_date != today
-    exceeds_threshold = new_count >= threshold
-    needs_approval = past_date or exceeds_threshold
-
-    approval_reasons = []
-    if past_date:
-        approval_reasons.append("past_date")
-    if exceeds_threshold:
-        approval_reasons.append(f"new_items_exceeds_threshold ({new_count} >= {threshold})")
-
-    result["needs_approval"] = needs_approval
-    result["approval_reasons"] = approval_reasons
+    # Preview uses the same decide_pos rule as the confirm endpoint.
+    decision = decide_pos(user, outlet, snapshot_date) if snapshot_date else None
+    result["needs_approval"] = bool(decision and decision.needs_approval)
+    result["approval_reasons"] = [decision.reason] if decision and decision.reason else []
     result["new_items_threshold"] = threshold
 
     return Response(result)
@@ -159,7 +153,7 @@ def validate_upload(request):
 # Confirm upload
 # ---------------------------------------------------------------------------
 @api_view(["POST"])
-@permission_classes([IsStoreUser])
+@permission_classes([IsManager])
 @parser_classes([MultiPartParser])
 def confirm_upload(request):
     """
@@ -221,21 +215,20 @@ def confirm_upload(request):
     # UploadLog batch with its own snapshots, so prior uploads on the same date
     # are preserved (the report uses the snapshot in effect at each count time).
 
-    # Dry-run count of genuinely new items — drives the threshold-based approval gate.
-    threshold = getattr(settings, "NEW_ITEMS_APPROVAL_THRESHOLD", 100)
+    # Approval decision (manager rules — see approval_logic.decide_pos):
+    #   today's date → auto
+    #   past date, no approved record → auto
+    #   past date, approved record exists → pending admin approval
     parsed_codes = [r.item_code for r in parsed.rows]
     existing_codes = set(
         Item.objects.filter(outlet=outlet, item_code__in=parsed_codes)
         .values_list("item_code", flat=True)
     )
     preview_new_items = sum(1 for c in parsed_codes if c not in existing_codes)
-    exceeds_threshold = preview_new_items >= threshold
-    past_date = snapshot_date != today
 
-    # Past-date OR threshold-triggered upload → save file and create pending approval log
-    if past_date or exceeds_threshold:
+    decision = decide_pos(user, outlet, snapshot_date)
+    if decision.needs_approval:
         file.seek(0)
-        reason = "past_date" if past_date else "new_items_threshold"
         log = UploadLog(
             outlet=outlet,
             snapshot_date=snapshot_date,
@@ -250,6 +243,19 @@ def confirm_upload(request):
         )
         log.stored_file.save(file.name, file, save=True)
 
+        record_uploaded_sheet(
+            pipeline=UploadedSheet.Pipeline.POS,
+            batch_id=log.id,
+            outlet=outlet,
+            business_date=snapshot_date,
+            business_date_to=None,
+            uploaded_by=user,
+            filename=file.name,
+            rows=parsed.rows,
+            approval_status=UploadedSheet.ApprovalStatus.PENDING,
+            approval_reason=decision.reason,
+        )
+
         AuditLog.objects.create(
             user=user,
             action="xls_upload_pending_approval",
@@ -259,20 +265,16 @@ def confirm_upload(request):
                 "outlet": outlet.outlet_name,
                 "date": str(snapshot_date),
                 "filename": file.name,
-                "reason": reason,
+                "reason": decision.reason,
                 "preview_new_items": preview_new_items,
-                "threshold": threshold,
             },
         )
 
         return Response(
             {
-                "detail": (
-                    "Upload submitted for admin approval "
-                    + ("(past date)." if past_date else f"({preview_new_items} new items exceeds threshold {threshold}).")
-                ),
+                "detail": "Upload submitted for admin approval (past date already has an approved record).",
                 "needs_approval": True,
-                "reason": reason,
+                "reason": decision.reason,
                 "preview_new_items": preview_new_items,
                 "upload_log_id": log.id,
                 "snapshot_date": str(snapshot_date),
@@ -280,7 +282,7 @@ def confirm_upload(request):
             status=status.HTTP_202_ACCEPTED,
         )
 
-    # Same-day + under threshold → process immediately
+    # Auto-approve path
     return _process_upload(parsed, outlet, user, snapshot_date, overwrite, file.name)
 
 
@@ -380,6 +382,10 @@ def reject_upload(request, log_id):
     log.approved_by = request.user
     log.approved_at = timezone.now()
     log.save(update_fields=["approval_status", "approved_by", "approved_at", "stored_file"])
+
+    UploadedSheet.objects.filter(
+        pipeline=UploadedSheet.Pipeline.POS, batch_id=log.id,
+    ).update(approval_status=UploadedSheet.ApprovalStatus.REJECTED)
 
     AuditLog.objects.create(
         user=request.user,
@@ -1134,6 +1140,25 @@ def _process_upload(parsed, outlet, user, snapshot_date, overwrite, filename, ex
                 "filename": filename,
             },
         )
+
+        # On approval (existing_log present) flip the prior pending UploadedSheet
+        # to approved; on a fresh auto-approve upload, create one.
+        if existing_log is not None:
+            UploadedSheet.objects.filter(
+                pipeline=UploadedSheet.Pipeline.POS, batch_id=log.id,
+            ).update(approval_status=UploadedSheet.ApprovalStatus.APPROVED)
+        else:
+            record_uploaded_sheet(
+                pipeline=UploadedSheet.Pipeline.POS,
+                batch_id=log.id,
+                outlet=outlet,
+                business_date=snapshot_date,
+                business_date_to=None,
+                uploaded_by=user,
+                filename=filename,
+                rows=parsed.rows,
+                approval_status=UploadedSheet.ApprovalStatus.AUTO,
+            )
 
     return Response(
         {

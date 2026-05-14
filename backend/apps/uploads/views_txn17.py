@@ -49,7 +49,9 @@ from apps.accounts.models import User
 from apps.outlets.models import Outlet
 from utils.damage_parser import parse_damage_xls, validate_damage_file  # format-agnostic 17-col parser
 
-from .models import AuditLog
+from .models import AuditLog, UploadedSheet
+from .approval_logic import decide_range
+from .sheet_recorder import record_uploaded_sheet
 
 
 @dataclass
@@ -189,13 +191,13 @@ def handle_validate(request, cfg: TypeConfig) -> Response:
     result["overlapping_batches"] = overlaps
     result["has_overlap"] = bool(overlaps)
 
-    needs_approval = False
-    reasons = []
-    if parsed and parsed.date_to and parsed.date_to < date.today():
-        needs_approval = True
-        reasons.append("past_date_range")
-    result["needs_approval"] = needs_approval
-    result["approval_reasons"] = reasons
+    if parsed and parsed.date_from and parsed.date_to:
+        decision = decide_range(request.user, outlet, parsed.date_from, parsed.date_to, cfg.batch_model)
+        result["needs_approval"] = decision.needs_approval
+        result["approval_reasons"] = [decision.reason] if decision.reason else []
+    else:
+        result["needs_approval"] = False
+        result["approval_reasons"] = []
     return Response(result)
 
 
@@ -226,18 +228,12 @@ def handle_confirm(request, cfg: TypeConfig) -> Response:
     except ValueError:
         return Response({"detail": "Invalid date format. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
 
-    overlaps = list(find_overlapping_batches(cfg, outlet, parsed.date_from, parsed.date_to))
-    if overlaps:
-        return Response(
-            {
-                "detail": "Existing batch(es) overlap this date range. Delete them and try again.",
-                "overlapping_batches": [batch_summary(b) for b in overlaps],
-            },
-            status=status.HTTP_409_CONFLICT,
-        )
-
-    needs_approval = parsed.date_to < date.today()
-    if needs_approval:
+    # New approval rule (manager-driven):
+    #   - range covers today  → auto
+    #   - past range, no overlap → auto
+    #   - past range, overlaps an active batch → pending
+    decision = decide_range(request.user, outlet, parsed.date_from, parsed.date_to, cfg.batch_model)
+    if decision.needs_approval:
         batch = cfg.batch_model.objects.create(
             outlet=outlet,
             date_from=parsed.date_from,
@@ -250,6 +246,18 @@ def handle_confirm(request, cfg: TypeConfig) -> Response:
             approval_status=cfg.batch_model.ApprovalStatus.PENDING,
             stored_file=file,
         )
+        record_uploaded_sheet(
+            pipeline=cfg.type_code,
+            batch_id=batch.id,
+            outlet=outlet,
+            business_date=parsed.date_from,
+            business_date_to=parsed.date_to,
+            uploaded_by=request.user,
+            filename=file.name,
+            rows=parsed.rows,
+            approval_status=UploadedSheet.ApprovalStatus.PENDING,
+            approval_reason=decision.reason,
+        )
         AuditLog.objects.create(
             user=request.user,
             action=f"{cfg.type_code}_upload_pending",
@@ -260,11 +268,23 @@ def handle_confirm(request, cfg: TypeConfig) -> Response:
                 "date_from": str(parsed.date_from),
                 "date_to": str(parsed.date_to),
                 "rows": len(parsed.rows),
+                "reason": decision.reason,
             },
         )
         return Response({"status": "pending_approval", "batch": batch_summary(batch)}, status=status.HTTP_202_ACCEPTED)
 
     batch = commit_batch(cfg, outlet, request.user, parsed, file.name, cfg.batch_model.ApprovalStatus.AUTO)
+    record_uploaded_sheet(
+        pipeline=cfg.type_code,
+        batch_id=batch.id,
+        outlet=outlet,
+        business_date=parsed.date_from,
+        business_date_to=parsed.date_to,
+        uploaded_by=request.user,
+        filename=file.name,
+        rows=parsed.rows,
+        approval_status=UploadedSheet.ApprovalStatus.AUTO,
+    )
     return Response({"status": "committed", "batch": batch_summary(batch)})
 
 
@@ -443,6 +463,7 @@ def handle_approve(request, cfg: TypeConfig, batch_id: int) -> Response:
             status=status.HTTP_409_CONFLICT,
         )
 
+    old_batch_id = batch.id
     with transaction.atomic():
         if batch.stored_file:
             batch.stored_file.delete(save=False)
@@ -451,6 +472,12 @@ def handle_approve(request, cfg: TypeConfig, batch_id: int) -> Response:
             cfg, batch.outlet, batch.uploaded_by, parsed, batch.filename,
             cfg.batch_model.ApprovalStatus.APPROVED,
             approved_by=request.user, approved_at=timezone.now(),
+        )
+        UploadedSheet.objects.filter(
+            pipeline=cfg.type_code, batch_id=old_batch_id,
+        ).update(
+            batch_id=new_batch.id,
+            approval_status=UploadedSheet.ApprovalStatus.APPROVED,
         )
     AuditLog.objects.create(
         user=request.user,
@@ -474,6 +501,10 @@ def handle_reject(request, cfg: TypeConfig, batch_id: int) -> Response:
     if batch.stored_file:
         batch.stored_file.delete(save=False)
     batch.save(update_fields=["approval_status", "approved_by", "approved_at", "status", "stored_file"])
+
+    UploadedSheet.objects.filter(
+        pipeline=cfg.type_code, batch_id=batch.id,
+    ).update(approval_status=UploadedSheet.ApprovalStatus.REJECTED)
 
     AuditLog.objects.create(
         user=request.user,

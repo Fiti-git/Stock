@@ -17,7 +17,9 @@ from apps.accounts.permissions import IsStoreUser, IsAdmin, IsManager
 from apps.outlets.models import Outlet
 from utils.sales_returns_parser import parse_sales_returns_xls, validate_sales_returns_file
 
-from .models import SalesReturnUploadBatch, SalesReturnLine, AuditLog
+from .models import SalesReturnUploadBatch, SalesReturnLine, AuditLog, UploadedSheet
+from .approval_logic import decide_range
+from .sheet_recorder import record_uploaded_sheet
 from .views_txn17 import (
     _paginate_params, _compute_gaps,
     DEFAULT_BATCH_PAGE_SIZE, DEFAULT_LINE_PAGE_SIZE,
@@ -151,7 +153,7 @@ def _line_dict(l):
 
 
 @api_view(["POST"])
-@permission_classes([IsStoreUser])
+@permission_classes([IsManager])
 @parser_classes([MultiPartParser])
 def sales_returns_validate(request):
     file = request.FILES.get("file")
@@ -184,14 +186,18 @@ def sales_returns_validate(request):
         overlaps = [_batch_summary(b) for b in _find_overlapping(outlet, parsed.date_from, parsed.date_to)]
     result["overlapping_batches"] = overlaps
     result["has_overlap"] = bool(overlaps)
-    needs_approval = parsed and parsed.date_to and parsed.date_to < date.today()
-    result["needs_approval"] = bool(needs_approval)
-    result["approval_reasons"] = ["past_date_range"] if needs_approval else []
+    if parsed and parsed.date_from and parsed.date_to:
+        decision = decide_range(request.user, outlet, parsed.date_from, parsed.date_to, SalesReturnUploadBatch)
+        result["needs_approval"] = decision.needs_approval
+        result["approval_reasons"] = [decision.reason] if decision.reason else []
+    else:
+        result["needs_approval"] = False
+        result["approval_reasons"] = []
     return Response(result)
 
 
 @api_view(["POST"])
-@permission_classes([IsStoreUser])
+@permission_classes([IsManager])
 @parser_classes([MultiPartParser])
 def sales_returns_confirm(request):
     file = request.FILES.get("file")
@@ -219,18 +225,8 @@ def sales_returns_confirm(request):
     except ValueError:
         return Response({"detail": "Invalid date format."}, status=status.HTTP_400_BAD_REQUEST)
 
-    overlaps = list(_find_overlapping(outlet, parsed.date_from, parsed.date_to))
-    if overlaps:
-        return Response(
-            {
-                "detail": "Existing batch(es) overlap this date range. Delete them and try again.",
-                "overlapping_batches": [_batch_summary(b) for b in overlaps],
-            },
-            status=status.HTTP_409_CONFLICT,
-        )
-
-    needs_approval = parsed.date_to < date.today()
-    if needs_approval:
+    decision = decide_range(request.user, outlet, parsed.date_from, parsed.date_to, SalesReturnUploadBatch)
+    if decision.needs_approval:
         batch = SalesReturnUploadBatch.objects.create(
             outlet=outlet,
             date_from=parsed.date_from,
@@ -243,14 +239,37 @@ def sales_returns_confirm(request):
             approval_status=SalesReturnUploadBatch.ApprovalStatus.PENDING,
             stored_file=file,
         )
+        record_uploaded_sheet(
+            pipeline=UploadedSheet.Pipeline.SALES_RETURNS,
+            batch_id=batch.id,
+            outlet=outlet,
+            business_date=parsed.date_from,
+            business_date_to=parsed.date_to,
+            uploaded_by=request.user,
+            filename=file.name,
+            rows=parsed.rows,
+            approval_status=UploadedSheet.ApprovalStatus.PENDING,
+            approval_reason=decision.reason,
+        )
         AuditLog.objects.create(
             user=request.user, action="sales_returns_upload_pending",
             entity_type="sales_returns_batch", entity_id=str(batch.id),
-            details={"outlet_id": outlet.id, "date_from": str(parsed.date_from), "date_to": str(parsed.date_to), "rows": len(parsed.rows)},
+            details={"outlet_id": outlet.id, "date_from": str(parsed.date_from), "date_to": str(parsed.date_to), "rows": len(parsed.rows), "reason": decision.reason},
         )
         return Response({"status": "pending_approval", "batch": _batch_summary(batch)}, status=status.HTTP_202_ACCEPTED)
 
     batch = _commit_batch(outlet, request.user, parsed, file.name, SalesReturnUploadBatch.ApprovalStatus.AUTO)
+    record_uploaded_sheet(
+        pipeline=UploadedSheet.Pipeline.SALES_RETURNS,
+        batch_id=batch.id,
+        outlet=outlet,
+        business_date=parsed.date_from,
+        business_date_to=parsed.date_to,
+        uploaded_by=request.user,
+        filename=file.name,
+        rows=parsed.rows,
+        approval_status=UploadedSheet.ApprovalStatus.AUTO,
+    )
     return Response({"status": "committed", "batch": _batch_summary(batch)})
 
 
@@ -364,6 +383,7 @@ def sales_returns_approve(request, batch_id: int):
             status=status.HTTP_409_CONFLICT,
         )
 
+    old_batch_id = batch.id
     with transaction.atomic():
         if batch.stored_file:
             batch.stored_file.delete(save=False)
@@ -373,6 +393,9 @@ def sales_returns_approve(request, batch_id: int):
             SalesReturnUploadBatch.ApprovalStatus.APPROVED,
             approved_by=request.user, approved_at=timezone.now(),
         )
+        UploadedSheet.objects.filter(
+            pipeline=UploadedSheet.Pipeline.SALES_RETURNS, batch_id=old_batch_id,
+        ).update(batch_id=new_batch.id, approval_status=UploadedSheet.ApprovalStatus.APPROVED)
     AuditLog.objects.create(
         user=request.user, action="sales_returns_upload_approved",
         entity_type="sales_returns_batch", entity_id=str(new_batch.id),
@@ -395,6 +418,10 @@ def sales_returns_reject(request, batch_id: int):
     if batch.stored_file:
         batch.stored_file.delete(save=False)
     batch.save(update_fields=["approval_status", "approved_by", "approved_at", "status", "stored_file"])
+
+    UploadedSheet.objects.filter(
+        pipeline=UploadedSheet.Pipeline.SALES_RETURNS, batch_id=batch.id,
+    ).update(approval_status=UploadedSheet.ApprovalStatus.REJECTED)
 
     AuditLog.objects.create(
         user=request.user, action="sales_returns_upload_rejected",

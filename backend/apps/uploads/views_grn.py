@@ -18,14 +18,14 @@ CFG = TypeConfig(type_code="grn", label="GRN", batch_model=GrnUploadBatch, line_
 
 
 @api_view(["POST"])
-@permission_classes([IsStoreUser])
+@permission_classes([IsManager])
 @parser_classes([MultiPartParser])
 def grn_validate(request):
     return handle_validate(request, CFG)
 
 
 @api_view(["POST"])
-@permission_classes([IsStoreUser])
+@permission_classes([IsManager])
 @parser_classes([MultiPartParser])
 def grn_confirm(request):
     return handle_confirm(request, CFG)

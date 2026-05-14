@@ -17,6 +17,7 @@ const StockCountPage = lazy(() => import("./pages/store-user/StockCountPage"));
 const ItemDetailPage = lazy(() => import("./pages/store-user/ItemDetailPage"));
 const DashboardPage = lazy(() => import("./pages/manager/DashboardPage"));
 const PendingItemsPage = lazy(() => import("./pages/manager/PendingItemsPage"));
+const UploadedSheetsPage = lazy(() => import("./pages/manager/UploadedSheetsPage"));
 const ShrinkagePage = lazy(() => import("./pages/manager/ShrinkagePage"));
 const CatalogPage = lazy(() => import("./pages/manager/CatalogPage"));
 const ItemPosHistoryPage = lazy(() => import("./pages/manager/ItemPosHistoryPage"));
@@ -240,6 +241,7 @@ export default function App() {
 
                     <Route path="/dashboard" element={<PermissionRoute code="nav.manager_dashboard"><DashboardPage /></PermissionRoute>} />
                     <Route path="/dashboard/pending" element={<PermissionRoute code="nav.pending"><PendingItemsPage /></PermissionRoute>} />
+                    <Route path="/uploaded-sheets" element={<PermissionRoute code="nav.uploaded_sheets"><UploadedSheetsPage /></PermissionRoute>} />
                     <Route path="/shrinkage" element={<PermissionRoute code="nav.shrinkage"><ShrinkagePage /></PermissionRoute>} />
                     <Route path="/catalog" element={<PermissionRoute code="nav.catalog"><CatalogPage /></PermissionRoute>} />
                     <Route path="/items/history" element={<PermissionRoute code="nav.item_pos_history"><ItemPosHistoryPage /></PermissionRoute>} />

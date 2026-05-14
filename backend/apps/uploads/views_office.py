@@ -23,14 +23,14 @@ CFG = TypeConfig(
 
 
 @api_view(["POST"])
-@permission_classes([IsStoreUser])
+@permission_classes([IsManager])
 @parser_classes([MultiPartParser])
 def office_validate(request):
     return handle_validate(request, CFG)
 
 
 @api_view(["POST"])
-@permission_classes([IsStoreUser])
+@permission_classes([IsManager])
 @parser_classes([MultiPartParser])
 def office_confirm(request):
     return handle_confirm(request, CFG)

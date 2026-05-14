@@ -61,3 +61,9 @@ export const getAllOutletsOverview = (date) =>
 export const getAuditLog = (params) => api.get("/uploads/audit-log/", { params });
 
 export const getUploadDiff = (logId) => api.get(`/uploads/${logId}/diff/`);
+
+export const getUploadedSheets = (params) =>
+  api.get("/uploads/all-uploads/", { params });
+
+export const getUploadedSheetDetail = (sheetId) =>
+  api.get(`/uploads/all-uploads/${sheetId}/`);
