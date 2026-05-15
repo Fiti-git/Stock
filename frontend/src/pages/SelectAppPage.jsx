@@ -45,9 +45,11 @@ const TILES = {
   },
 };
 
-const TEXT_PRIMARY = "#f8fafc";
-const TEXT_MUTED = "rgba(248,250,252,0.62)";
-const TEXT_DIM = "rgba(248,250,252,0.4)";
+const TEXT_PRIMARY = "#0f172a";
+const TEXT_MUTED = "rgba(15,23,42,0.65)";
+const TEXT_DIM = "rgba(15,23,42,0.45)";
+const SURFACE_BORDER = "rgba(15,23,42,0.1)";
+const SURFACE_BORDER_STRONG = "rgba(15,23,42,0.22)";
 
 export default function SelectAppPage() {
   const navigate = useNavigate();
@@ -78,7 +80,7 @@ export default function SelectAppPage() {
         minHeight: "100vh",
         width: "100%",
         position: "relative",
-        background: "radial-gradient(1200px 600px at 15% -10%, #1e3a8a33 0%, transparent 60%), radial-gradient(1000px 600px at 110% 110%, #7c3aed33 0%, transparent 60%), linear-gradient(180deg, #0b1220 0%, #0f172a 100%)",
+        background: "radial-gradient(1200px 600px at 15% -10%, #dbeafe 0%, transparent 60%), radial-gradient(1000px 600px at 110% 110%, #ede9fe 0%, transparent 60%), linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
         color: TEXT_PRIMARY,
         display: "flex",
         flexDirection: "column",
@@ -117,9 +119,10 @@ export default function SelectAppPage() {
             alignItems: "center",
             gap: 1,
             color: TEXT_MUTED,
-            border: "1px solid rgba(248,250,252,0.14)",
+            bgcolor: "rgba(255,255,255,0.7)",
+            border: `1px solid ${SURFACE_BORDER}`,
             transition: "all 160ms ease",
-            "&:hover": { bgcolor: "rgba(248,250,252,0.06)", color: TEXT_PRIMARY, borderColor: "rgba(248,250,252,0.3)" },
+            "&:hover": { bgcolor: "#fff", color: TEXT_PRIMARY, borderColor: SURFACE_BORDER_STRONG },
           }}
         >
           <LogoutIcon sx={{ fontSize: 16 }} />
@@ -190,15 +193,15 @@ export default function SelectAppPage() {
                     borderRadius: 3,
                     overflow: "hidden",
                     position: "relative",
-                    bgcolor: "rgba(255,255,255,0.03)",
-                    border: "1px solid rgba(248,250,252,0.1)",
-                    backdropFilter: "blur(10px)",
-                    transition: "transform 200ms ease, border-color 200ms ease, box-shadow 200ms ease, background-color 200ms ease",
+                    bgcolor: "#ffffff",
+                    border: `1px solid ${SURFACE_BORDER}`,
+                    boxShadow: "0 1px 2px rgba(15,23,42,0.04), 0 4px 12px rgba(15,23,42,0.04)",
+                    transition: "transform 200ms ease, border-color 200ms ease, box-shadow 200ms ease",
                     "&::before": {
                       content: '""',
                       position: "absolute",
                       inset: 0,
-                      background: `radial-gradient(400px 200px at 50% -20%, ${t.glow} 0%, transparent 70%)`,
+                      background: `radial-gradient(420px 220px at 50% -20%, ${t.glow} 0%, transparent 70%)`,
                       opacity: 0,
                       transition: "opacity 220ms ease",
                       pointerEvents: "none",
@@ -206,8 +209,7 @@ export default function SelectAppPage() {
                     "&:hover": {
                       transform: "translateY(-6px)",
                       borderColor: t.accent,
-                      bgcolor: "rgba(255,255,255,0.06)",
-                      boxShadow: `0 24px 60px -20px ${t.glow}`,
+                      boxShadow: `0 24px 60px -20px ${t.glow}, 0 4px 12px rgba(15,23,42,0.06)`,
                       "&::before": { opacity: 1 },
                     },
                     "&:focus-visible": { borderColor: t.accent },
