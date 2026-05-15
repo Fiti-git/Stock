@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Box, Typography, Stack, ButtonBase, Avatar } from "@mui/material";
 import InventoryIcon from "@mui/icons-material/Inventory2";
@@ -57,13 +57,9 @@ export default function SelectAppPage() {
 
   const systems = useMemo(() => availableSystems(user), [user]);
 
-  useEffect(() => {
-    if (systems.length === 1) {
-      const only = systems[0];
-      try { localStorage.setItem(ACTIVE_SYSTEM_STORAGE_KEY, only); } catch { /* ignore */ }
-      navigate(defaultPathForSystem(only, user), { replace: true });
-    }
-  }, [systems, user, navigate]);
+  // Launcher is the canonical landing page — even single-app users see it
+  // so the login → choose → enter flow stays consistent. From here they
+  // pick their app explicitly.
 
   const pick = (system) => {
     try { localStorage.setItem(ACTIVE_SYSTEM_STORAGE_KEY, system); } catch { /* ignore */ }

@@ -228,17 +228,22 @@ export function searchableRoutes(permissions, activeSystem = null) {
 /**
  * Which "apps" (stock | pos | ecom | admin) the user can launch.
  * Stock/pos/ecom come from the backend-provided `user.systems` array.
- * "admin" is derived client-side: present iff the user has at least
- * one permission that gates a cross-product route (system: "both").
+ * "admin" is reserved for admin/super_admin/ServiceProvider — the
+ * cross-product app houses Users, Outlets, Audit Log, License, etc.
+ * and is not intended for managers or store users.
  */
 export function availableSystems(user) {
   if (!user) return [];
   const systems = Array.isArray(user.systems) ? [...user.systems] : [];
-  const perms = user.permissions instanceof Set
-    ? user.permissions
-    : new Set(user.permissions || []);
-  const hasAdmin = routes.some((r) => r.system === "both" && r.code && perms.has(r.code));
-  if (hasAdmin) systems.push("admin");
+  const role = user.role;
+  const isAdmin = role === "admin" || role === "super_admin" || role === "ServiceProvider";
+  if (isAdmin) {
+    const perms = user.permissions instanceof Set
+      ? user.permissions
+      : new Set(user.permissions || []);
+    const hasAdminPerm = routes.some((r) => r.system === "both" && r.code && perms.has(r.code));
+    if (hasAdminPerm) systems.push("admin");
+  }
   return systems;
 }
 
