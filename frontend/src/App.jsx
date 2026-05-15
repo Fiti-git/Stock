@@ -154,12 +154,11 @@ function HomeRedirect() {
   const { user, loading } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
-  // If hosted on a pos.* subdomain (e.g. pos.merchant.com), always land on terminal
+  // Pos.* subdomain hardware (e.g. pos.merchant.com) is dedicated terminal
+  // hardware — bypass the launcher and go straight to the till.
   const isPosHost = typeof window !== "undefined" && /^pos[\.-]/i.test(window.location.hostname);
   if (isPosHost) return <Navigate to="/terminal" replace />;
-  if (user.role === "ServiceProvider") return <Navigate to="/admin/license-configuration" replace />;
-  // Every authenticated user goes through the app launcher. The launcher
-  // itself auto-redirects single-system users straight to their app.
+  // Every other authenticated user lands on the launcher.
   return <Navigate to="/select-app" replace />;
 }
 

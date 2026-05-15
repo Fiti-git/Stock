@@ -22,11 +22,10 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const user = await login(form.username, form.password);
-      if (user.role === "ServiceProvider") navigate("/admin/license-configuration");
-      else if (user.role === "store_user") navigate("/upload");
-      else if (user.role === "admin") navigate("/admin/dashboard");
-      else navigate("/dashboard");
+      await login(form.username, form.password);
+      // Every user lands on the app launcher; from there they pick which
+      // app (Stock / POS / E-commerce / Admin) to enter.
+      navigate("/select-app");
     } catch (err) {
       setError(err.response?.data?.detail || "Login failed. Check your username and password.");
     } finally {
