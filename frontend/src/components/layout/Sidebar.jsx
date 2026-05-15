@@ -1,22 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Box, Drawer, List, ListItemButton, ListItemIcon, ListItemText,
   Typography, IconButton, Tooltip, Collapse, Avatar, useTheme, useMediaQuery,
-  ToggleButton, ToggleButtonGroup,
+  Chip,
 } from "@mui/material";
 import MenuOpenIcon from "@mui/icons-material/MenuOpen";
 import InventoryIcon from "@mui/icons-material/Inventory";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import LogoutIcon from "@mui/icons-material/Logout";
+import AppsIcon from "@mui/icons-material/Apps";
 import { useAuth } from "../../contexts/AuthContext";
 import {
   routesForPermissions,
   GROUP_ORDER,
   DEFAULT_EXPANDED_GROUPS,
   ACTIVE_SYSTEM_STORAGE_KEY,
+  availableSystems,
 } from "../../routes/config";
 import OutletSwitcher from "./OutletSwitcher";
+
+const SYSTEM_LABEL = { stock: "Stock", pos: "POS", ecom: "E-commerce", admin: "Admin" };
 
 const EXPANDED_STORAGE_KEY = "sidebar_expanded_groups_v1";
 
@@ -26,12 +30,6 @@ function loadActiveSystem(systems) {
     if (saved && systems.includes(saved)) return saved;
   } catch { /* ignore */ }
   return systems[0] || null;
-}
-
-function saveActiveSystem(value) {
-  try {
-    if (value) localStorage.setItem(ACTIVE_SYSTEM_STORAGE_KEY, value);
-  } catch { /* ignore */ }
 }
 
 function loadExpandedState() {
@@ -56,16 +54,14 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }) 
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const { user, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
 
-  // Two-product split. The user's `systems` is derived server-side from their
-  // effective permissions; values are "stock" / "pos". When they have only one,
-  // there's no toggle. When they have both, the toggle controls which set of
-  // routes is visible (cross-product entries — system: "both" — show in both).
-  const userSystems = useMemo(() => user?.systems || [], [user]);
+  // Active system is picked on the launcher (/select-app) and persisted in
+  // localStorage. The sidebar only renders that system's routes — there's no
+  // in-sidebar toggle anymore. Users can hit "Switch app" to go back.
+  const userSystems = useMemo(() => availableSystems(user), [user]);
   const [activeSystem, setActiveSystem] = useState(() => loadActiveSystem(userSystems));
 
-  // If the user object updates (e.g. fresh /api/me) and the persisted choice
-  // is no longer valid, reset to the first system they actually have.
   useEffect(() => {
     if (userSystems.length === 0) {
       setActiveSystem(null);
@@ -76,10 +72,9 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }) 
     }
   }, [userSystems]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSystemChange = (_e, value) => {
-    if (!value || value === activeSystem) return;
-    setActiveSystem(value);
-    saveActiveSystem(value);
+  const goLauncher = () => {
+    if (isMobile) onClose?.();
+    navigate("/select-app");
   };
 
   const items = routesForPermissions(user?.permissions, activeSystem);
@@ -137,7 +132,7 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }) 
         overflow: "hidden",
       }}
     >
-      {/* Brand lockup */}
+      {/* Brand lockup — shows Arunalu + active app */}
       <Box
         sx={{
           display: "flex", alignItems: "center",
@@ -163,7 +158,7 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }) 
           {!isCollapsedRail && (
             <Box sx={{ minWidth: 0 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 800, lineHeight: 1.2, color: "text.primary" }} noWrap>
-                Arunalu Stock
+                Arunalu {activeSystem ? SYSTEM_LABEL[activeSystem] || "" : ""}
               </Typography>
               <Typography variant="caption" sx={{ color: "text.secondary" }} noWrap>
                 Super Mart
@@ -180,45 +175,52 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }) 
         )}
       </Box>
 
+      {/* Switch app — visible only when the user has more than one app */}
+      {userSystems.length > 1 && (
+        isCollapsedRail ? (
+          <Box sx={{ display: "flex", justifyContent: "center", pb: 1 }}>
+            <Tooltip title="Switch app" placement="right">
+              <IconButton size="small" onClick={goLauncher} sx={{ color: "text.secondary" }}>
+                <AppsIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        ) : (
+          <Box sx={{ px: 2, pb: 1.5 }}>
+            <ListItemButton
+              onClick={goLauncher}
+              sx={{
+                borderRadius: 1.5,
+                px: 1.25, py: 0.75,
+                bgcolor: "background.neutral",
+                "&:hover": { bgcolor: "background.sidebarHover" },
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 32, color: "text.secondary" }}>
+                <AppsIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText
+                primary="Switch app"
+                primaryTypographyProps={{ fontSize: "0.78rem", fontWeight: 600 }}
+              />
+              {activeSystem && (
+                <Chip
+                  size="small"
+                  label={(SYSTEM_LABEL[activeSystem] || activeSystem).toUpperCase()}
+                  sx={{ height: 20, fontSize: "0.62rem", fontWeight: 700, letterSpacing: "0.06em" }}
+                />
+              )}
+            </ListItemButton>
+          </Box>
+        )
+      )}
+
       {/* Outlet selector — pinned so the active outlet is always visible.
           Admins get a dropdown; non-admins see a read-only chip. Collapsed
           rail mode renders an icon instead. */}
       <Box sx={{ pb: 1 }}>
         <OutletSwitcher variant="sidebar" collapsed={isCollapsedRail} />
       </Box>
-
-      {/* System toggle — shown when the user has access to multiple systems
-          (stock / pos / ecom). Each toggle button is rendered only if the
-          user actually has at least one permission in that system. */}
-      {userSystems.length > 1 && !isCollapsedRail && (
-        <Box sx={{ px: 2, pb: 1.5 }}>
-          <ToggleButtonGroup
-            value={activeSystem}
-            exclusive
-            onChange={handleSystemChange}
-            size="small"
-            fullWidth
-            sx={{
-              "& .MuiToggleButton-root": {
-                py: 0.5,
-                fontSize: "0.7rem",
-                fontWeight: 700,
-                letterSpacing: "0.08em",
-                color: "text.secondary",
-                "&.Mui-selected": {
-                  bgcolor: "primary.lighter",
-                  color: "primary.dark",
-                  "&:hover": { bgcolor: "primary.lighter" },
-                },
-              },
-            }}
-          >
-            {userSystems.includes("stock") && <ToggleButton value="stock">STOCK</ToggleButton>}
-            {userSystems.includes("pos") && <ToggleButton value="pos">POS</ToggleButton>}
-            {userSystems.includes("ecom") && <ToggleButton value="ecom">ECOM</ToggleButton>}
-          </ToggleButtonGroup>
-        </Box>
-      )}
 
       {/* Nav */}
       <Box sx={{ flex: 1, overflowY: "auto", px: 1, py: 1 }}>

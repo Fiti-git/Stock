@@ -5,23 +5,18 @@ import {
   ListItemText, Typography, Divider, Chip,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
-import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import { useAuth } from "../../contexts/AuthContext";
 import { searchableRoutes, ACTIVE_SYSTEM_STORAGE_KEY } from "../../routes/config";
 
 /**
  * Cmd-K / Ctrl-K command palette.
  *
- * - Lists every route the user has permission for, including ones hidden
- *   from the sidebar (Upload XLS, Approvals, Stock Count, transaction
- *   sub-pages, etc.). The whole point of a palette is to reach pages
- *   that aren't in the menu.
- * - Filters by the user's active system (the STOCK/POS toggle). Cross-
- *   product routes (system: "both") show in either mode.
- * - For users with both systems, prepends a "Switch to STOCK / POS"
- *   command at the top. Selecting it flips the active system in
- *   localStorage and reloads so every consumer (sidebar, palette,
- *   page guards) re-derives from the new value.
+ * Searches only within the user's currently active app (stock / pos /
+ * ecom / admin). To jump into another app, the user goes back to the
+ * launcher — the palette intentionally does NOT cross app boundaries.
+ * Hidden-from-sidebar routes are still indexed (e.g. Upload XLS,
+ * transaction sub-pages) so the palette remains the fastest way to
+ * reach them inside the current app.
  */
 export default function CommandPalette({ open, onClose }) {
   const navigate = useNavigate();
@@ -29,29 +24,19 @@ export default function CommandPalette({ open, onClose }) {
   const [query, setQuery] = useState("");
   const [hover, setHover] = useState(0);
 
-  // Read active system fresh on every open — it can change between opens
-  // via the sidebar toggle, and we don't want a stale snapshot.
+  // Read active system fresh on every open so a freshly-picked launcher
+  // choice is reflected without remounting the palette.
   const activeSystem = useMemo(() => {
     if (!open) return null;
     try {
-      const saved = localStorage.getItem(ACTIVE_SYSTEM_STORAGE_KEY);
-      const userSystems = user?.systems || [];
-      if (saved && userSystems.includes(saved)) return saved;
-      return userSystems[0] || null;
+      return localStorage.getItem(ACTIVE_SYSTEM_STORAGE_KEY) || null;
     } catch {
-      return user?.systems?.[0] || null;
+      return null;
     }
-  }, [open, user]);
+  }, [open]);
 
-  const userHasBothSystems = (user?.systems || []).length > 1;
-  const otherSystem = activeSystem === "stock" ? "pos" : "stock";
-
-  // Build the searchable command list. Order: system-switch (if applicable),
-  // then routes. The route list intentionally includes hidden entries so a
-  // user can `Cmd-K → upload` and jump straight to /upload even though the
-  // sidebar no longer surfaces it.
   const all = useMemo(() => {
-    const routes = searchableRoutes(user?.permissions, activeSystem).map((r) => ({
+    return searchableRoutes(user?.permissions, activeSystem).map((r) => ({
       kind: "route",
       key: r.path,
       label: r.label,
@@ -59,16 +44,7 @@ export default function CommandPalette({ open, onClose }) {
       icon: r.icon,
       hint: r.path,
     }));
-    const switchCmd = userHasBothSystems ? [{
-      kind: "system",
-      key: "system:switch",
-      label: `Switch to ${otherSystem.toUpperCase()}`,
-      group: "System",
-      icon: SwapHorizIcon,
-      hint: `currently ${activeSystem?.toUpperCase()}`,
-    }] : [];
-    return [...switchCmd, ...routes];
-  }, [user?.permissions, activeSystem, userHasBothSystems, otherSystem]);
+  }, [user?.permissions, activeSystem]);
 
   const results = useMemo(() => {
     if (!query) return all.slice(0, 12);
@@ -86,14 +62,6 @@ export default function CommandPalette({ open, onClose }) {
 
   const select = (cmd) => {
     onClose?.();
-    if (cmd.kind === "system") {
-      try { localStorage.setItem(ACTIVE_SYSTEM_STORAGE_KEY, otherSystem); } catch { /* ignore */ }
-      // Hard reload so the sidebar, route guards, and page bundles pick up
-      // the new active system uniformly. Switching mid-session without a
-      // reload would require every consumer to subscribe to a global signal.
-      window.location.reload();
-      return;
-    }
     navigate(cmd.key);
   };
 

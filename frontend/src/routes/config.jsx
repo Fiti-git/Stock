@@ -187,14 +187,11 @@ export const routes = [
 /**
  * Return visible nav items for the given set of effective permission codes.
  *
- * `activeSystem` (optional) is "stock" | "pos" | "ecom" | null.
- *   - null  → no system filter (legacy behaviour, used while sidebar wiring catches up)
- *   - else  → keep routes where system === activeSystem OR system === "both"
- *             (cross-product entries like Users, Audit Log show in every mode).
- *
- *   Note: "both" historically meant "stock + pos". With ecom added, "both"
- *   now means "show everywhere" — the cross-product semantics are unchanged
- *   for users; we just don't introduce a new tag and avoid churn.
+ * `activeSystem` is "stock" | "pos" | "ecom" | "admin" | null.
+ *   - null    → no filter (legacy; only used before launcher selection lands)
+ *   - "admin" → cross-product pages only (routes tagged `system: "both"`)
+ *   - else    → only routes whose `system` matches exactly. Cross-product
+ *               routes live in the Admin app now, not in every sidebar.
  */
 export function routesForPermissions(permissions, activeSystem = null) {
   const set = permissions instanceof Set ? permissions : new Set(permissions || []);
@@ -202,7 +199,8 @@ export function routesForPermissions(permissions, activeSystem = null) {
     if (r.showInNav === false) return false;
     if (!r.code || !set.has(r.code)) return false;
     if (!activeSystem) return true;
-    return !r.system || r.system === "both" || r.system === activeSystem;
+    if (activeSystem === "admin") return r.system === "both";
+    return r.system === activeSystem;
   });
 }
 
@@ -222,8 +220,37 @@ export function searchableRoutes(permissions, activeSystem = null) {
     if (r.path.includes(":")) return false;
     if (!set.has(r.code)) return false;
     if (!activeSystem) return true;
-    return !r.system || r.system === "both" || r.system === activeSystem;
+    if (activeSystem === "admin") return r.system === "both";
+    return r.system === activeSystem;
   });
+}
+
+/**
+ * Which "apps" (stock | pos | ecom | admin) the user can launch.
+ * Stock/pos/ecom come from the backend-provided `user.systems` array.
+ * "admin" is derived client-side: present iff the user has at least
+ * one permission that gates a cross-product route (system: "both").
+ */
+export function availableSystems(user) {
+  if (!user) return [];
+  const systems = Array.isArray(user.systems) ? [...user.systems] : [];
+  const perms = user.permissions instanceof Set
+    ? user.permissions
+    : new Set(user.permissions || []);
+  const hasAdmin = routes.some((r) => r.system === "both" && r.code && perms.has(r.code));
+  if (hasAdmin) systems.push("admin");
+  return systems;
+}
+
+// Default landing page per system. Stock varies by role; the rest are fixed.
+export function defaultPathForSystem(system, user) {
+  if (system === "pos") return "/pos";
+  if (system === "ecom") return "/admin/ecom/orders";
+  if (system === "admin") return "/admin/users";
+  // stock
+  const role = user?.role;
+  if (role === "admin" || role === "super_admin") return "/admin/dashboard";
+  return "/dashboard";
 }
 
 // Sidebar persists the active system (when the user has more than one) under this key.

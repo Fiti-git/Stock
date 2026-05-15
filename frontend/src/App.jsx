@@ -115,6 +115,7 @@ const TerminalPage = lazy(() => import("./pages/terminal/TerminalPage"));
 const LicenseSetupRequired = lazy(() => import("./pages/LicenseSetupRequired"));
 const LicenseConfiguration = lazy(() => import("./pages/admin/LicenseConfiguration"));
 const DbManagement = lazy(() => import("./pages/DbManagement"));
+const SelectAppPage = lazy(() => import("./pages/SelectAppPage"));
 
 const FullScreenLoader = () => (
   <Box sx={{ display: "grid", placeItems: "center", minHeight: "100vh" }}>
@@ -157,10 +158,9 @@ function HomeRedirect() {
   const isPosHost = typeof window !== "undefined" && /^pos[\.-]/i.test(window.location.hostname);
   if (isPosHost) return <Navigate to="/terminal" replace />;
   if (user.role === "ServiceProvider") return <Navigate to="/admin/license-configuration" replace />;
-  if (user.role === "super_admin") return <Navigate to="/admin/dashboard" replace />;
-  if (user.role === "store_user" || user.role === "staff") return <Navigate to="/terminal" replace />;
-  if (user.role === "admin") return <Navigate to="/admin/dashboard" replace />;
-  return <Navigate to="/dashboard" replace />;
+  // Every authenticated user goes through the app launcher. The launcher
+  // itself auto-redirects single-system users straight to their app.
+  return <Navigate to="/select-app" replace />;
 }
 
 export default function App() {
@@ -174,6 +174,7 @@ export default function App() {
                 <Suspense fallback={<FullScreenLoader />}>
                   <Routes>
                     <Route path="/" element={<HomeRedirect />} />
+                    <Route path="/select-app" element={<SelectAppPage />} />
                     <Route path="/login" element={<LoginPage />} />
                     <Route path="/license-setup-required" element={<LicenseSetupRequired />} />
                     <Route path="/admin/license-configuration" element={<PermissionRoute code="nav.license"><LicenseConfiguration /></PermissionRoute>} />
