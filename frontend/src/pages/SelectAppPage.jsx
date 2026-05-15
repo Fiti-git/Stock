@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Box, Typography, Stack, ButtonBase, Avatar } from "@mui/material";
 import InventoryIcon from "@mui/icons-material/Inventory2";
@@ -58,12 +58,24 @@ export default function SelectAppPage() {
   const systems = useMemo(() => availableSystems(user), [user]);
 
   // Launcher is the canonical landing page — even single-app users see it
-  // so the login → choose → enter flow stays consistent. From here they
-  // pick their app explicitly.
+  // so the login → choose → enter flow stays consistent.
+
+  // When the user signs out from this page, the auth context clears the
+  // user but doesn't navigate (the launcher route isn't permission-gated,
+  // so PermissionRoute's `Navigate to=/login` never kicks in). Push to
+  // /login ourselves once user is null.
+  useEffect(() => {
+    if (!user) navigate("/login", { replace: true });
+  }, [user, navigate]);
 
   const pick = (system) => {
     try { localStorage.setItem(ACTIVE_SYSTEM_STORAGE_KEY, system); } catch { /* ignore */ }
     navigate(defaultPathForSystem(system, user), { replace: true });
+  };
+
+  const handleSignOut = () => {
+    logout();
+    navigate("/login", { replace: true });
   };
 
   if (!user) return null;
@@ -107,7 +119,7 @@ export default function SelectAppPage() {
           </Box>
         </Stack>
         <ButtonBase
-          onClick={logout}
+          onClick={handleSignOut}
           sx={{
             borderRadius: 999,
             px: 2, py: 1,
