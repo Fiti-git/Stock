@@ -65,6 +65,7 @@ export const routes = [
   { path: "/upload",                    code: "nav.upload",               label: "Upload XLS",         icon: UploadFileIcon,         roles: ["store_user","manager","admin","super_admin"],         group: "Operate", system: "stock", showInNav: false },
   { path: "/upload/history",            code: "nav.upload_history",       label: "Upload History",     icon: HistoryIcon,            roles: ["store_user","manager","admin","super_admin"],         group: "Operate", system: "stock", showInNav: false },
   { path: "/transactions",              code: "nav.transactions_hub",     label: "Transactions",       icon: ReceiptLongIcon,        roles: ["store_user","staff","manager","admin","super_admin"], group: "Operate", system: "stock" },
+  { path: "/upload/hub",                code: "nav.upload",               label: "Upload XLS",         icon: UploadFileIcon,         roles: ["store_user","manager","admin","super_admin"],         group: "Operate", system: "stock" },
   { path: "/dashboard/pending",         code: "nav.pending",              label: "Pending Items",      icon: ChecklistIcon,          roles: ["manager","admin","super_admin"],                       group: "Operate", system: "stock" },
   { path: "/uploaded-sheets",           code: "nav.uploaded_sheets",      label: "Uploaded XLS Sheets",icon: HistoryIcon,            roles: ["manager","admin","super_admin"],                       group: "Operate", system: "stock" },
   { path: "/admin/upload-approvals",    code: "nav.upload_approvals",     label: "Upload Approvals",   icon: AssignmentTurnedInIcon, roles: ["admin","super_admin"],                                 group: "Operate", system: "stock", showInNav: false },
@@ -179,6 +180,7 @@ export const routes = [
   { path: "/db-management",               code: "nav.db_management",    label: "DB Management",    icon: StorageIcon,          roles: ["store_user","staff","manager","admin","super_admin"], group: "Configure", system: "both" },
 
   // Hidden routes (no permission gate — inherit from parent page).
+  { path: "/uploaded-sheets/:id",             label: "Sheet Detail",             roles: ["manager","admin","super_admin"],                      showInNav: false },
   { path: "/items/:id",                       label: "Item Detail",              roles: ["store_user","staff","manager","admin","super_admin"], showInNav: false },
   { path: "/admin/products/:itemId/history",  label: "Product History",          roles: ["manager","admin","super_admin"],                      showInNav: false },
   { path: "/login",                           label: "Login",                    roles: ["public"],                                              showInNav: false },

@@ -32,6 +32,8 @@ const ProductMasterPage = lazy(() => import("./pages/manager/ProductMasterPage")
 const CountedStockDailyPage = lazy(() => import("./pages/manager/CountedStockDailyPage"));
 const CountReviewPage = lazy(() => import("./pages/manager/CountReviewPage"));
 const CounterPerformancePage = lazy(() => import("./pages/manager/CounterPerformancePage"));
+const SheetDetailPage = lazy(() => import("./pages/manager/SheetDetailPage"));
+const UploadHubPage = lazy(() => import("./pages/manager/UploadHubPage"));
 const VarianceReconciliationPage = lazy(() => import("./pages/manager/VarianceReconciliationPage"));
 const BarcodeMasterPage = lazy(() => import("./pages/admin/BarcodeMasterPage"));
 const ProductHistoryPage = lazy(() => import("./pages/admin/ProductHistoryPage"));
@@ -243,6 +245,8 @@ export default function App() {
                     <Route path="/dashboard" element={<PermissionRoute code="nav.manager_dashboard"><DashboardPage /></PermissionRoute>} />
                     <Route path="/dashboard/pending" element={<PermissionRoute code="nav.pending"><PendingItemsPage /></PermissionRoute>} />
                     <Route path="/uploaded-sheets" element={<PermissionRoute code="nav.uploaded_sheets"><UploadedSheetsPage /></PermissionRoute>} />
+                    <Route path="/uploaded-sheets/:id" element={<PermissionRoute code="nav.uploaded_sheets"><SheetDetailPage /></PermissionRoute>} />
+                    <Route path="/upload/hub" element={<PermissionRoute code="nav.upload"><UploadHubPage /></PermissionRoute>} />
                     <Route path="/shrinkage" element={<PermissionRoute code="nav.shrinkage"><ShrinkagePage /></PermissionRoute>} />
                     <Route path="/catalog" element={<PermissionRoute code="nav.catalog"><CatalogPage /></PermissionRoute>} />
                     <Route path="/items/history" element={<PermissionRoute code="nav.item_pos_history"><ItemPosHistoryPage /></PermissionRoute>} />
