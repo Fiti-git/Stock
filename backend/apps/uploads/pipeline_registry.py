@@ -120,21 +120,27 @@ SALES_RETURN_COLUMNS = ["invoice_no", "txn_date", "txn_time", "item_code", "barc
 def get_pipeline_config(pipeline: str) -> dict:
     """
     Returns dict with:
-      model        — Django model class
-      batch_fk     — field name on the model that points to the batch/log PK
+      model        — Django line model class
+      batch_model  — Django batch/log model class (None for pos which uses UploadLog)
+      batch_fk     — field name on the line model that points to the batch/log PK
       row_fn       — callable(instance) -> dict
       columns      — fallback column list if sheet.columns is empty
       select_rel   — list of related fields to select_related (may be empty)
     """
     from .models import (
         PosSnapshot,
-        DamageLine, OfficeLine, VerificationLine,
-        GrnLine, RtsLine,
-        SalesLine, SalesReturnLine,
+        DamageUploadBatch, DamageLine,
+        OfficeUploadBatch, OfficeLine,
+        VerificationUploadBatch, VerificationLine,
+        GrnUploadBatch, GrnLine,
+        RtsUploadBatch, RtsLine,
+        SalesUploadBatch, SalesLine,
+        SalesReturnUploadBatch, SalesReturnLine,
     )
     configs = {
         "pos": {
             "model": PosSnapshot,
+            "batch_model": None,   # POS uses UploadLog — handled separately
             "batch_fk": "upload_batch_id",
             "row_fn": _pos_row,
             "columns": POS_COLUMNS,
@@ -142,6 +148,7 @@ def get_pipeline_config(pipeline: str) -> dict:
         },
         "damage": {
             "model": DamageLine,
+            "batch_model": DamageUploadBatch,
             "batch_fk": "batch_id",
             "row_fn": _txn17_row,
             "columns": TXN17_COLUMNS,
@@ -149,6 +156,7 @@ def get_pipeline_config(pipeline: str) -> dict:
         },
         "office": {
             "model": OfficeLine,
+            "batch_model": OfficeUploadBatch,
             "batch_fk": "batch_id",
             "row_fn": _txn17_row,
             "columns": TXN17_COLUMNS,
@@ -156,6 +164,7 @@ def get_pipeline_config(pipeline: str) -> dict:
         },
         "verification": {
             "model": VerificationLine,
+            "batch_model": VerificationUploadBatch,
             "batch_fk": "batch_id",
             "row_fn": _txn17_row,
             "columns": TXN17_COLUMNS,
@@ -163,6 +172,7 @@ def get_pipeline_config(pipeline: str) -> dict:
         },
         "grn": {
             "model": GrnLine,
+            "batch_model": GrnUploadBatch,
             "batch_fk": "batch_id",
             "row_fn": _txn19_row,
             "columns": TXN19_COLUMNS,
@@ -170,6 +180,7 @@ def get_pipeline_config(pipeline: str) -> dict:
         },
         "rts": {
             "model": RtsLine,
+            "batch_model": RtsUploadBatch,
             "batch_fk": "batch_id",
             "row_fn": _txn19_row,
             "columns": TXN19_COLUMNS,
@@ -177,6 +188,7 @@ def get_pipeline_config(pipeline: str) -> dict:
         },
         "sales": {
             "model": SalesLine,
+            "batch_model": SalesUploadBatch,
             "batch_fk": "batch_id",
             "row_fn": _sales_row,
             "columns": SALES_COLUMNS,
@@ -184,6 +196,7 @@ def get_pipeline_config(pipeline: str) -> dict:
         },
         "sales_returns": {
             "model": SalesReturnLine,
+            "batch_model": SalesReturnUploadBatch,
             "batch_fk": "batch_id",
             "row_fn": _sales_return_row,
             "columns": SALES_RETURN_COLUMNS,

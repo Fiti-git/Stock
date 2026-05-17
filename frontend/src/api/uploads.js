@@ -67,3 +67,9 @@ export const getUploadedSheets = (params) =>
 
 export const getUploadedSheetDetail = (sheetId, params = {}) =>
   api.get(`/uploads/all-uploads/${sheetId}/`, { params });
+
+export const deleteUploadedSheet = (sheetId) =>
+  api.delete(`/uploads/all-uploads/${sheetId}/delete/`);
+
+export const bulkDeleteUploadedSheets = (sheetIds) =>
+  api.post("/uploads/all-uploads/bulk-delete/", { sheet_ids: sheetIds });

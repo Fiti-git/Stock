@@ -34,7 +34,7 @@ const STEPS = {
   DONE: "done",
 };
 
-export default function TransactionUploadPage({ config, embedded = false }) {
+export default function TransactionUploadPage({ config, embedded = false, prefillDateFrom = "", prefillDateTo = "", prefillOutletId = null }) {
   const { label, icon, api, historyPath } = config;
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
@@ -49,13 +49,20 @@ export default function TransactionUploadPage({ config, embedded = false }) {
   const [validation, setValidation] = useState(null);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
-  const [dateFromOverride, setDateFromOverride] = useState("");
-  const [dateToOverride, setDateToOverride] = useState("");
+  const [dateFromOverride, setDateFromOverride] = useState(prefillDateFrom);
+  const [dateToOverride, setDateToOverride] = useState(prefillDateTo);
   const inputRef = useRef();
 
   useEffect(() => {
-    if (isAdmin) getOutlets().then(({ data }) => setOutlets(data)).catch(() => {});
-  }, [isAdmin]);
+    if (!isAdmin) return;
+    getOutlets().then(({ data }) => {
+      setOutlets(data);
+      if (prefillOutletId) {
+        const match = data.find((o) => String(o.id) === String(prefillOutletId));
+        if (match) setSelectedOutlet({ id: match.id, name: match.outlet_name });
+      }
+    }).catch(() => {});
+  }, [isAdmin, prefillOutletId]);
 
   const handleFileChosen = useCallback((f) => {
     if (!f) return;

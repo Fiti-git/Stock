@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { Box, Typography, Stack, ButtonBase } from "@mui/material";
 import BrokenImageIcon from "@mui/icons-material/BrokenImage";
 import AssignmentIcon from "@mui/icons-material/Assignment";
@@ -64,13 +65,29 @@ const PIPELINES = [
 ];
 
 export default function UploadHubPage() {
-  const [active, setActive] = useState(PIPELINES[0]);
+  const location = useLocation();
+  const prefill = location.state || {};
+
+  const [active, setActive] = useState(
+    () => PIPELINES.find((p) => p.key === prefill.pipeline) || PIPELINES[0]
+  );
+
+  // Reset active pipeline if navigation state changes (e.g. fresh re-upload nav)
+  useEffect(() => {
+    if (prefill.pipeline) {
+      const match = PIPELINES.find((p) => p.key === prefill.pipeline);
+      if (match) setActive(match);
+    }
+  }, [prefill.pipeline]);
 
   const config = {
     label: active.label,
     icon: <active.Icon />,
     api: makeTxnApi(active.key),
     historyPath: active.historyPath,
+    prefillDateFrom: active.key === (prefill.pipeline || "") ? (prefill.dateFrom || "") : "",
+    prefillDateTo: active.key === (prefill.pipeline || "") ? (prefill.dateTo || "") : "",
+    prefillOutletId: prefill.outletId || null,
   };
 
   return (
@@ -153,7 +170,11 @@ export default function UploadHubPage() {
 
         {/* Right: upload form — key forces remount on pipeline switch */}
         <Box key={active.key}>
-          <TransactionUploadPage config={config} embedded />
+          <TransactionUploadPage config={config} embedded
+            prefillDateFrom={config.prefillDateFrom}
+            prefillDateTo={config.prefillDateTo}
+            prefillOutletId={config.prefillOutletId}
+          />
         </Box>
       </Box>
     </Layout>

@@ -9,6 +9,9 @@ Detail endpoint uses a two-tier strategy:
   2. Otherwise — query the pipeline's line table dynamically (pipeline_registry).
 """
 
+from datetime import date
+
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -17,8 +20,99 @@ from rest_framework.response import Response
 from apps.accounts.models import User
 from apps.accounts.permissions import IsManager
 
-from .models import UploadedSheet
+from .models import UploadedSheet, AuditLog
 from .pipeline_registry import get_pipeline_config
+
+
+def _can_delete_sheet(user, sheet: UploadedSheet) -> bool:
+    """Admins can always delete; managers only for their own outlet on today's date."""
+    if user.role in (User.Role.ADMIN, User.Role.SUPER_ADMIN):
+        return True
+    if user.role != User.Role.MANAGER:
+        return False
+    if sheet.outlet_id != user.outlet_id:
+        return False
+    return sheet.business_date == date.today()
+
+
+def _delete_sheet(user, sheet: UploadedSheet) -> dict:
+    """
+    Delete the underlying batch + line rows for a sheet, then delete the
+    UploadedSheet record itself. Returns a summary dict.
+
+    For POS pipeline the `delete_upload` view is called directly because
+    it handles cascades (introduced items, pending items, snapshots).
+    For all other pipelines we soft-delete the batch and hard-delete lines.
+    """
+    if sheet.pipeline == "pos":
+        from .views import delete_upload as _pos_delete_view
+        from .models import UploadLog, PosSnapshot
+        from apps.items.models import PendingItem, Item
+
+        try:
+            log = UploadLog.objects.select_related("outlet").get(pk=sheet.batch_id)
+        except UploadLog.DoesNotExist:
+            # Batch already gone — just delete the UploadedSheet record
+            sheet.delete()
+            return {"pipeline": "pos", "batch_id": sheet.batch_id, "rows_removed": 0}
+
+        if log.status != UploadLog.Status.DELETED:
+            with transaction.atomic():
+                pending_del, _ = PendingItem.objects.filter(upload_log=log).delete()
+                items_qs = Item.objects.filter(upload_log=log)
+                items_del = items_qs.count()
+                items_qs.delete()
+                PendingItem.objects.filter(
+                    first_seen_outlet=log.outlet,
+                    item__isnull=True,
+                    change_type=PendingItem.ChangeType.NEW_CODE,
+                ).delete()
+                snaps_del, _ = PosSnapshot.objects.filter(upload_batch=log).delete()
+                log.status = UploadLog.Status.DELETED
+                log.save(update_fields=["status"])
+                AuditLog.objects.create(
+                    user=user, action="delete_upload",
+                    entity_type="upload_log", entity_id=str(log.id),
+                    details={"outlet": log.outlet.outlet_name, "date": str(log.snapshot_date), "via": "sheet_delete"},
+                )
+            result = {"pipeline": "pos", "batch_id": log.id, "rows_removed": snaps_del}
+        else:
+            result = {"pipeline": "pos", "batch_id": log.id, "rows_removed": 0}
+
+        sheet.delete()
+        return result
+
+    # --- Non-POS pipelines ---
+    cfg = get_pipeline_config(sheet.pipeline)
+    if cfg is None:
+        sheet.delete()
+        return {"pipeline": sheet.pipeline, "batch_id": sheet.batch_id, "rows_removed": 0}
+
+    batch_model = cfg["batch_model"]
+    line_model = cfg["model"]
+
+    try:
+        batch = batch_model.objects.get(pk=sheet.batch_id)
+    except batch_model.DoesNotExist:
+        sheet.delete()
+        return {"pipeline": sheet.pipeline, "batch_id": sheet.batch_id, "rows_removed": 0}
+
+    with transaction.atomic():
+        row_count = line_model.objects.filter(batch=batch).count()
+        line_model.objects.filter(batch=batch).delete()
+        if hasattr(batch, "status"):
+            batch.status = batch.__class__.Status.DELETED
+            if hasattr(batch, "stored_file") and batch.stored_file:
+                batch.stored_file.delete(save=False)
+            batch.save(update_fields=["status"])
+        AuditLog.objects.create(
+            user=user, action=f"{sheet.pipeline}_upload_deleted",
+            entity_type=f"{sheet.pipeline}_batch", entity_id=str(batch.id),
+            details={"outlet_id": sheet.outlet_id, "date": str(sheet.business_date), "via": "sheet_delete"},
+        )
+        sheet.delete()
+
+    return {"pipeline": sheet.pipeline, "batch_id": batch.id, "rows_removed": row_count}
 
 
 MAX_PAGE_SIZE = 100
@@ -187,3 +281,73 @@ def uploaded_sheet_detail(request, sheet_id: int):
     summary["page_size"] = page_size
     summary["total_pages"] = max(1, (total + page_size - 1) // page_size)
     return Response(summary)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsManager])
+def uploaded_sheet_delete(request, sheet_id: int):
+    """
+    DELETE /api/uploads/all-uploads/<sheet_id>/delete/
+
+    Deletes the underlying batch + line rows for the sheet, then removes the
+    UploadedSheet record. Managers can only delete today's sheets; admins can
+    delete any.
+    """
+    sheet = get_object_or_404(
+        UploadedSheet.objects.select_related("outlet"),
+        pk=sheet_id,
+    )
+    if request.user.role not in (User.Role.ADMIN, User.Role.SUPER_ADMIN):
+        if sheet.outlet_id != request.user.outlet_id:
+            return Response({"detail": "Not permitted."}, status=status.HTTP_403_FORBIDDEN)
+
+    if not _can_delete_sheet(request.user, sheet):
+        return Response(
+            {"detail": "Managers can only delete today's uploads. Contact an admin to delete older records."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    result = _delete_sheet(request.user, sheet)
+    return Response({"status": "deleted", **result})
+
+
+@api_view(["POST"])
+@permission_classes([IsManager])
+def uploaded_sheet_bulk_delete(request):
+    """
+    POST /api/uploads/all-uploads/bulk-delete/
+    Body: { "sheet_ids": [1, 2, 3] }
+
+    Deletes multiple sheets. Each sheet is validated individually.
+    Returns { "deleted": N, "errors": [...] }.
+    """
+    sheet_ids = request.data.get("sheet_ids", [])
+    if not isinstance(sheet_ids, list) or not sheet_ids:
+        return Response({"detail": "sheet_ids must be a non-empty list."}, status=status.HTTP_400_BAD_REQUEST)
+
+    deleted = 0
+    errors = []
+
+    for sid in sheet_ids:
+        try:
+            sheet = UploadedSheet.objects.select_related("outlet").get(pk=sid)
+        except UploadedSheet.DoesNotExist:
+            errors.append({"id": sid, "error": "Not found."})
+            continue
+
+        if request.user.role not in (User.Role.ADMIN, User.Role.SUPER_ADMIN):
+            if sheet.outlet_id != request.user.outlet_id:
+                errors.append({"id": sid, "error": "Not permitted."})
+                continue
+
+        if not _can_delete_sheet(request.user, sheet):
+            errors.append({"id": sid, "error": "Only today's uploads can be deleted by managers."})
+            continue
+
+        try:
+            _delete_sheet(request.user, sheet)
+            deleted += 1
+        except Exception as exc:
+            errors.append({"id": sid, "error": str(exc)})
+
+    return Response({"deleted": deleted, "errors": errors})

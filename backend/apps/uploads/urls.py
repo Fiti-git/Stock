@@ -59,7 +59,10 @@ from .views_suppliers import (
     supplier_list_create, supplier_detail,
     supplier_scorecard, supplier_detail_scorecard,
 )
-from .views_uploaded_sheets import uploaded_sheets_list, uploaded_sheet_detail
+from .views_uploaded_sheets import (
+    uploaded_sheets_list, uploaded_sheet_detail,
+    uploaded_sheet_delete, uploaded_sheet_bulk_delete,
+)
 
 urlpatterns = [
     # POS snapshot pipeline (existing)
@@ -165,7 +168,9 @@ urlpatterns = [
 
     # Unified uploaded-sheets (manager + admin)
     path("all-uploads/", uploaded_sheets_list, name="uploaded-sheets-list"),
+    path("all-uploads/bulk-delete/", uploaded_sheet_bulk_delete, name="uploaded-sheets-bulk-delete"),
     path("all-uploads/<int:sheet_id>/", uploaded_sheet_detail, name="uploaded-sheet-detail"),
+    path("all-uploads/<int:sheet_id>/delete/", uploaded_sheet_delete, name="uploaded-sheet-delete"),
 
     # Sales Returns pipeline
     path("sales_returns/validate/", sales_returns_validate, name="sales-returns-validate"),

@@ -3,13 +3,15 @@ import { useParams, useNavigate } from "react-router-dom";
 import {
   Box, Typography, Stack, Card, Chip, Button, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, CircularProgress, Alert,
-  TextField, InputAdornment, Pagination,
+  TextField, InputAdornment, Pagination, Dialog, DialogTitle, DialogContent, DialogActions,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import HistoryIcon from "@mui/icons-material/History";
 import SearchIcon from "@mui/icons-material/Search";
+import DeleteIcon from "@mui/icons-material/Delete";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
 import Layout from "../../components/Layout";
-import { getUploadedSheetDetail } from "../../api/uploads";
+import { getUploadedSheetDetail, deleteUploadedSheet } from "../../api/uploads";
 
 const PIPELINE_META = {
   pos:           { label: "POS Snapshot",       color: "#6366f1" },
@@ -40,6 +42,8 @@ export default function SheetDetailPage() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!sheet) {
@@ -52,6 +56,19 @@ export default function SheetDetailPage() {
       .catch(() => setError("Sheet not found or access denied."))
       .finally(() => { setLoading(false); setPageLoading(false); });
   }, [id, page]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await deleteUploadedSheet(id);
+      navigate("/uploaded-sheets");
+    } catch {
+      setError("Delete failed. You may not have permission to delete this upload.");
+      setDeleteOpen(false);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const meta = sheet
     ? (PIPELINE_META[sheet.pipeline] || { label: sheet.pipeline_label || sheet.pipeline, color: "#64748b" })
@@ -74,7 +91,7 @@ export default function SheetDetailPage() {
 
   return (
     <Layout>
-      <Box sx={{ mb: 2 }}>
+      <Box sx={{ mb: 2, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <Button
           startIcon={<ArrowBackIcon />}
           onClick={() => navigate("/uploaded-sheets")}
@@ -82,6 +99,25 @@ export default function SheetDetailPage() {
         >
           Back to Uploaded Sheets
         </Button>
+        {sheet && (
+          <Stack direction="row" spacing={1}>
+            <Button
+              size="small" startIcon={<UploadFileIcon />}
+              onClick={() => navigate("/upload/hub", { state: { pipeline: sheet.pipeline, outletId: sheet.outlet_id, dateFrom: sheet.business_date, dateTo: sheet.business_date_to || sheet.business_date } })}
+              sx={{ textTransform: "none", color: "#6366f1", borderColor: "#6366f1" }}
+              variant="outlined"
+            >
+              Re-upload
+            </Button>
+            <Button
+              size="small" startIcon={<DeleteIcon />} color="error" variant="outlined"
+              onClick={() => setDeleteOpen(true)}
+              sx={{ textTransform: "none" }}
+            >
+              Delete
+            </Button>
+          </Stack>
+        )}
       </Box>
 
       {loading && (
@@ -323,6 +359,27 @@ export default function SheetDetailPage() {
           </Card>
         </>
       )}
+
+      {/* Delete confirm dialog */}
+      <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete Upload?</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ fontSize: "0.9rem", color: "rgba(15,23,42,0.7)" }}>
+            This will permanently delete <strong>{(sheet?.row_count || 0).toLocaleString()} row(s)</strong> from the database and remove this sheet record.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteOpen(false)} sx={{ textTransform: "none" }}>Cancel</Button>
+          <Button
+            onClick={handleDelete} color="error" variant="contained"
+            disabled={deleting}
+            startIcon={deleting ? <CircularProgress size={16} /> : <DeleteIcon />}
+            sx={{ textTransform: "none" }}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Layout>
   );
 }
