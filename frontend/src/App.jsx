@@ -31,6 +31,8 @@ const AdminDashboardPage = lazy(() => import("./pages/admin/AdminDashboardPage")
 const ProductMasterPage = lazy(() => import("./pages/manager/ProductMasterPage"));
 const CountedStockDailyPage = lazy(() => import("./pages/manager/CountedStockDailyPage"));
 const CountReviewPage = lazy(() => import("./pages/manager/CountReviewPage"));
+const CountSessionsPage = lazy(() => import("./pages/manager/CountSessionsPage"));
+const CountSessionDetailPage = lazy(() => import("./pages/manager/CountSessionDetailPage"));
 const CounterPerformancePage = lazy(() => import("./pages/manager/CounterPerformancePage"));
 const MobileUsagePage = lazy(() => import("./pages/manager/MobileUsagePage"));
 const SheetDetailPage = lazy(() => import("./pages/manager/SheetDetailPage"));
@@ -252,7 +254,9 @@ export default function App() {
                     <Route path="/catalog" element={<PermissionRoute code="nav.catalog"><CatalogPage /></PermissionRoute>} />
                     <Route path="/items/history" element={<PermissionRoute code="nav.item_pos_history"><ItemPosHistoryPage /></PermissionRoute>} />
                     <Route path="/product-master" element={<PermissionRoute code="nav.product_master"><ProductMasterPage /></PermissionRoute>} />
-                    <Route path="/daily-counts" element={<PermissionRoute code="nav.daily_counts"><CountedStockDailyPage /></PermissionRoute>} />
+                    <Route path="/count-sessions" element={<PermissionRoute code="nav.count_sessions"><CountSessionsPage /></PermissionRoute>} />
+                    <Route path="/count-sessions/:id" element={<PermissionRoute code="nav.count_sessions"><CountSessionDetailPage /></PermissionRoute>} />
+                    <Route path="/daily-counts" element={<Navigate to="/count-sessions" replace />} />
                     <Route path="/count-review" element={<PermissionRoute code="nav.count_review"><CountReviewPage /></PermissionRoute>} />
                     <Route path="/reports/counter-performance" element={<PermissionRoute code="nav.counter_performance"><CounterPerformancePage /></PermissionRoute>} />
                     <Route path="/reports/mobile-usage" element={<PermissionRoute code="nav.mobile_usage"><MobileUsagePage /></PermissionRoute>} />

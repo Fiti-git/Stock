@@ -69,9 +69,10 @@ export const routes = [
   { path: "/dashboard/pending",         code: "nav.pending",              label: "Pending Items",      icon: ChecklistIcon,          roles: ["manager","admin","super_admin"],                       group: "Operate", system: "stock" },
   { path: "/uploaded-sheets",           code: "nav.uploaded_sheets",      label: "Uploaded XLS Sheets",icon: HistoryIcon,            roles: ["manager","admin","super_admin"],                       group: "Operate", system: "stock" },
   { path: "/admin/upload-approvals",    code: "nav.upload_approvals",     label: "Upload Approvals",   icon: AssignmentTurnedInIcon, roles: ["admin","super_admin"],                                 group: "Operate", system: "stock", showInNav: false },
-  { path: "/daily-counts",              code: "nav.daily_counts",         label: "Counted Stock Daily",icon: FactCheckIcon,          roles: ["manager","admin","super_admin"],                       group: "Operate", system: "stock" },
-  { path: "/count-review",              code: "nav.count_review",         label: "Count Review",       icon: FactCheckIcon,          roles: ["manager","admin","super_admin"],                       group: "Operate", system: "stock" },
-  { path: "/variance-reconciliation",   code: "nav.variance_reconciliation", label: "Variance Reconciliation", icon: ChecklistIcon,    roles: ["manager","admin","super_admin"],                       group: "Operate", system: "stock" },
+  { path: "/count-sessions",            code: "nav.count_sessions",       label: "Count Sessions",     icon: FactCheckIcon,          roles: ["manager","admin","super_admin"],                       group: "Operate", system: "stock" },
+  { path: "/daily-counts",              code: "nav.daily_counts",         label: "Counted Stock Daily",icon: FactCheckIcon,          roles: ["manager","admin","super_admin"],                       group: "Operate", system: "stock", showInNav: false },
+  { path: "/count-review",              code: "nav.count_review",         label: "Count Review",       icon: FactCheckIcon,          roles: ["manager","admin","super_admin"],                       group: "Operate", system: "stock", showInNav: false },
+  { path: "/variance-reconciliation",   code: "nav.variance_reconciliation", label: "Variance Reconciliation", icon: ChecklistIcon,    roles: ["manager","admin","super_admin"],                       group: "Operate", system: "stock", showInNav: false },
 
   // ------------------------- POS -------------------------
   // Labels intentionally drop the "POS — " prefix. The system-toggle in the

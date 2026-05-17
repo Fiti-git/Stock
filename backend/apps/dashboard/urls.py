@@ -4,7 +4,7 @@ from .views import (
     admin_summary, daily_counts, daily_upload_report, daily_upload_new_items,
     stock_variance_report, counted_items_report, mobile_devices_report,
     approve_count, reject_count, bulk_approve_counts,
-    list_count_sessions, close_count_session,
+    list_count_sessions, close_count_session, count_session_detail,
     list_variance_records, resolve_variance, bulk_resolve_variance,
     count_coverage_report, counter_performance,
 )
@@ -30,6 +30,7 @@ urlpatterns = [
     path("mobile-devices/", mobile_devices_report, name="mobile-devices"),
 
     path("count-sessions/", list_count_sessions, name="count-sessions"),
+    path("count-sessions/<int:session_id>/", count_session_detail, name="count-session-detail"),
     path("count-sessions/<int:session_id>/close/", close_count_session, name="close-count-session"),
 
     path("variance-records/", list_variance_records, name="variance-records"),

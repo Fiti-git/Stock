@@ -573,6 +573,10 @@ def daily_counts(request):
     if status_filter:
         qs = qs.filter(approval_status=status_filter)
 
+    session_id = request.query_params.get("session_id")
+    if session_id:
+        qs = qs.filter(session_id=session_id)
+
     try:
         page = max(1, int(request.query_params.get("page", 1)))
     except (ValueError, TypeError):
@@ -1521,6 +1525,48 @@ def list_count_sessions(request):
         })
 
     return Response({"count": len(results), "results": results})
+
+
+@api_view(["GET"])
+@permission_classes([IsManager])
+def count_session_detail(request, session_id):
+    """Return metadata + aggregated stats for a single CountSession."""
+    session = get_object_or_404(CountSession, pk=session_id)
+
+    outlet = _resolve_outlet(request)
+    if outlet and session.outlet_id != outlet.id and request.user.role not in (User.Role.ADMIN, User.Role.SUPER_ADMIN):
+        return Response({"detail": "Cross-outlet access denied."}, status=403)
+
+    count_stats = {"count_total": 0, "submitted_count": 0, "approved_count": 0, "rejected_count": 0}
+    for row in StockCount.objects.filter(session_id=session_id).values("approval_status").annotate(n=Count("id")):
+        count_stats["count_total"] += row["n"]
+        if row["approval_status"] == "submitted":
+            count_stats["submitted_count"] = row["n"]
+        elif row["approval_status"] == "approved":
+            count_stats["approved_count"] = row["n"]
+        elif row["approval_status"] == "rejected":
+            count_stats["rejected_count"] = row["n"]
+
+    var_stats = {"variance_total": 0, "variance_pending": 0}
+    for row in VarianceRecord.objects.filter(session_id=session_id).values("status").annotate(n=Count("id")):
+        var_stats["variance_total"] += row["n"]
+        if row["status"] in ("pending", "investigating"):
+            var_stats["variance_pending"] += row["n"]
+
+    return Response({
+        "id": session.id,
+        "outlet": session.outlet_id,
+        "outlet_name": session.outlet.outlet_name,
+        "count_date": str(session.count_date),
+        "status": session.status,
+        "started_by_username": session.started_by.username if session.started_by else None,
+        "started_at": session.started_at.isoformat(),
+        "closed_by_username": session.closed_by.username if session.closed_by else None,
+        "closed_at": session.closed_at.isoformat() if session.closed_at else None,
+        "note": session.note,
+        **count_stats,
+        **var_stats,
+    })
 
 
 @api_view(["POST"])

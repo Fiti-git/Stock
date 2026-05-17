@@ -45,6 +45,7 @@ PERMISSIONS = [
     ("nav.pending",               "Pending Items",           "Navigation · Review", "stock"),
     ("nav.uploaded_sheets",       "Uploaded XLS Sheets",     "Navigation · Review", "stock"),
     ("nav.upload_approvals",      "Upload Approvals",        "Navigation · Review", "stock"),
+    ("nav.count_sessions",        "Count Sessions",          "Navigation · Review", "stock"),
     ("nav.daily_counts",          "Counted Stock Daily",     "Navigation · Review", "stock"),
     ("nav.count_review",          "Count Review",            "Navigation · Review", "stock"),
     ("nav.variance_reconciliation", "Variance Reconciliation", "Navigation · Review", "stock"),
@@ -235,7 +236,8 @@ ROLE_DEFAULTS = {
         # Sidebar — everything except the super-admin-only page
         "nav.count", "nav.upload", "nav.upload_history",
         "nav.admin_dashboard", "nav.overview",
-        "nav.pending", "nav.uploaded_sheets", "nav.upload_approvals", "nav.daily_counts",
+        "nav.pending", "nav.uploaded_sheets", "nav.upload_approvals",
+        "nav.count_sessions", "nav.daily_counts",
         "nav.count_review", "nav.variance_reconciliation",
         "nav.shrinkage", "nav.item_pos_history",
         "nav.daily_upload_report", "nav.negative_pos", "nav.stock_variance",
@@ -292,7 +294,8 @@ ROLE_DEFAULTS = {
     "manager": [
         "nav.count", "nav.upload", "nav.upload_history",
         "nav.manager_dashboard", "nav.overview",
-        "nav.pending", "nav.uploaded_sheets", "nav.daily_counts",
+        "nav.pending", "nav.uploaded_sheets",
+        "nav.count_sessions", "nav.daily_counts",
         "nav.count_review", "nav.variance_reconciliation",
         "nav.shrinkage", "nav.item_pos_history", "nav.counter_performance",
         "nav.mobile_usage",

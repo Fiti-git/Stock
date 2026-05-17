@@ -29,7 +29,7 @@ export const submitCount = (itemId, actualQty, locationTag = "", isMonthEnd = fa
     ...(countDate ? { count_date: countDate } : {}),
   });
 
-export const getDailyCounts = ({ outletId, dateFrom, dateTo, search, approvalStatus, page = 1, pageSize = 20 } = {}) =>
+export const getDailyCounts = ({ outletId, dateFrom, dateTo, search, approvalStatus, sessionId, page = 1, pageSize = 20 } = {}) =>
   api.get("/dashboard/daily-counts/", {
     params: {
       ...(outletId ? { outlet: outletId } : {}),
@@ -37,6 +37,7 @@ export const getDailyCounts = ({ outletId, dateFrom, dateTo, search, approvalSta
       ...(dateTo ? { date_to: dateTo } : {}),
       ...(search ? { search } : {}),
       ...(approvalStatus ? { approval_status: approvalStatus } : {}),
+      ...(sessionId ? { session_id: sessionId } : {}),
       page,
       page_size: pageSize,
     },
@@ -51,6 +52,8 @@ export const bulkApproveCounts = (ids) =>
 
 export const listCountSessions = (params = {}) =>
   api.get("/dashboard/count-sessions/", { params });
+export const getCountSession = (sessionId) =>
+  api.get(`/dashboard/count-sessions/${sessionId}/`);
 export const closeCountSession = (sessionId) =>
   api.post(`/dashboard/count-sessions/${sessionId}/close/`);
 
