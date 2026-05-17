@@ -731,7 +731,7 @@ def counter_performance(request):
     return Response({
         "date_from": str(date_from),
         "date_to": str(date_to),
-        "outlet": outlet.name if outlet else None,
+        "outlet": outlet.outlet_name if outlet else None,
         "results": results,
     })
 
