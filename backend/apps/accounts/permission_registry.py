@@ -57,6 +57,7 @@ PERMISSIONS = [
     ("nav.counted_items_report",  "Counted vs Uncounted",    "Navigation · Reports", "stock"),
     ("nav.count_coverage",        "Count Coverage Report",   "Navigation · Reports", "stock"),
     ("nav.counter_performance",   "Counter Performance",     "Navigation · Reports", "stock"),
+    ("nav.mobile_usage",          "Mobile Usage Report",     "Navigation · Reports", "stock"),
 
     # Ecom (Phase 4) — orders, product enrichment, price lists.
     ("nav.ecom_orders",           "Ecom Orders",             "Navigation · Ecom", "ecom"),
@@ -239,6 +240,7 @@ ROLE_DEFAULTS = {
         "nav.shrinkage", "nav.item_pos_history",
         "nav.daily_upload_report", "nav.negative_pos", "nav.stock_variance",
         "nav.counted_items_report", "nav.count_coverage", "nav.counter_performance",
+        "nav.mobile_usage",
         # Ecom admin (Phase 4)
         "nav.ecom_orders", "nav.ecom_products", "nav.ecom_price_lists",
         "nav.catalog", "nav.product_master", "nav.barcode_master",
@@ -293,6 +295,7 @@ ROLE_DEFAULTS = {
         "nav.pending", "nav.uploaded_sheets", "nav.daily_counts",
         "nav.count_review", "nav.variance_reconciliation",
         "nav.shrinkage", "nav.item_pos_history", "nav.counter_performance",
+        "nav.mobile_usage",
         "nav.catalog", "nav.product_master", "nav.barcode_master",
         "nav.categories",
         "nav.master_products", "nav.master_mapping",

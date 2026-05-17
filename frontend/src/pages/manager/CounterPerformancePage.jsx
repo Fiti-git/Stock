@@ -12,6 +12,7 @@ import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { getCounterPerformance } from "../../api/dashboard";
 import { useOutlet } from "../../contexts/OutletContext";
+import Layout from "../../components/Layout";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const daysAgo = (n) => {
@@ -117,7 +118,8 @@ export default function CounterPerformancePage() {
   const mostActive = rows[0];
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 1200, mx: "auto" }}>
+    <Layout>
+    <Box sx={{ p: { xs: 0, md: 0 } }}>
       {/* Header */}
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 3 }} flexWrap="wrap" gap={2}>
         <Stack direction="row" alignItems="center" spacing={1.5}>
@@ -341,5 +343,6 @@ export default function CounterPerformancePage() {
         </TableContainer>
       )}
     </Box>
+    </Layout>
   );
 }

@@ -131,6 +131,7 @@ export const routes = [
   { path: "/admin/reports/count-coverage", code: "nav.count_coverage",    label: "Count Coverage",     icon: AssignmentTurnedInIcon, roles: ["admin","super_admin","manager"],              group: "Analyze", system: "stock" },
   { path: "/admin/reports/counted-items",  code: "nav.counted_items_report", label: "Counted vs Uncounted", icon: ChecklistIcon,      roles: ["admin","super_admin"],                        group: "Analyze", system: "stock" },
   { path: "/reports/counter-performance",  code: "nav.counter_performance",  label: "Counter Performance",  icon: LeaderboardIcon,    roles: ["manager","admin","super_admin"],              group: "Analyze", system: "stock" },
+  { path: "/reports/mobile-usage",         code: "nav.mobile_usage",          label: "Mobile Usage",          icon: PhoneAndroidIcon,   roles: ["manager","admin","super_admin"],              group: "Analyze", system: "stock" },
   { path: "/catalog",                   code: "nav.catalog",              label: "Product Catalog",    icon: Inventory2Icon,         roles: ["manager","admin","super_admin"],              group: "Analyze", system: "stock" },
 
   // Operations hub child reports — reachable by URL, hidden from sidebar (nested under /operations).
