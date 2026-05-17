@@ -21,6 +21,7 @@ from .models import PosSnapshot, UploadLog, AuditLog, UploadedSheet
 from .serializers import UploadLogSerializer, AuditLogSerializer
 from .approval_logic import decide_pos
 from .sheet_recorder import record_uploaded_sheet
+from .pipeline_registry import POS_COLUMNS
 
 logger = logging.getLogger(__name__)
 
@@ -251,7 +252,8 @@ def confirm_upload(request):
             business_date_to=None,
             uploaded_by=user,
             filename=file.name,
-            rows=parsed.rows,
+            row_count=len(parsed.rows),
+            columns=POS_COLUMNS,
             approval_status=UploadedSheet.ApprovalStatus.PENDING,
             approval_reason=decision.reason,
         )
@@ -1156,7 +1158,8 @@ def _process_upload(parsed, outlet, user, snapshot_date, overwrite, filename, ex
                 business_date_to=None,
                 uploaded_by=user,
                 filename=filename,
-                rows=parsed.rows,
+                row_count=len(parsed.rows),
+                columns=POS_COLUMNS,
                 approval_status=UploadedSheet.ApprovalStatus.AUTO,
             )
 

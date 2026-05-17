@@ -41,6 +41,7 @@ from utils.txn19_parser import parse_txn19_xls, validate_txn19_file
 from .models import AuditLog, UploadedSheet
 from .approval_logic import decide_range
 from .sheet_recorder import record_uploaded_sheet
+from .pipeline_registry import TXN19_COLUMNS
 
 
 @dataclass
@@ -264,7 +265,8 @@ def handle_confirm(request, cfg: TypeConfig) -> Response:
             business_date_to=parsed.date_to,
             uploaded_by=request.user,
             filename=file.name,
-            rows=parsed.rows,
+            row_count=len(parsed.rows),
+            columns=TXN19_COLUMNS,
             approval_status=UploadedSheet.ApprovalStatus.PENDING,
             approval_reason=decision.reason,
         )
@@ -292,7 +294,8 @@ def handle_confirm(request, cfg: TypeConfig) -> Response:
         business_date_to=parsed.date_to,
         uploaded_by=request.user,
         filename=file.name,
-        rows=parsed.rows,
+        row_count=len(parsed.rows),
+        columns=TXN19_COLUMNS,
         approval_status=UploadedSheet.ApprovalStatus.AUTO,
     )
     return Response({"status": "committed", "batch": batch_summary(batch)})

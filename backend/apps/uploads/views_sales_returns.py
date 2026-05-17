@@ -20,6 +20,7 @@ from utils.sales_returns_parser import parse_sales_returns_xls, validate_sales_r
 from .models import SalesReturnUploadBatch, SalesReturnLine, AuditLog, UploadedSheet
 from .approval_logic import decide_range
 from .sheet_recorder import record_uploaded_sheet
+from .pipeline_registry import SALES_RETURN_COLUMNS
 from .views_txn17 import (
     _paginate_params, _compute_gaps,
     DEFAULT_BATCH_PAGE_SIZE, DEFAULT_LINE_PAGE_SIZE,
@@ -247,7 +248,8 @@ def sales_returns_confirm(request):
             business_date_to=parsed.date_to,
             uploaded_by=request.user,
             filename=file.name,
-            rows=parsed.rows,
+            row_count=len(parsed.rows),
+            columns=SALES_RETURN_COLUMNS,
             approval_status=UploadedSheet.ApprovalStatus.PENDING,
             approval_reason=decision.reason,
         )
@@ -267,7 +269,8 @@ def sales_returns_confirm(request):
         business_date_to=parsed.date_to,
         uploaded_by=request.user,
         filename=file.name,
-        rows=parsed.rows,
+        row_count=len(parsed.rows),
+        columns=SALES_RETURN_COLUMNS,
         approval_status=UploadedSheet.ApprovalStatus.AUTO,
     )
     return Response({"status": "committed", "batch": _batch_summary(batch)})

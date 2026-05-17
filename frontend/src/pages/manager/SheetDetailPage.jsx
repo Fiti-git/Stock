@@ -36,32 +36,41 @@ export default function SheetDetailPage() {
   const navigate = useNavigate();
   const [sheet, setSheet] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [pageLoading, setPageLoading] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    setLoading(true);
-    getUploadedSheetDetail(id)
+    if (!sheet) {
+      setLoading(true);
+    } else {
+      setPageLoading(true);
+    }
+    getUploadedSheetDetail(id, { page, page_size: PAGE_SIZE })
       .then((r) => setSheet(r.data))
       .catch(() => setError("Sheet not found or access denied."))
-      .finally(() => setLoading(false));
-  }, [id]);
+      .finally(() => { setLoading(false); setPageLoading(false); });
+  }, [id, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const meta = sheet ? (PIPELINE_META[sheet.pipeline] || { label: sheet.pipeline_label || sheet.pipeline, color: "#64748b" }) : null;
-  const statusChip = sheet ? (STATUS_CHIP[sheet.approval_status] || { label: sheet.approval_status, color: "default" }) : null;
+  const meta = sheet
+    ? (PIPELINE_META[sheet.pipeline] || { label: sheet.pipeline_label || sheet.pipeline, color: "#64748b" })
+    : null;
+  const statusChip = sheet
+    ? (STATUS_CHIP[sheet.approval_status] || { label: sheet.approval_status, color: "default" })
+    : null;
 
   const columns = sheet?.columns || [];
-  const allRows = sheet?.rows || [];
+  const pageRows = sheet?.rows || [];
 
-  const filtered = search
-    ? allRows.filter((r) =>
+  const visibleRows = search
+    ? pageRows.filter((r) =>
         columns.some((c) => String(r[c] ?? "").toLowerCase().includes(search.toLowerCase()))
       )
-    : allRows;
+    : pageRows;
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const visibleRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = sheet?.total_pages ?? 1;
+  const totalCount = sheet?.count ?? 0;
 
   return (
     <Layout>
@@ -135,7 +144,7 @@ export default function SheetDetailPage() {
 
                 <Stack direction="row" spacing={4} flexWrap="wrap">
                   {[
-                    { label: "Rows", value: sheet.row_count?.toLocaleString() },
+                    { label: "Rows", value: totalCount.toLocaleString() },
                     { label: "Uploaded by", value: sheet.uploaded_by || "—" },
                     {
                       label: "Uploaded at",
@@ -188,9 +197,9 @@ export default function SheetDetailPage() {
             >
               <TextField
                 size="small"
-                placeholder="Search rows…"
+                placeholder="Search current page…"
                 value={search}
-                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                onChange={(e) => setSearch(e.target.value)}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -209,8 +218,7 @@ export default function SheetDetailPage() {
                 }}
               />
               <Typography sx={{ fontSize: "0.78rem", color: "rgba(15,23,42,0.45)" }}>
-                {filtered.length.toLocaleString()} row{filtered.length !== 1 ? "s" : ""}
-                {search ? ` of ${allRows.length.toLocaleString()}` : ""}
+                {totalCount.toLocaleString()} total row{totalCount !== 1 ? "s" : ""}
                 {totalPages > 1 && ` · page ${page} / ${totalPages}`}
               </Typography>
             </Box>
@@ -223,64 +231,77 @@ export default function SheetDetailPage() {
               </Box>
             ) : (
               <>
-                <TableContainer sx={{ maxHeight: "60vh" }}>
-                  <Table size="small" stickyHeader>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell
-                          sx={{
-                            fontWeight: 700, bgcolor: "#f8fafc",
-                            color: "rgba(15,23,42,0.5)", fontSize: "0.73rem",
-                            py: 1.25, borderBottom: "1px solid rgba(15,23,42,0.1)",
-                          }}
-                        >
-                          #
-                        </TableCell>
-                        {columns.map((c) => (
+                <Box sx={{ position: "relative" }}>
+                  {pageLoading && (
+                    <Box
+                      sx={{
+                        position: "absolute", inset: 0, zIndex: 2,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        bgcolor: "rgba(255,255,255,0.7)",
+                      }}
+                    >
+                      <CircularProgress size={32} sx={{ color: "#6366f1" }} />
+                    </Box>
+                  )}
+                  <TableContainer sx={{ maxHeight: "60vh" }}>
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow>
                           <TableCell
-                            key={c}
                             sx={{
                               fontWeight: 700, bgcolor: "#f8fafc",
                               color: "rgba(15,23,42,0.5)", fontSize: "0.73rem",
-                              whiteSpace: "nowrap", py: 1.25,
-                              borderBottom: "1px solid rgba(15,23,42,0.1)",
+                              py: 1.25, borderBottom: "1px solid rgba(15,23,42,0.1)",
                             }}
                           >
-                            {c}
+                            #
                           </TableCell>
-                        ))}
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {visibleRows.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={columns.length + 1} align="center" sx={{ py: 4, color: "rgba(15,23,42,0.4)" }}>
-                            No rows match your search.
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        visibleRows.map((r, idx) => (
-                          <TableRow
-                            key={idx}
-                            sx={{
-                              "&:last-child td": { border: 0 },
-                              "&:hover": { bgcolor: "#f8fafc" },
-                            }}
-                          >
-                            <TableCell sx={{ color: "rgba(15,23,42,0.3)", fontSize: "0.73rem", py: 1 }}>
-                              {(page - 1) * PAGE_SIZE + idx + 1}
+                          {columns.map((c) => (
+                            <TableCell
+                              key={c}
+                              sx={{
+                                fontWeight: 700, bgcolor: "#f8fafc",
+                                color: "rgba(15,23,42,0.5)", fontSize: "0.73rem",
+                                whiteSpace: "nowrap", py: 1.25,
+                                borderBottom: "1px solid rgba(15,23,42,0.1)",
+                              }}
+                            >
+                              {c}
                             </TableCell>
-                            {columns.map((c) => (
-                              <TableCell key={c} sx={{ whiteSpace: "nowrap", fontSize: "0.82rem", py: 1 }}>
-                                {r[c] === null || r[c] === undefined ? "" : String(r[c])}
-                              </TableCell>
-                            ))}
+                          ))}
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {visibleRows.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={columns.length + 1} align="center" sx={{ py: 4, color: "rgba(15,23,42,0.4)" }}>
+                              {search ? "No rows match your search on this page." : "No rows on this page."}
+                            </TableCell>
                           </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
+                        ) : (
+                          visibleRows.map((r, idx) => (
+                            <TableRow
+                              key={idx}
+                              sx={{
+                                "&:last-child td": { border: 0 },
+                                "&:hover": { bgcolor: "#f8fafc" },
+                              }}
+                            >
+                              <TableCell sx={{ color: "rgba(15,23,42,0.3)", fontSize: "0.73rem", py: 1 }}>
+                                {(page - 1) * PAGE_SIZE + idx + 1}
+                              </TableCell>
+                              {columns.map((c) => (
+                                <TableCell key={c} sx={{ whiteSpace: "nowrap", fontSize: "0.82rem", py: 1 }}>
+                                  {r[c] === null || r[c] === undefined ? "" : String(r[c])}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
 
                 {totalPages > 1 && (
                   <Box
@@ -292,7 +313,7 @@ export default function SheetDetailPage() {
                     <Pagination
                       count={totalPages}
                       page={page}
-                      onChange={(_, p) => { setPage(p); }}
+                      onChange={(_, p) => { setSearch(""); setPage(p); }}
                       size="small"
                     />
                   </Box>

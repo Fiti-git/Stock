@@ -1,37 +1,16 @@
 """
-Writes a UploadedSheet snapshot of every XLS confirm-call so the unified
-Uploaded-Sheets page can render the exact rows the manager uploaded.
+Writes a UploadedSheet metadata record on every XLS confirm-call so the unified
+Uploaded-Sheets page can list and inspect uploads across all pipelines.
 
-We derive rows from the parsed dataclass output (every column the parser
-captured) — no need to re-read the file.
+Row data is no longer stored here — the detail endpoint queries the pipeline's
+own line table (pipeline_registry.py) instead. This eliminates the ~500KB-per-
+upload JSON blob that was causing DB bloat.
 """
 
-from dataclasses import asdict, is_dataclass
-from datetime import date as _date, datetime, time as _time
-from decimal import Decimal
-from typing import Iterable, Optional
+from datetime import date as _date
+from typing import Optional
 
 from .models import UploadedSheet
-
-
-def _json_safe(v):
-    if v is None or isinstance(v, (str, int, float, bool)):
-        return v
-    if isinstance(v, Decimal):
-        return float(v)
-    if isinstance(v, (_date, datetime, _time)):
-        return v.isoformat()
-    return str(v)
-
-
-def _row_to_dict(row) -> dict:
-    if isinstance(row, dict):
-        d = row
-    elif is_dataclass(row):
-        d = asdict(row)
-    else:
-        d = {k: getattr(row, k) for k in dir(row) if not k.startswith("_") and not callable(getattr(row, k))}
-    return {k: _json_safe(v) for k, v in d.items()}
 
 
 def record_uploaded_sheet(
@@ -43,12 +22,11 @@ def record_uploaded_sheet(
     business_date_to: Optional[_date],
     uploaded_by,
     filename: str,
-    rows: Iterable,
+    row_count: int,
+    columns: list,
     approval_status: str,
     approval_reason: str = "",
 ) -> UploadedSheet:
-    raw_rows = [_row_to_dict(r) for r in rows]
-    columns = list(raw_rows[0].keys()) if raw_rows else []
     return UploadedSheet.objects.create(
         pipeline=pipeline,
         batch_id=batch_id,
@@ -57,9 +35,9 @@ def record_uploaded_sheet(
         business_date_to=business_date_to,
         uploaded_by=uploaded_by,
         filename=(filename or "")[:255],
-        row_count=len(raw_rows),
+        row_count=row_count,
         approval_status=approval_status,
         approval_reason=approval_reason,
         columns=columns,
-        rows=raw_rows,
+        # rows intentionally not set — DB field stays for legacy records
     )
