@@ -107,3 +107,12 @@ export const getCountedItemsReport = ({ outletId, fromDate, toDate } = {}) =>
       ...(toDate ? { to_date: toDate } : {}),
     },
   });
+
+export const getCounterPerformance = ({ outletId, dateFrom, dateTo } = {}) =>
+  api.get("/dashboard/counter-performance/", {
+    params: {
+      ...(outletId ? { outlet: outletId } : {}),
+      ...(dateFrom ? { date_from: dateFrom } : {}),
+      ...(dateTo ? { date_to: dateTo } : {}),
+    },
+  });

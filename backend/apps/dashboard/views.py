@@ -677,6 +677,66 @@ def daily_counts(request):
 
 
 @api_view(["GET"])
+@permission_classes([IsManager])
+def counter_performance(request):
+    """Per-user count performance metrics aggregated from StockCount."""
+    outlet = _resolve_outlet(request)
+    if not outlet:
+        return Response({"detail": "No outlet."}, status=400)
+
+    date_from = _parse_date(request.query_params.get("date_from"), date.today() - timedelta(days=30))
+    date_to = _parse_date(request.query_params.get("date_to"), date.today())
+    if date_to < date_from:
+        date_from, date_to = date_to, date_from
+
+    qs = StockCount.objects.filter(
+        outlet=outlet,
+        count_date__gte=date_from,
+        count_date__lte=date_to,
+        counted_by__isnull=False,
+    )
+
+    stats = (
+        qs.values("counted_by_id", "counted_by__username")
+        .annotate(
+            total_counts=Count("id"),
+            approved_counts=Count("id", filter=Q(approval_status=StockCount.ApprovalStatus.APPROVED)),
+            rejected_counts=Count("id", filter=Q(approval_status=StockCount.ApprovalStatus.REJECTED)),
+            active_days=Count("count_date", distinct=True),
+            last_active=Max("count_date"),
+        )
+        .order_by("-total_counts")
+    )
+
+    results = []
+    for row in stats:
+        total = row["total_counts"]
+        approved = row["approved_counts"]
+        rejected = row["rejected_counts"]
+        days = row["active_days"]
+        results.append({
+            "user_id": row["counted_by_id"],
+            "username": row["counted_by__username"] or "Unknown",
+            "total_counts": total,
+            "approved_counts": approved,
+            "rejected_counts": rejected,
+            "pending_counts": total - approved - rejected,
+            "approval_rate": round(approved / total * 100, 1) if total else 0,
+            "rejection_rate": round(rejected / total * 100, 1) if total else 0,
+            "active_days": days,
+            "avg_per_day": round(total / days, 1) if days else 0,
+            "last_active": str(row["last_active"]) if row["last_active"] else None,
+        })
+
+    return Response({
+        "date_from": str(date_from),
+        "date_to": str(date_to),
+        "outlet": outlet.name if outlet else None,
+        "results": results,
+    })
+
+
+@api_view(["GET"])
 @permission_classes([IsAdmin])
 def daily_upload_report(request):
     """Per-outlet-per-date aggregation of daily uploads."""

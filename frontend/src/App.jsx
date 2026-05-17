@@ -31,6 +31,7 @@ const AdminDashboardPage = lazy(() => import("./pages/admin/AdminDashboardPage")
 const ProductMasterPage = lazy(() => import("./pages/manager/ProductMasterPage"));
 const CountedStockDailyPage = lazy(() => import("./pages/manager/CountedStockDailyPage"));
 const CountReviewPage = lazy(() => import("./pages/manager/CountReviewPage"));
+const CounterPerformancePage = lazy(() => import("./pages/manager/CounterPerformancePage"));
 const VarianceReconciliationPage = lazy(() => import("./pages/manager/VarianceReconciliationPage"));
 const BarcodeMasterPage = lazy(() => import("./pages/admin/BarcodeMasterPage"));
 const ProductHistoryPage = lazy(() => import("./pages/admin/ProductHistoryPage"));
@@ -248,6 +249,7 @@ export default function App() {
                     <Route path="/product-master" element={<PermissionRoute code="nav.product_master"><ProductMasterPage /></PermissionRoute>} />
                     <Route path="/daily-counts" element={<PermissionRoute code="nav.daily_counts"><CountedStockDailyPage /></PermissionRoute>} />
                     <Route path="/count-review" element={<PermissionRoute code="nav.count_review"><CountReviewPage /></PermissionRoute>} />
+                    <Route path="/reports/counter-performance" element={<PermissionRoute code="nav.counter_performance"><CounterPerformancePage /></PermissionRoute>} />
                     <Route path="/variance-reconciliation" element={<PermissionRoute code="nav.variance_reconciliation"><VarianceReconciliationPage /></PermissionRoute>} />
                     <Route path="/pos" element={<PermissionRoute code="nav.pos_terminal"><PosTerminalPage /></PermissionRoute>} />
                     <Route path="/pos/shifts" element={<PermissionRoute code="nav.pos_shifts"><PosShiftsPage /></PermissionRoute>} />

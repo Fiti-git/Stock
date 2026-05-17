@@ -6,7 +6,7 @@ from .views import (
     approve_count, reject_count, bulk_approve_counts,
     list_count_sessions, close_count_session,
     list_variance_records, resolve_variance, bulk_resolve_variance,
-    count_coverage_report,
+    count_coverage_report, counter_performance,
 )
 
 urlpatterns = [
@@ -26,6 +26,7 @@ urlpatterns = [
     path("stock-variance-report/", stock_variance_report, name="stock-variance-report"),
     path("count-coverage-report/", count_coverage_report, name="count-coverage-report"),
     path("counted-items-report/", counted_items_report, name="counted-items-report"),
+    path("counter-performance/", counter_performance, name="counter-performance"),
     path("mobile-devices/", mobile_devices_report, name="mobile-devices"),
 
     path("count-sessions/", list_count_sessions, name="count-sessions"),
