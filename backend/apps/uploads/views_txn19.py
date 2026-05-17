@@ -243,6 +243,28 @@ def handle_confirm(request, cfg: TypeConfig) -> Response:
     except ValueError:
         return Response({"detail": "Invalid date format."}, status=status.HTTP_400_BAD_REQUEST)
 
+    replace_overlapping = str(request.data.get("replace_overlapping", "")).lower() == "true"
+    overlapping = list(find_overlapping_batches(cfg, outlet, parsed.date_from, parsed.date_to))
+    if overlapping and not replace_overlapping:
+        return Response(
+            {
+                "detail": "Overlapping batches exist. Set replace_overlapping=true to replace them.",
+                "overlapping_batches": [batch_summary(b) for b in overlapping],
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    if overlapping and replace_overlapping:
+        from .models import UploadedSheet as _UploadedSheet
+        with transaction.atomic():
+            for old_batch in overlapping:
+                cfg.line_model.objects.filter(batch=old_batch).delete()
+                _UploadedSheet.objects.filter(
+                    pipeline=cfg.type_code, batch_id=old_batch.id
+                ).delete()
+                old_batch.status = cfg.batch_model.Status.DELETED
+                old_batch.save(update_fields=["status"])
+
     decision = decide_range(request.user, outlet, parsed.date_from, parsed.date_to, cfg.batch_model)
     if decision.needs_approval:
         batch = cfg.batch_model.objects.create(

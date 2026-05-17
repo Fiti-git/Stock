@@ -21,12 +21,13 @@ export function makeTxnApi(typePath) {
     return api.post(`${base}/validate/`, form, { headers: { "Content-Type": "multipart/form-data" } });
   };
 
-  const confirm = (file, { outletId, dateFrom, dateTo } = {}) => {
+  const confirm = (file, { outletId, dateFrom, dateTo, replaceOverlapping } = {}) => {
     const form = new FormData();
     form.append("file", file);
     if (outletId) form.append("outlet_id", outletId);
     if (dateFrom) form.append("date_from", dateFrom);
     if (dateTo) form.append("date_to", dateTo);
+    if (replaceOverlapping) form.append("replace_overlapping", "true");
     return api.post(`${base}/confirm/`, form, { headers: { "Content-Type": "multipart/form-data" } });
   };
 

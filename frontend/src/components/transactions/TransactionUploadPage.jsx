@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import {
   Card, CardContent, Typography, Stack, TextField, MenuItem, Button,
   Alert, Box, Grid, CircularProgress, Chip,
+  Dialog, DialogTitle, DialogContent, DialogActions,
 } from "@mui/material";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
@@ -51,6 +52,7 @@ export default function TransactionUploadPage({ config, embedded = false, prefil
   const [error, setError] = useState("");
   const [dateFromOverride, setDateFromOverride] = useState(prefillDateFrom);
   const [dateToOverride, setDateToOverride] = useState(prefillDateTo);
+  const [overlappingBatches, setOverlappingBatches] = useState(null); // 409 replace dialog
   const inputRef = useRef();
 
   useEffect(() => {
@@ -94,7 +96,7 @@ export default function TransactionUploadPage({ config, embedded = false, prefil
     }
   }
 
-  async function handleConfirm() {
+  async function runConfirm(replaceOverlapping = false) {
     setStep(STEPS.UPLOADING);
     setError("");
     try {
@@ -102,24 +104,24 @@ export default function TransactionUploadPage({ config, embedded = false, prefil
         outletId: isAdmin ? selectedOutlet?.id : null,
         dateFrom: dateFromOverride || undefined,
         dateTo: dateToOverride || undefined,
+        replaceOverlapping: replaceOverlapping || undefined,
       });
       setResult(data);
       setStep(STEPS.DONE);
     } catch (err) {
       const body = err.response?.data || {};
       if (err.response?.status === 409 && body.overlapping_batches) {
-        const names = body.overlapping_batches
-          .map((b) => `#${b.id} ${b.date_from}..${b.date_to}`)
-          .join(", ");
-        setError(
-          `Existing ${label.toLowerCase()} batch(es) overlap this range (${names}). Delete them from the history page first, then re-upload.`
-        );
+        setOverlappingBatches(body.overlapping_batches);
+        setStep(STEPS.PREVIEW);
       } else {
         setError(body.detail || "Upload failed.");
+        setStep(STEPS.PREVIEW);
       }
-      setStep(STEPS.PREVIEW);
     }
   }
+
+  const handleConfirm = () => runConfirm(false);
+  const handleReplaceConfirm = () => { setOverlappingBatches(null); runConfirm(true); };
 
   const reset = () => {
     setStep(STEPS.OUTLET);
@@ -129,6 +131,7 @@ export default function TransactionUploadPage({ config, embedded = false, prefil
     setError("");
     setDateFromOverride("");
     setDateToOverride("");
+    setOverlappingBatches(null);
     if (inputRef.current) inputRef.current.value = "";
     setSelectedOutlet(isAdmin ? null : { id: user?.outlet_id, name: user?.outlet_name });
   };
@@ -392,5 +395,33 @@ export default function TransactionUploadPage({ config, embedded = false, prefil
     </>
   );
 
-  return embedded ? body : <Layout>{body}</Layout>;
+  const replaceDialog = (
+    <Dialog open={!!overlappingBatches} onClose={() => setOverlappingBatches(null)} maxWidth="sm" fullWidth>
+      <DialogTitle>Replace Existing Upload?</DialogTitle>
+      <DialogContent>
+        <Typography sx={{ mb: 1.5, fontSize: "0.9rem", color: "rgba(15,23,42,0.7)" }}>
+          The following {(overlappingBatches || []).length > 1 ? "batches overlap" : "batch overlaps"} the
+          date range you are uploading. Replacing will permanently delete the existing data before
+          committing the new upload.
+        </Typography>
+        {(overlappingBatches || []).map((b) => (
+          <Box key={b.id} sx={{ display: "flex", gap: 1, alignItems: "center", mb: 0.5 }}>
+            <Chip size="small" label={`#${b.id}`} variant="outlined" />
+            <Typography sx={{ fontSize: "0.82rem" }}>
+              {b.date_from} – {b.date_to} &nbsp;·&nbsp; {b.total_rows?.toLocaleString()} rows
+            </Typography>
+          </Box>
+        ))}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setOverlappingBatches(null)} sx={{ textTransform: "none" }}>Cancel</Button>
+        <Button onClick={handleReplaceConfirm} color="error" variant="contained" sx={{ textTransform: "none" }}>
+          Replace &amp; Upload
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+
+  if (embedded) return <>{body}{replaceDialog}</>;
+  return <Layout>{body}{replaceDialog}</Layout>;
 }
