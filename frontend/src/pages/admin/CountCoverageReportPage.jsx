@@ -10,6 +10,7 @@ import Layout from "../../components/Layout";
 import { PageHeader, DataTable, EmptyState } from "../../components/ui";
 import { getOutlets } from "../../api/outlets";
 import { getCountCoverageReport } from "../../api/dashboard";
+import { useAuth } from "../../contexts/AuthContext";
 
 const fmtQty = (v) => v == null ? "—" : Number(v).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 3 });
 const fmtMoney = (v) => v == null ? "—" : Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -55,8 +56,10 @@ function LocationsDialog({ row, onClose }) {
 }
 
 export default function CountCoverageReportPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   const [outlets, setOutlets] = useState([]);
-  const [outletId, setOutletId] = useState("");
+  const [outletId, setOutletId] = useState(isAdmin ? "" : (user?.outlet_id || ""));
   const [dateFrom, setDateFrom] = useState(isoDaysAgo(7));
   const [dateTo, setDateTo] = useState(isoToday());
   const [rows, setRows] = useState([]);
@@ -66,8 +69,9 @@ export default function CountCoverageReportPage() {
   const [locRow, setLocRow] = useState(null);
 
   useEffect(() => {
+    if (!isAdmin) return;
     getOutlets().then(({ data }) => setOutlets(Array.isArray(data) ? data : []));
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
     if (!outletId) { setRows([]); setTotals(null); return; }
@@ -140,21 +144,28 @@ export default function CountCoverageReportPage() {
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
             />
-            <TextField
-              size="small" select label="Outlet" value={outletId}
-              onChange={(e) => setOutletId(e.target.value)}
-              sx={{ minWidth: 200 }}
-            >
-              <MenuItem value="">Select outlet…</MenuItem>
-              {outlets.map((o) => (
-                <MenuItem key={o.id} value={o.id}>{o.outlet_name}</MenuItem>
-              ))}
-            </TextField>
+            {isAdmin ? (
+              <TextField
+                size="small" select label="Outlet" value={outletId}
+                onChange={(e) => setOutletId(e.target.value)}
+                sx={{ minWidth: 200 }}
+              >
+                <MenuItem value="">Select outlet…</MenuItem>
+                {outlets.map((o) => (
+                  <MenuItem key={o.id} value={o.id}>{o.outlet_name}</MenuItem>
+                ))}
+              </TextField>
+            ) : (
+              <Chip
+                color="primary" variant="outlined"
+                label={user?.outlet_name || "Your outlet"}
+              />
+            )}
           </Stack>
         }
       />
 
-      {!outletId && (
+      {!outletId && isAdmin && (
         <Alert severity="info" sx={{ mb: 2 }}>Select an outlet to view the coverage report.</Alert>
       )}
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}

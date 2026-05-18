@@ -234,8 +234,8 @@ export default function UploadPage() {
                 </Alert>
               )}
               {validation.duplicate && !validation.needs_approval && (
-                <Alert severity={isAdmin ? "warning" : "error"} sx={{ mb: 2 }}>
-                  {isAdmin ? "A successful upload already exists for this date. As admin, you can override." : "An upload already exists for today. Only an admin can override."}
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  An upload already exists for this date. Importing again will add a new snapshot — the report uses the latest one in effect at each count time.
                 </Alert>
               )}
 
@@ -263,13 +263,13 @@ export default function UploadPage() {
 
             <Stack direction="row" spacing={1}>
               <Button fullWidth variant="outlined" onClick={() => { setValidation(null); setStep(STEPS.FILE_PREVIEW); }}>← Back</Button>
-              {validation.valid && !(validation.duplicate && !validation.needs_approval && !isAdmin) && (
+              {validation.valid && (
                 <Button
                   fullWidth variant="contained"
                   disabled={Boolean(validation.outlet_mismatch) && !overrideMismatch}
                   onClick={() => handleConfirm(validation.duplicate && !validation.needs_approval)}
                 >
-                  {validation.needs_approval ? "Submit for Approval" : validation.duplicate ? "Override & Import" : "Confirm Import"}
+                  {validation.needs_approval ? "Submit for Approval" : validation.duplicate ? "Add Another Snapshot" : "Confirm Import"}
                 </Button>
               )}
             </Stack>

@@ -1105,6 +1105,13 @@ def count_coverage_report(request):
     if not outlet_id:
         return Response({"detail": "outlet is required."}, status=400)
 
+    # Non-admin users are scoped to their own outlet — silently override any
+    # outlet id they pass so the dropdown can't be used to peek at siblings.
+    if request.user.role not in ("admin", "super_admin"):
+        if not request.user.outlet_id:
+            return Response({"detail": "User has no outlet assigned."}, status=400)
+        outlet_id = str(request.user.outlet_id)
+
     today = date.today()
     date_from = _parse_date(request.query_params.get("date_from"), today - timedelta(days=7))
     date_to = _parse_date(request.query_params.get("date_to"), today)
