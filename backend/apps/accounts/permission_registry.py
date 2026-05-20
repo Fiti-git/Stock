@@ -108,16 +108,6 @@ PERMISSIONS = [
     ("sales_returns.delete_batch","Delete sales-returns batch",        "Actions · Transactions", "stock"),
     ("suppliers.manage",          "Create / edit / delete suppliers",  "Actions · Suppliers", "both"),
     ("categories.manage",         "Create / edit / delete categories", "Actions · Items", "stock"),
-
-    # --- Transfers (inter-outlet) ---
-    ("nav.transfers",             "Transfers",                         "Navigation · Transfers", "stock"),
-    ("nav.transfers_request",     "Transfers — Request",                "Navigation · Transfers", "stock"),
-    ("nav.transfers_dispatch",    "Transfers — Dispatch",               "Navigation · Transfers", "stock"),
-    ("nav.transfers_receive",     "Transfers — Receive",                "Navigation · Transfers", "stock"),
-    ("transfers.request",         "Create / request transfer",          "Actions · Transfers", "stock"),
-    ("transfers.dispatch",        "Dispatch transfer (source manager)", "Actions · Transfers", "stock"),
-    ("transfers.receive",         "Receive transfer (dest manager)",    "Actions · Transfers", "stock"),
-    ("transfers.close",           "Close / cancel transfer",            "Actions · Transfers", "stock"),
 ]
 
 
@@ -206,14 +196,13 @@ ROLE_DEFAULTS = {
         "nav.master_products", "nav.master_mapping",
         "nav.demand_dashboard", "nav.purchase_plans",
         "nav.stock_age",
-        # Transfers
-        "nav.transfers", "nav.transfers_request", "nav.transfers_dispatch", "nav.transfers_receive",
-        "transfers.request", "transfers.dispatch", "transfers.receive", "transfers.close",
     ],
 
     "manager": [
         "nav.count", "nav.upload", "nav.upload_history",
-        "nav.manager_dashboard", "nav.overview",
+        "nav.manager_dashboard",
+        # nav.overview removed — managers only see their own outlet, so a
+        # cross-outlet status board is noise for them. Admins still get it.
         "nav.pending", "nav.uploaded_sheets",
         "nav.count_sessions",
         "nav.count_review", "nav.variance_reconciliation",
@@ -237,9 +226,6 @@ ROLE_DEFAULTS = {
         "damage.delete_batch", "office.delete_batch", "verification.delete_batch",
         "grn.delete_batch", "rts.delete_batch",
         "sales.delete_batch", "sales_returns.delete_batch",
-        # Transfers
-        "nav.transfers", "nav.transfers_request", "nav.transfers_dispatch", "nav.transfers_receive",
-        "transfers.request", "transfers.dispatch", "transfers.receive", "transfers.close",
     ],
 
     "store_user": [
@@ -255,9 +241,6 @@ ROLE_DEFAULTS = {
         "nav.sales_upload",
         "nav.sales_returns_upload",
         "items.bulk_upload",
-        # Transfers — store users may submit requests for their outlet
-        "nav.transfers", "nav.transfers_request",
-        "transfers.request",
     ],
 
     "staff": [

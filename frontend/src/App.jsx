@@ -60,10 +60,6 @@ const DemandDashboardPage = lazy(() => import("./pages/admin/DemandDashboardPage
 const PurchasePlansPage = lazy(() => import("./pages/admin/PurchasePlansPage"));
 const PurchasePlanDetailPage = lazy(() => import("./pages/admin/PurchasePlanDetailPage"));
 const StockAgePage = lazy(() => import("./pages/admin/StockAgePage"));
-const TransferRequestPage = lazy(() => import("./pages/transfers/TransferRequestPage"));
-const TransferDispatchPage = lazy(() => import("./pages/transfers/TransferDispatchPage"));
-const TransferReceivePage = lazy(() => import("./pages/transfers/TransferReceivePage"));
-const TransferDetailPage = lazy(() => import("./pages/transfers/TransferDetailPage"));
 const LicenseSetupRequired = lazy(() => import("./pages/LicenseSetupRequired"));
 const LicenseConfiguration = lazy(() => import("./pages/admin/LicenseConfiguration"));
 const DbManagement = lazy(() => import("./pages/DbManagement"));
@@ -196,13 +192,11 @@ export default function App() {
                     <Route path="/reports/counter-performance" element={<PermissionRoute code="nav.counter_performance"><CounterPerformancePage /></PermissionRoute>} />
                     <Route path="/reports/mobile-usage" element={<Navigate to="/admin/mobile-devices" replace />} />
                     <Route path="/variance-reconciliation" element={<PermissionRoute code="nav.variance_reconciliation"><VarianceReconciliationPage /></PermissionRoute>} />
-                    <Route path="/transfers/request" element={<PermissionRoute code="nav.transfers_request"><TransferRequestPage /></PermissionRoute>} />
-                    <Route path="/transfers/dispatch" element={<PermissionRoute code="nav.transfers_dispatch"><TransferDispatchPage /></PermissionRoute>} />
-                    <Route path="/transfers/receive" element={<PermissionRoute code="nav.transfers_receive"><TransferReceivePage /></PermissionRoute>} />
-                    <Route path="/transfers/:id" element={<PermissionRoute code="nav.transfers"><TransferDetailPage /></PermissionRoute>} />
 
                     {/* Legacy super-admin operations routes — kept the sub-reports off. */}
                     <Route path="/operations/*" element={<Navigate to="/admin/dashboard" replace />} />
+                    {/* Legacy transfer routes — Transfers app removed 2026-05-20. */}
+                    <Route path="/transfers/*" element={<Navigate to="/admin/dashboard" replace />} />
                   </Routes>
                 </Suspense>
               </BrowserRouter>

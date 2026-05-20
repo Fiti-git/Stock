@@ -66,12 +66,6 @@ export const routes = [
   { path: "/transactions/sales/upload",          code: "nav.sales_upload",          label: "Sales — Upload",            icon: ReceiptLongIcon,       roles: ["store_user","staff","manager","admin","super_admin"], group: "Operate", system: "stock", showInNav: false },
   { path: "/transactions/sales_returns/upload",  code: "nav.sales_returns_upload",  label: "Sales Returns — Upload",    icon: ReceiptLongIcon,       roles: ["store_user","staff","manager","admin","super_admin"], group: "Operate", system: "stock", showInNav: false },
 
-  // ------------------------- TRANSFERS -------------------------
-  { path: "/transfers/request",  code: "nav.transfers_request",  label: "Request Transfer",  icon: MoveToInboxIcon,    roles: ["store_user","staff","manager","admin","super_admin"], group: "Transfers", system: "stock" },
-  { path: "/transfers/dispatch", code: "nav.transfers_dispatch", label: "Dispatch Outgoing", icon: LocalShippingIcon,  roles: ["manager","admin","super_admin"],                       group: "Transfers", system: "stock" },
-  { path: "/transfers/receive",  code: "nav.transfers_receive",  label: "Receive Incoming",  icon: AssignmentTurnedInIcon, roles: ["manager","admin","super_admin"],                  group: "Transfers", system: "stock" },
-  { path: "/transfers/:id",      code: "nav.transfers",          label: "Transfer Detail",   icon: ReceiptLongIcon,    roles: ["store_user","staff","manager","admin","super_admin"], group: "Transfers", system: "stock", showInNav: false },
-
   // ------------------------- ANALYZE -------------------------
   { path: "/admin/dashboard",           code: "nav.admin_dashboard",      label: "Admin Dashboard",    icon: DashboardIcon,          roles: ["admin","super_admin"],                        group: "Analyze", system: "stock" },
   { path: "/dashboard",                 code: "nav.manager_dashboard",    label: "Dashboard",          icon: DashboardIcon,          roles: ["manager"],                                     group: "Analyze", system: "stock" },
@@ -202,7 +196,7 @@ export function findRoute(pathname) {
   });
 }
 
-export const GROUP_ORDER = ["Operate", "Transfers", "Analyze", "Snapshot Reports", "Organize", "Configure"];
+export const GROUP_ORDER = ["Operate", "Analyze", "Snapshot Reports", "Organize", "Configure"];
 
-// Groups that start expanded. Snapshot Reports collapsed by default (many entries).
-export const DEFAULT_EXPANDED_GROUPS = new Set(["Operate", "Transfers", "Analyze", "Organize", "Configure"]);
+// Groups that start expanded.
+export const DEFAULT_EXPANDED_GROUPS = new Set(["Operate", "Analyze", "Organize", "Configure"]);

@@ -14,6 +14,5 @@ urlpatterns = [
     path("api/license/", include("apps.licensing.urls")),
     path("api/db/", include("apps.dbops.urls")),
     path("api/org/", include("apps.org_catalog.urls")),
-    path("api/transfers/", include("apps.transfers.urls")),
     re_path(r"^media/(?P<path>.*)$", static_serve, {"document_root": settings.MEDIA_ROOT}),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

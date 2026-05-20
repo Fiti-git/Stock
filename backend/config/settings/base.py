@@ -26,7 +26,6 @@ INSTALLED_APPS = [
     "apps.licensing",
     "apps.dbops",
     "apps.org_catalog",
-    "apps.transfers",
     "apps.inventory",
 ]
 
@@ -54,6 +53,13 @@ CELERY_BEAT_SCHEDULE = {
     "rebuild-stock-balances-hourly": {
         "task": "apps.inventory.tasks.rebuild_balances",
         "schedule": 60 * 60,  # every hour
+    },
+    "auto-close-stale-count-sessions": {
+        # Every 15 min, close any count session that has been OPEN for >24h.
+        # Synchronous close also happens on next-day POS upload — this is the
+        # safety net for outlets that skip a day.
+        "task": "apps.dashboard.tasks.auto_close_stale_count_sessions",
+        "schedule": 15 * 60,
     },
 }
 

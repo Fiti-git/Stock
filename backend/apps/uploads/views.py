@@ -1116,6 +1116,21 @@ def _process_upload(parsed, outlet, user, snapshot_date, overwrite, filename, ex
             update_fields=["pos_quantity", "cost_price", "selling_price", "uploaded_by", "uploaded_at", "upload_batch"],
         )
 
+        # A new POS upload means the previous day's counts are frozen —
+        # auto-close any open count sessions for this outlet on dates
+        # strictly earlier than this upload's snapshot_date. Same-day
+        # sessions stay open so multi-upload-per-day still works.
+        from apps.dashboard.models import CountSession
+        from django.utils import timezone as _tz
+        CountSession.objects.filter(
+            outlet=outlet,
+            count_date__lt=snapshot_date,
+            status=CountSession.Status.OPEN,
+        ).update(
+            status=CountSession.Status.CLOSED,
+            closed_at=_tz.now(),
+        )
+
         log.matched_rows = matched
         log.new_items_count = new_items
         log.changed_items_count = changed_items

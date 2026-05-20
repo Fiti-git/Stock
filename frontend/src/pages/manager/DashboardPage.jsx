@@ -222,7 +222,7 @@ export default function DashboardPage() {
         headline: "Not uploaded yet",
         sub: `Last upload was on ${lastSnapshot.business_date}`,
         ctaLabel: "Upload now",
-        ctaTo: "/transactions",
+        ctaTo: "/upload",
       };
     }
     return {
@@ -230,7 +230,7 @@ export default function DashboardPage() {
       headline: "No POS upload yet",
       sub: "Upload today's stock-balance XLS to start the day.",
       ctaLabel: "Upload now",
-      ctaTo: "/transactions",
+      ctaTo: "/upload",
     };
   }, [snapshotIsToday, lastSnapshot]);
 
