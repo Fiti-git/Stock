@@ -11,10 +11,18 @@ uploads → every item appeared 4× → totals 4× too high.
 Plan:
   1. Delete the duplicate rows, keeping the latest (max id) per
      (outlet, item, snapshot_date). ~122k rows of ~924k.
-  2. Drop the old unique_together and add the new one.
+  2. Drop the old unique INDEX `pos_snapshots_batch_item_uniq` and create
+     the new unique INDEX `pos_snapshots_outlet_item_date_uniq`.
+  3. Tell Django to update its in-memory state to reflect the new
+     unique_together — without trying to issue any DDL itself.
 
-Step 1 must precede step 2 — adding the unique constraint on duplicate
-data would fail.
+Why hand-rolled DDL? The prod DB never carried the old constraint as a
+proper UNIQUE CONSTRAINT — only as a UNIQUE INDEX created by an earlier
+migration (constraint drift). Django's AlterUniqueTogether issues
+`ALTER TABLE ... DROP CONSTRAINT`, which fails with
+"constraint does not exist" on prod. RunSQL with `DROP INDEX IF EXISTS`
++ `CREATE UNIQUE INDEX IF NOT EXISTS` is idempotent and works on both
+fresh dev installs and the drifted prod DB.
 
 Going forward, apps.uploads.views uses
 `bulk_create(unique_fields=["outlet","item","snapshot_date"], update_conflicts=True)`
@@ -45,6 +53,18 @@ USING (
 WHERE ps.id = victims.id;
 """
 
+SWAP_UNIQUE_INDEX_SQL = """
+DROP INDEX IF EXISTS pos_snapshots_batch_item_uniq;
+CREATE UNIQUE INDEX IF NOT EXISTS pos_snapshots_outlet_item_date_uniq
+    ON pos_snapshots (outlet_id, item_id, snapshot_date);
+"""
+
+REVERSE_SWAP_SQL = """
+DROP INDEX IF EXISTS pos_snapshots_outlet_item_date_uniq;
+CREATE UNIQUE INDEX IF NOT EXISTS pos_snapshots_batch_item_uniq
+    ON pos_snapshots (upload_batch_id, item_id);
+"""
+
 
 class Migration(migrations.Migration):
     dependencies = [
@@ -60,11 +80,22 @@ class Migration(migrations.Migration):
             sql=DEDUP_SQL,
             reverse_sql=migrations.RunSQL.noop,
         ),
-        # 2. Swap the unique_together. Django drops the old (upload_batch,
-        #    item) unique index and creates the new (outlet, item,
-        #    snapshot_date) one. Step 1 guarantees no conflicts.
-        migrations.AlterUniqueTogether(
-            name="possnapshot",
-            unique_together={("outlet", "item", "snapshot_date")},
+        # 2. Swap the unique index by hand, then sync Django's model state.
+        #    Database ops are RunSQL (idempotent against constraint drift);
+        #    state ops update unique_together so future migrations agree
+        #    with the model.
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql=SWAP_UNIQUE_INDEX_SQL,
+                    reverse_sql=REVERSE_SWAP_SQL,
+                ),
+            ],
+            state_operations=[
+                migrations.AlterUniqueTogether(
+                    name="possnapshot",
+                    unique_together={("outlet", "item", "snapshot_date")},
+                ),
+            ],
         ),
     ]
