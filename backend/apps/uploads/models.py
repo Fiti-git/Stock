@@ -33,7 +33,11 @@ class PosSnapshot(models.Model):
 
     class Meta:
         db_table = "pos_snapshots"
-        unique_together = ("upload_batch", "item")
+        # One canonical row per (outlet, item, day). Multiple uploads for the
+        # same day must UPSERT, not insert duplicates. Previously this was
+        # `("upload_batch", "item")` which gave a fresh "uniqueness" per
+        # upload — the second upload of a day silently doubled every row.
+        unique_together = ("outlet", "item", "snapshot_date")
         ordering = ["-snapshot_date"]
         indexes = [
             models.Index(fields=["outlet", "snapshot_date"]),

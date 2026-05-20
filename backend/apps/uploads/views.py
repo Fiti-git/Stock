@@ -1105,13 +1105,15 @@ def _process_upload(parsed, outlet, user, snapshot_date, overwrite, filename, ex
                 )
             )
 
-        # Each batch is fresh — no conflicts expected. Use update_conflicts as
-        # a defensive guard against duplicate item_codes within the same XLS.
+        # Upsert keyed on (outlet, item, snapshot_date) — the canonical
+        # daily row. A second upload for the same day overwrites the first
+        # instead of duplicating it (multi-part uploads were silently
+        # multiplying every aggregate downstream).
         PosSnapshot.objects.bulk_create(
             snapshot_list,
             update_conflicts=True,
-            unique_fields=["upload_batch", "item"],
-            update_fields=["pos_quantity", "cost_price", "selling_price", "uploaded_by", "uploaded_at", "snapshot_date"],
+            unique_fields=["outlet", "item", "snapshot_date"],
+            update_fields=["pos_quantity", "cost_price", "selling_price", "uploaded_by", "uploaded_at", "upload_batch"],
         )
 
         log.matched_rows = matched
