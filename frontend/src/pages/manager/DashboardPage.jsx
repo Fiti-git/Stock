@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 import {
-  Grid, Card, CardContent, Typography, Stack, TextField, LinearProgress,
-  Alert, Chip, Box, InputAdornment,
+  Box, Grid, Card, CardContent, Typography, Stack, LinearProgress, Chip,
+  TextField, InputAdornment, Skeleton, Button, Avatar, Divider,
 } from "@mui/material";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import SearchIcon from "@mui/icons-material/Search";
@@ -10,10 +10,128 @@ import Inventory2Icon from "@mui/icons-material/Inventory2";
 import ChecklistIcon from "@mui/icons-material/Checklist";
 import QrCode2Icon from "@mui/icons-material/QrCode2";
 import ReportProblemIcon from "@mui/icons-material/ReportProblem";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
+import FactCheckIcon from "@mui/icons-material/FactCheck";
+import RuleIcon from "@mui/icons-material/Rule";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+import ErrorOutlineIcon from "@mui/icons-material/ErrorOutlineOutlined";
+import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
+import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import Layout from "../../components/Layout";
 import { PageHeader, DataTable, StatCard } from "../../components/ui";
-import { getCountProgress, getVariances, getAlerts } from "../../api/dashboard";
+import {
+  getCountProgress, getVariances, getAlerts,
+  listCountSessions, listVarianceRecords,
+} from "../../api/dashboard";
+import { getUploadedSheets } from "../../api/uploads";
 import { useOutlet } from "../../contexts/OutletContext";
+
+const TODAY = () => new Date().toISOString().slice(0, 10);
+
+// Status palette used by step cards. "ok"/"warn"/"err"/"todo"/"prog".
+const STATUS_PRESET = {
+  ok:   { color: "#22c55e", bg: "#f0fdf4", border: "#bbf7d0", Icon: CheckCircleIcon, label: "Done" },
+  warn: { color: "#f59e0b", bg: "#fffbeb", border: "#fde68a", Icon: WarningAmberIcon, label: "Action" },
+  err:  { color: "#ef4444", bg: "#fef2f2", border: "#fecaca", Icon: ErrorOutlineIcon, label: "Missing" },
+  todo: { color: "#94a3b8", bg: "#f8fafc", border: "#e2e8f0", Icon: HourglassEmptyIcon, label: "Not yet" },
+  prog: { color: "#3b82f6", bg: "#eff6ff", border: "#bfdbfe", Icon: ChecklistIcon, label: "In progress" },
+};
+
+function StepCard({ index, title, blurb, status, headline, sub, ctaLabel, ctaTo, ctaDisabled, loading, Icon }) {
+  const preset = STATUS_PRESET[status] || STATUS_PRESET.todo;
+  const StatusIcon = preset.Icon;
+  return (
+    <Card
+      elevation={0}
+      sx={{
+        height: "100%",
+        border: `1px solid ${preset.border}`,
+        borderRadius: 2.5,
+        background: `linear-gradient(180deg, ${preset.bg} 0%, #fff 80%)`,
+        transition: "transform 180ms ease, box-shadow 180ms ease",
+        "&:hover": { transform: "translateY(-2px)", boxShadow: `0 16px 32px -16px ${preset.color}55` },
+      }}
+    >
+      <Box sx={{ p: 2.25, display: "flex", flexDirection: "column", height: "100%" }}>
+        <Stack direction="row" spacing={1.5} alignItems="flex-start">
+          <Avatar
+            variant="rounded"
+            sx={{
+              width: 40, height: 40, flexShrink: 0,
+              bgcolor: "#fff",
+              color: preset.color,
+              border: `1px solid ${preset.border}`,
+              fontWeight: 800,
+              fontSize: "0.9rem",
+            }}
+          >
+            {index}
+          </Avatar>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Stack direction="row" alignItems="center" spacing={0.75}>
+              {Icon && <Icon sx={{ fontSize: 16, color: preset.color }} />}
+              <Typography sx={{ fontSize: "0.74rem", fontWeight: 700, color: "rgba(15,23,42,0.55)", textTransform: "uppercase", letterSpacing: "0.1em" }}>
+                {title}
+              </Typography>
+            </Stack>
+            <Typography sx={{ fontSize: "0.75rem", color: "rgba(15,23,42,0.55)", mt: 0.25, lineHeight: 1.35 }}>
+              {blurb}
+            </Typography>
+          </Box>
+          <Chip
+            size="small"
+            icon={<StatusIcon sx={{ fontSize: 14, color: `${preset.color} !important` }} />}
+            label={preset.label}
+            sx={{
+              height: 22, fontSize: "0.65rem", fontWeight: 700, letterSpacing: "0.04em",
+              bgcolor: "#fff", color: preset.color, border: `1px solid ${preset.border}`,
+              flexShrink: 0,
+            }}
+          />
+        </Stack>
+
+        <Box sx={{ mt: 2, mb: 1.5 }}>
+          {loading ? (
+            <Skeleton variant="text" sx={{ width: "60%", height: 32 }} />
+          ) : (
+            <>
+              <Typography sx={{ fontSize: "1.3rem", fontWeight: 800, color: "#0f172a", lineHeight: 1.2 }}>
+                {headline}
+              </Typography>
+              {sub && (
+                <Typography sx={{ fontSize: "0.75rem", color: "rgba(15,23,42,0.5)", mt: 0.5 }}>
+                  {sub}
+                </Typography>
+              )}
+            </>
+          )}
+        </Box>
+
+        <Box sx={{ flex: 1 }} />
+
+        <Button
+          fullWidth
+          size="small"
+          variant={status === "ok" ? "outlined" : "contained"}
+          disabled={ctaDisabled}
+          component={ctaDisabled ? "button" : RouterLink}
+          to={ctaDisabled ? undefined : ctaTo}
+          endIcon={<ArrowForwardIcon sx={{ fontSize: 16 }} />}
+          sx={{
+            fontWeight: 700,
+            fontSize: "0.78rem",
+            ...(status === "ok"
+              ? { color: preset.color, borderColor: preset.border, "&:hover": { borderColor: preset.color, bgcolor: preset.bg } }
+              : { bgcolor: preset.color, boxShadow: "none", "&:hover": { bgcolor: preset.color, filter: "brightness(0.92)", boxShadow: "none" } }),
+          }}
+        >
+          {ctaLabel}
+        </Button>
+      </Box>
+    </Card>
+  );
+}
 
 function VarianceCell({ v }) {
   if (v === null || v === undefined) return <span style={{ opacity: 0.4 }}>—</span>;
@@ -22,27 +140,188 @@ function VarianceCell({ v }) {
   return <Chip size="small" label="0" variant="outlined" />;
 }
 
+function SectionHeader({ overline, title, action }) {
+  return (
+    <Stack direction="row" alignItems="flex-end" justifyContent="space-between" sx={{ mt: 4, mb: 1.5 }}>
+      <Box>
+        <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, color: "rgba(15,23,42,0.5)", textTransform: "uppercase", letterSpacing: "0.16em" }}>
+          {overline}
+        </Typography>
+        <Typography sx={{ fontSize: "1.1rem", fontWeight: 800, color: "#0f172a", mt: 0.5 }}>
+          {title}
+        </Typography>
+      </Box>
+      {action}
+    </Stack>
+  );
+}
+
 export default function DashboardPage() {
-  const { outletId } = useOutlet();
+  const { outletId, selectedOutlet } = useOutlet();
+  const navigate = useNavigate();
+
   const [progress, setProgress] = useState(null);
   const [alerts, setAlerts] = useState(null);
+  const [lastSnapshot, setLastSnapshot] = useState(null);
+  const [openCountSession, setOpenCountSession] = useState(null);
+  const [openVariancesCount, setOpenVariancesCount] = useState(null);
   const [varData, setVarData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [stepsLoading, setStepsLoading] = useState(true);
   const [varLoading, setVarLoading] = useState(false);
   const [search, setSearch] = useState("");
 
+  // Step data — single Promise.all so the workflow cards animate in together.
   useEffect(() => {
-    setLoading(true);
-    Promise.all([getCountProgress(outletId), getAlerts(outletId)])
-      .then(([p, a]) => { setProgress(p.data); setAlerts(a.data); })
-      .finally(() => setLoading(false));
+    setStepsLoading(true);
+    Promise.all([
+      getCountProgress(outletId).then((r) => r.data).catch(() => null),
+      getAlerts(outletId).then((r) => r.data).catch(() => null),
+      getUploadedSheets({ pipeline: "pos", page: 1, page_size: 1, ...(outletId ? { outlet_id: outletId } : {}) })
+        .then((r) => r.data?.results?.[0] ?? null).catch(() => null),
+      listCountSessions({ ...(outletId ? { outlet: outletId } : {}), status: "open", page_size: 1 })
+        .then((r) => r.data?.results?.[0] ?? r.data?.[0] ?? null).catch(() => null),
+      listVarianceRecords({ ...(outletId ? { outlet: outletId } : {}), status: "open", page_size: 1 })
+        .then((r) => r.data?.count ?? r.data?.results?.length ?? 0).catch(() => 0),
+    ]).then(([p, a, snap, sess, vCount]) => {
+      setProgress(p);
+      setAlerts(a);
+      setLastSnapshot(snap);
+      setOpenCountSession(sess);
+      setOpenVariancesCount(vCount);
+    }).finally(() => setStepsLoading(false));
   }, [outletId]);
 
+  // Variance report (table at the bottom).
   useEffect(() => {
     setVarLoading(true);
-    getVariances(outletId, 1, 500).then((r) => setVarData(r.data)).finally(() => setVarLoading(false));
+    getVariances(outletId, 1, 500)
+      .then((r) => setVarData(r.data))
+      .catch(() => setVarData(null))
+      .finally(() => setVarLoading(false));
   }, [outletId]);
 
+  // ─── Derive step states ───────────────────────────────────────────────────
+  const today = TODAY();
+  const snapshotIsToday = lastSnapshot?.business_date === today;
+
+  const step1 = useMemo(() => {
+    if (snapshotIsToday) {
+      return {
+        status: "ok",
+        headline: "Uploaded today",
+        sub: lastSnapshot?.uploaded_at
+          ? `at ${new Date(lastSnapshot.uploaded_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${lastSnapshot?.uploaded_by ?? "—"}`
+          : "—",
+        ctaLabel: "View uploads",
+        ctaTo: "/uploaded-sheets?pipeline=pos",
+      };
+    }
+    if (lastSnapshot) {
+      return {
+        status: "err",
+        headline: "Not uploaded yet",
+        sub: `Last upload was on ${lastSnapshot.business_date}`,
+        ctaLabel: "Upload now",
+        ctaTo: "/transactions",
+      };
+    }
+    return {
+      status: "err",
+      headline: "No POS upload yet",
+      sub: "Upload today's stock-balance XLS to start the day.",
+      ctaLabel: "Upload now",
+      ctaTo: "/transactions",
+    };
+  }, [snapshotIsToday, lastSnapshot]);
+
+  const pendingCount = alerts?.pending_barcodes ?? 0;
+  const step2 = useMemo(() => {
+    if (pendingCount === 0) {
+      return {
+        status: "ok",
+        headline: "Nothing pending",
+        sub: "All new / changed items have been reviewed.",
+        ctaLabel: "Open review",
+        ctaTo: "/dashboard/pending",
+      };
+    }
+    return {
+      status: "warn",
+      headline: `${pendingCount} item${pendingCount === 1 ? "" : "s"} to review`,
+      sub: "New barcodes or product changes are waiting.",
+      ctaLabel: "Review pending",
+      ctaTo: "/dashboard/pending",
+    };
+  }, [pendingCount]);
+
+  const counted = progress?.counted ?? 0;
+  const totalItems = progress?.total_items ?? 0;
+  const countPct = totalItems > 0 ? Math.round((counted / totalItems) * 100) : 0;
+  const step3 = useMemo(() => {
+    if (totalItems === 0) {
+      return {
+        status: "todo",
+        headline: "No items to count",
+        sub: "Upload a POS snapshot first.",
+        ctaLabel: "Go to upload",
+        ctaTo: "/transactions",
+      };
+    }
+    if (countPct === 0) {
+      return {
+        status: "todo",
+        headline: "Not started",
+        sub: `${totalItems.toLocaleString()} items in this outlet`,
+        ctaLabel: openCountSession ? "Open session" : "Start count",
+        ctaTo: openCountSession ? `/count-sessions/${openCountSession.id}` : "/count-sessions",
+      };
+    }
+    if (countPct === 100) {
+      return {
+        status: "ok",
+        headline: "100% counted",
+        sub: `${counted.toLocaleString()} of ${totalItems.toLocaleString()} items`,
+        ctaLabel: "View sessions",
+        ctaTo: "/count-sessions",
+      };
+    }
+    return {
+      status: "prog",
+      headline: `${countPct}% counted`,
+      sub: `${counted.toLocaleString()} of ${totalItems.toLocaleString()} items`,
+      ctaLabel: openCountSession ? "Continue session" : "View sessions",
+      ctaTo: openCountSession ? `/count-sessions/${openCountSession.id}` : "/count-sessions",
+    };
+  }, [totalItems, countPct, counted, openCountSession]);
+
+  const step4 = useMemo(() => {
+    if (openVariancesCount === null) {
+      return { status: "todo", headline: "—", sub: "Loading…", ctaLabel: "Open reconciliation", ctaTo: "/variance-reconciliation" };
+    }
+    if (openVariancesCount === 0) {
+      return {
+        status: "ok",
+        headline: "Nothing to reconcile",
+        sub: "No open variances right now.",
+        ctaLabel: "Open reconciliation",
+        ctaTo: "/variance-reconciliation",
+      };
+    }
+    return {
+      status: "warn",
+      headline: `${openVariancesCount} variance${openVariancesCount === 1 ? "" : "s"} open`,
+      sub: "Explain, adjust or write off each line.",
+      ctaLabel: "Reconcile now",
+      ctaTo: "/variance-reconciliation",
+    };
+  }, [openVariancesCount]);
+
+  // Overall: everything green?
+  const allDone =
+    step1.status === "ok" && step2.status === "ok" &&
+    step3.status === "ok" && step4.status === "ok";
+
+  // ─── Variance table (existing) ────────────────────────────────────────────
   const allRows = varData?.results ?? [];
   const filtered = allRows.filter((r) => {
     if (!search.trim()) return true;
@@ -50,13 +329,13 @@ export default function DashboardPage() {
     return r.item_code?.toLowerCase().includes(q) || r.item_name?.toLowerCase().includes(q) || (r.category || "").toLowerCase().includes(q);
   });
 
-  const countPct = progress && progress.total_items > 0 ? Math.round((progress.counted / progress.total_items) * 100) : 0;
+  const negativePosCount = alerts?.negative_items?.length ?? 0;
 
   const columns = [
     { field: "item_code", headerName: "Code", flex: 0.7, minWidth: 100 },
     {
       field: "item_name", headerName: "Name", flex: 1.4, minWidth: 200,
-      renderCell: (p) => <Link to={`/items/${p.row.item_id}`} style={{ color: "inherit", textDecoration: "none", fontWeight: 500 }}>{p.value}</Link>,
+      renderCell: (p) => <RouterLink to={`/items/${p.row.item_id}`} style={{ color: "inherit", textDecoration: "none", fontWeight: 500 }}>{p.value}</RouterLink>,
     },
     { field: "category", headerName: "Category", flex: 0.8, minWidth: 120, renderCell: (p) => p.value ? <Chip size="small" variant="outlined" label={p.value} /> : "—" },
     { field: "pos_qty", headerName: "POS Qty", type: "number", flex: 0.6, minWidth: 90 },
@@ -68,67 +347,151 @@ export default function DashboardPage() {
 
   return (
     <Layout>
-      <PageHeader title="Manager Dashboard" subtitle={progress?.today ?? "—"} icon={<DashboardIcon />} />
+      <PageHeader
+        title="Manager Dashboard"
+        subtitle={`${selectedOutlet?.name ?? ""}${selectedOutlet ? " · " : ""}${today}`}
+        icon={<DashboardIcon />}
+      />
 
-      {!loading && alerts && (
-        <Stack spacing={1} sx={{ mb: 3 }}>
-          {!progress?.has_upload_today && (
-            <Alert severity="warning" variant="outlined">
-              Today's XLS has not been uploaded yet. <Link to="/upload" style={{ fontWeight: 600 }}>Upload now</Link>
-            </Alert>
-          )}
-          {alerts.missing_uploads?.length > 0 && (
-            <Alert severity="warning" variant="outlined">Missing uploads for: <b>{alerts.missing_uploads.join(", ")}</b></Alert>
-          )}
-          {alerts.pending_barcodes > 0 && (
-            <Alert severity="info" variant="outlined">
-              <b>{alerts.pending_barcodes}</b> item(s) need barcodes. <Link to="/dashboard/pending" style={{ fontWeight: 600 }}>Review now</Link>
-            </Alert>
-          )}
-          {alerts.negative_items?.length > 0 && (
-            <Alert severity="error" variant="outlined"><b>{alerts.negative_items.length}</b> item(s) have negative POS quantity today.</Alert>
-          )}
-          {progress?.has_upload_today && !alerts.missing_uploads?.length && !alerts.pending_barcodes && !alerts.negative_items?.length && (
-            <Alert severity="success" variant="outlined">All good — upload complete, no alerts.</Alert>
-          )}
-        </Stack>
-      )}
-
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={6} md={3}><StatCard label="Items in System" value={(progress?.total_items ?? 0).toLocaleString()} icon={<Inventory2Icon />} color="primary" loading={loading} /></Grid>
-        <Grid item xs={6} md={3}><StatCard label="Counted Today" value={progress?.counted ?? 0} icon={<ChecklistIcon />} color={countPct === 100 ? "success" : "info"} loading={loading} /></Grid>
-        <Grid item xs={6} md={3}><StatCard label="Pending Barcodes" value={progress?.pending_barcodes ?? 0} icon={<QrCode2Icon />} color="warning" loading={loading} /></Grid>
-        <Grid item xs={6} md={3}><StatCard label="Negative POS" value={alerts?.negative_items?.length ?? 0} icon={<ReportProblemIcon />} color="error" loading={loading} /></Grid>
+      {/* ─── A. Workflow steps ─────────────────────────────────────────────── */}
+      <SectionHeader
+        overline="Today · A → Z"
+        title="Daily workflow"
+        action={
+          allDone && !stepsLoading ? (
+            <Chip
+              icon={<CheckCircleIcon sx={{ color: "#22c55e !important" }} />}
+              label="All steps complete"
+              sx={{ fontWeight: 700, color: "#15803d", bgcolor: "#f0fdf4", border: "1px solid #bbf7d0" }}
+            />
+          ) : null
+        }
+      />
+      <Grid container spacing={2}>
+        <Grid item xs={12} sm={6} md={3}>
+          <StepCard index={1} title="POS Snapshot" blurb="Today's stock-balance XLS"
+            Icon={UploadFileIcon} loading={stepsLoading} {...step1} />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <StepCard index={2} title="New / Changed Items" blurb="Barcodes + product changes"
+            Icon={QrCode2Icon} loading={stepsLoading} {...step2} />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <StepCard index={3} title="Stock Count" blurb="Physical counts vs POS"
+            Icon={FactCheckIcon} loading={stepsLoading} {...step3} />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <StepCard index={4} title="Variances" blurb="Explain or write-off mismatches"
+            Icon={RuleIcon} loading={stepsLoading} {...step4} />
+        </Grid>
       </Grid>
 
-      {!loading && progress && (
-        <Card variant="outlined" sx={{ mb: 3 }}>
+      {/* Today's count progress bar (when there's something to count) */}
+      {!stepsLoading && totalItems > 0 && countPct < 100 && (
+        <Card variant="outlined" sx={{ mt: 3, borderRadius: 2 }}>
           <CardContent>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-              <Typography variant="overline" color="text.secondary">Today's Count Progress</Typography>
+              <Typography variant="overline" color="text.secondary">Today's count progress</Typography>
               <Typography variant="subtitle2" fontWeight={700}>{countPct}%</Typography>
             </Stack>
-            <LinearProgress variant="determinate" value={countPct} color={countPct === 100 ? "success" : "primary"} />
+            <LinearProgress
+              variant="determinate"
+              value={countPct}
+              color={countPct === 100 ? "success" : "primary"}
+              sx={{ height: 8, borderRadius: 1 }}
+            />
             <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
-              {progress.counted} of {progress.total_items} items counted
+              {counted.toLocaleString()} of {totalItems.toLocaleString()} items
             </Typography>
           </CardContent>
         </Card>
       )}
 
-      <Card variant="outlined">
+      {/* ─── B. At-a-glance metrics ───────────────────────────────────────── */}
+      <SectionHeader overline="At a glance" title="Outlet health right now" />
+      <Grid container spacing={2}>
+        <Grid item xs={6} md={3}>
+          <StatCard label="Items in outlet" value={totalItems.toLocaleString()} icon={<Inventory2Icon />} color="primary" loading={stepsLoading} />
+        </Grid>
+        <Grid item xs={6} md={3}>
+          <StatCard label="Counted today" value={counted.toLocaleString()} icon={<ChecklistIcon />} color={countPct === 100 ? "success" : "info"} loading={stepsLoading} />
+        </Grid>
+        <Grid item xs={6} md={3}>
+          <StatCard label="Pending barcodes" value={pendingCount.toLocaleString()} icon={<QrCode2Icon />} color={pendingCount > 0 ? "warning" : "success"} loading={stepsLoading} />
+        </Grid>
+        <Grid item xs={6} md={3}>
+          <StatCard label="Negative POS items" value={negativePosCount.toLocaleString()} icon={<ReportProblemIcon />} color={negativePosCount > 0 ? "error" : "success"} loading={stepsLoading} />
+        </Grid>
+      </Grid>
+
+      {alerts?.missing_uploads?.length > 0 && (
+        <Card variant="outlined" sx={{ mt: 3, borderColor: "#fde68a", bgcolor: "#fffbeb", borderRadius: 2 }}>
+          <CardContent>
+            <Stack direction="row" alignItems="center" spacing={1.5}>
+              <WarningAmberIcon sx={{ color: "#f59e0b" }} />
+              <Box>
+                <Typography sx={{ fontWeight: 700, fontSize: "0.88rem", color: "#92400e" }}>
+                  Missing uploads in the last 7 days
+                </Typography>
+                <Typography sx={{ fontSize: "0.78rem", color: "rgba(146,64,14,0.85)" }}>
+                  {alerts.missing_uploads.join(", ")}
+                </Typography>
+              </Box>
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── C. Variance details ───────────────────────────────────────────── */}
+      <SectionHeader
+        overline="POS vs Counted"
+        title="Variance report — today"
+        action={
+          <Button
+            size="small"
+            variant="outlined"
+            component={RouterLink}
+            to="/variance-reconciliation"
+            endIcon={<ArrowForwardIcon />}
+            sx={{ fontWeight: 600 }}
+          >
+            Reconciliation page
+          </Button>
+        }
+      />
+      <Card variant="outlined" sx={{ borderRadius: 2 }}>
         <CardContent sx={{ pb: 1 }}>
           <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "center" }} spacing={2}>
             <Box>
-              <Typography variant="h4">Variance Report</Typography>
-              {varData && <Typography variant="caption" color="text.secondary">Snapshot: <b>{varData.snapshot_date}</b> · {filtered.length} of {allRows.length} items</Typography>}
+              {varData ? (
+                <Typography variant="caption" color="text.secondary">
+                  Snapshot: <b>{varData.snapshot_date}</b> · {filtered.length.toLocaleString()} of {allRows.length.toLocaleString()} item{allRows.length === 1 ? "" : "s"}{search ? " (filtered)" : ""}
+                </Typography>
+              ) : (
+                <Typography variant="caption" color="text.secondary">No variance data yet.</Typography>
+              )}
             </Box>
-            <TextField size="small" placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)}
-              InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }} sx={{ minWidth: { sm: 260 } }} />
+            <TextField
+              size="small"
+              placeholder="Search code / name / category…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+              sx={{ minWidth: { sm: 300 } }}
+            />
           </Stack>
         </CardContent>
-        <Box sx={{ px: 2, pb: 2 }}>
-          <DataTable rows={filtered} columns={columns} getRowId={(r) => r.item_id} loading={varLoading} toolbar={false} height={560} emptyText="No variance data yet" />
+        <Divider />
+        <Box sx={{ px: 2, pb: 2, pt: 1 }}>
+          <DataTable
+            rows={filtered}
+            columns={columns}
+            getRowId={(r) => r.item_id}
+            loading={varLoading}
+            toolbar={false}
+            height={520}
+            emptyText="No variance data yet — start a stock count to populate this."
+          />
         </Box>
       </Card>
     </Layout>
