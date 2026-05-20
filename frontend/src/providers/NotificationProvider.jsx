@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { SnackbarProvider, useSnackbar } from "notistack";
 
 export function NotificationProvider({ children }) {
@@ -13,14 +13,18 @@ export function NotificationProvider({ children }) {
   );
 }
 
+// Returns a stable object reference across renders. The previous version
+// returned a fresh object literal every call, which busted useEffect /
+// useCallback dependency chains in any page that listed `notify` as a dep
+// — producing infinite render loops on /uploaded-sheets and similar pages.
 export function useNotify() {
   const { enqueueSnackbar } = useSnackbar();
-  return {
+  return useMemo(() => ({
     success: (msg, opts) => enqueueSnackbar(msg, { variant: "success", ...opts }),
     error:   (msg, opts) => enqueueSnackbar(msg, { variant: "error",   ...opts }),
     warning: (msg, opts) => enqueueSnackbar(msg, { variant: "warning", ...opts }),
     info:    (msg, opts) => enqueueSnackbar(msg, { variant: "info",    ...opts }),
-  };
+  }), [enqueueSnackbar]);
 }
 
 export function useNotification() {
