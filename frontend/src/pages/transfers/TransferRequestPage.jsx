@@ -10,7 +10,7 @@ import {
   createTransferDraft, listTransfers, requestTransfer,
 } from "../../api/transfers";
 import { getOutlets } from "../../api/outlets";
-import { searchProducts } from "../../api/pos";
+import { searchCatalog } from "../../api/items";
 import { useAuth } from "../../contexts/AuthContext";
 
 /**
@@ -53,7 +53,7 @@ export default function TransferRequestPage() {
       return;
     }
     const id = setTimeout(() => {
-      searchProducts(search)
+      searchCatalog(search, myOutletId)
         .then((r) => setSearchResults((r.data?.results || r.data || []).slice(0, 8)))
         .catch(() => setSearchResults([]));
     }, 220);

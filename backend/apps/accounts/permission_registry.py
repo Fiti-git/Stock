@@ -14,13 +14,7 @@ Three kinds of codes are tracked:
 
 Each code also carries a *system* tag — one of:
   "stock"  → belongs to the Stock product
-  "pos"    → belongs to the POS product
   "both"   → cross-product (login, audit, license, users, …)
-
-The system tag drives:
-  - the STOCK | POS toggle in the sidebar (filters which routes show)
-  - the Super Admin "Grant all STOCK / Grant all POS" bulk-grant buttons
-  - which "systems" a user has (derived from their effective permissions)
 
 The tag is purely informational — it does NOT gate access. A user's effective
 permissions are still the only source of truth for what they can see/do.
@@ -59,11 +53,6 @@ PERMISSIONS = [
     ("nav.count_coverage",        "Count Coverage Report",   "Navigation · Reports", "stock"),
     ("nav.counter_performance",   "Counter Performance",     "Navigation · Reports", "stock"),
     ("nav.mobile_usage",          "Mobile Usage Report",     "Navigation · Reports", "stock"),
-
-    # Ecom (Phase 4) — orders, product enrichment, price lists.
-    ("nav.ecom_orders",           "Ecom Orders",             "Navigation · Ecom", "ecom"),
-    ("nav.ecom_products",         "Product Enrichment",      "Navigation · Ecom", "ecom"),
-    ("nav.ecom_price_lists",      "Price Lists",             "Navigation · Ecom", "ecom"),
 
     ("nav.catalog",               "Product Catalog",         "Navigation · Catalog", "stock"),
     ("nav.product_master",        "Product Master",          "Navigation · Catalog", "stock"),
@@ -137,42 +126,6 @@ PERMISSIONS = [
     ("suppliers.manage",          "Create / edit / delete suppliers",  "Actions · Suppliers", "both"),
     ("categories.manage",         "Create / edit / delete categories", "Actions · Items", "stock"),
 
-    # --- POS ---
-    ("nav.pos_terminal",          "POS Terminal (cashier)",            "Navigation · POS", "pos"),
-    ("nav.pos_shifts",            "POS — Shifts",                      "Navigation · POS", "pos"),
-    ("nav.pos_bills",             "POS — Bills",                       "Navigation · POS", "pos"),
-    ("nav.pos_daily_sales",       "POS — Daily Sales",                 "Navigation · POS", "pos"),
-    ("pos.sell",                  "Create bills (sell)",               "Actions · POS", "pos"),
-    ("pos.shift_open",            "Open a till shift",                 "Actions · POS", "pos"),
-    ("pos.shift_close",           "Close a till shift",                "Actions · POS", "pos"),
-    ("pos.void",                  "Void bills",                        "Actions · POS", "pos"),
-    ("pos.reports",               "View POS reports",                  "Actions · POS", "pos"),
-    ("nav.pos_customers",         "POS — Customers",                   "Navigation · POS", "pos"),
-    ("nav.pos_stock",             "POS — Stock Movements",             "Navigation · POS", "pos"),
-    ("nav.pos_outlet_settings",   "POS — Outlet Settings (receipt/QR)","Navigation · POS", "pos"),
-    ("pos.customers.manage",      "Manage customers",                  "Actions · POS", "pos"),
-    ("pos.stock.adjust",          "Manual stock adjustment",           "Actions · POS", "pos"),
-    ("pos.outlet_settings",       "Edit outlet receipt/LankaQR settings","Actions · POS", "pos"),
-    ("nav.pos_grn_entry",         "POS — GRN Entry",                   "Navigation · POS", "pos"),
-    ("nav.pos_bulk_price",        "POS — Bulk Price Update",           "Navigation · POS", "pos"),
-    ("nav.pos_price_history",     "POS — Price History",               "Navigation · POS", "pos"),
-    ("pos.grn.entry",             "Enter GRN (stock in)",              "Actions · POS", "pos"),
-    ("pos.prices.update",         "Update item prices",                "Actions · POS", "pos"),
-    ("pos.customers.credit",      "Adjust customer credit",            "Actions · POS", "pos"),
-    ("nav.pos_promotions",        "POS — Promotions",                  "Navigation · POS", "pos"),
-    ("pos.promotions.manage",     "Manage promotions",                 "Actions · POS", "pos"),
-    ("nav.pos_products",          "POS — Products",                    "Navigation · POS", "pos"),
-    ("nav.pos_low_stock",         "POS — Low Stock",                   "Navigation · POS", "pos"),
-    ("nav.pos_reports",           "POS — Reports (top/profit/tax)",    "Navigation · POS", "pos"),
-    ("nav.pos_expenses",          "POS — Expenses",                    "Navigation · POS", "pos"),
-    ("nav.pos_rts",               "POS — Purchase Returns",            "Navigation · POS", "pos"),
-    ("nav.pos_payables",          "POS — Supplier Payables",           "Navigation · POS", "pos"),
-    ("pos.products.manage",       "Create / edit / delete products",   "Actions · POS", "pos"),
-    ("pos.products.import",       "Bulk-import products via CSV",      "Actions · POS", "pos"),
-    ("pos.rts.manage",            "Enter purchase returns",            "Actions · POS", "pos"),
-    ("pos.expenses.manage",       "Enter expenses",                    "Actions · POS", "pos"),
-    ("pos.payables.manage",       "Record supplier payments",          "Actions · POS", "pos"),
-
     # --- Transfers (inter-outlet) ---
     ("nav.transfers",             "Transfers",                         "Navigation · Transfers", "stock"),
     ("nav.transfers_request",     "Transfers — Request",                "Navigation · Transfers", "stock"),
@@ -215,15 +168,15 @@ def registry_as_dicts():
 def systems_for_codes(codes):
     """
     Derive the user's active product systems from a set of permission codes.
-    Cross-product ('both') codes don't count toward 'has stock' or 'has pos'
-    on their own — a user with only Audit Log access shouldn't be told they
-    have either system. Returns a sorted list, possibly empty.
+    Cross-product ('both') codes don't count toward 'has stock' on their own —
+    a user with only Audit Log access shouldn't be told they have the Stock
+    system. Returns a sorted list, possibly empty.
     """
     code_set = codes if isinstance(codes, set) else set(codes or [])
     systems = set()
     for c in code_set:
         s = SYSTEM_BY_CODE.get(c)
-        if s in ("stock", "pos", "ecom"):
+        if s == "stock":
             systems.add(s)
     return sorted(systems)
 
@@ -243,8 +196,6 @@ ROLE_DEFAULTS = {
         "nav.daily_upload_report", "nav.negative_pos", "nav.stock_variance",
         "nav.counted_items_report", "nav.count_coverage", "nav.counter_performance",
         "nav.mobile_usage",
-        # Ecom admin (Phase 4)
-        "nav.ecom_orders", "nav.ecom_products", "nav.ecom_price_lists",
         "nav.catalog", "nav.product_master", "nav.barcode_master",
         "nav.outlets", "nav.users", "nav.license",
         "nav.audit_log", "nav.mobile_devices", "nav.login_events",
@@ -273,19 +224,6 @@ ROLE_DEFAULTS = {
         "nav.master_products", "nav.master_mapping",
         "nav.demand_dashboard", "nav.purchase_plans",
         "nav.stock_age",
-        # POS
-        "nav.pos_terminal", "nav.pos_shifts", "nav.pos_bills", "nav.pos_daily_sales",
-        "nav.pos_customers", "nav.pos_stock", "nav.pos_outlet_settings",
-        "nav.pos_grn_entry", "nav.pos_bulk_price", "nav.pos_price_history",
-        "nav.pos_promotions",
-        "nav.pos_products", "nav.pos_low_stock", "nav.pos_reports",
-        "nav.pos_expenses", "nav.pos_rts", "nav.pos_payables",
-        "pos.sell", "pos.shift_open", "pos.shift_close", "pos.void", "pos.reports",
-        "pos.customers.manage", "pos.stock.adjust", "pos.outlet_settings",
-        "pos.grn.entry", "pos.prices.update", "pos.customers.credit",
-        "pos.promotions.manage",
-        "pos.products.manage", "pos.products.import",
-        "pos.rts.manage", "pos.expenses.manage", "pos.payables.manage",
         # Transfers
         "nav.transfers", "nav.transfers_request", "nav.transfers_dispatch", "nav.transfers_receive",
         "transfers.request", "transfers.dispatch", "transfers.receive", "transfers.close",
@@ -317,19 +255,6 @@ ROLE_DEFAULTS = {
         "damage.delete_batch", "office.delete_batch", "verification.delete_batch",
         "grn.delete_batch", "rts.delete_batch",
         "sales.delete_batch", "sales_returns.delete_batch",
-        # POS
-        "nav.pos_terminal", "nav.pos_shifts", "nav.pos_bills", "nav.pos_daily_sales",
-        "nav.pos_customers", "nav.pos_stock", "nav.pos_outlet_settings",
-        "nav.pos_grn_entry", "nav.pos_bulk_price", "nav.pos_price_history",
-        "nav.pos_promotions",
-        "nav.pos_products", "nav.pos_low_stock", "nav.pos_reports",
-        "nav.pos_expenses", "nav.pos_rts", "nav.pos_payables",
-        "pos.sell", "pos.shift_open", "pos.shift_close", "pos.void", "pos.reports",
-        "pos.customers.manage", "pos.stock.adjust", "pos.outlet_settings",
-        "pos.grn.entry", "pos.prices.update", "pos.customers.credit",
-        "pos.promotions.manage",
-        "pos.products.manage", "pos.products.import",
-        "pos.rts.manage", "pos.expenses.manage", "pos.payables.manage",
         # Transfers
         "nav.transfers", "nav.transfers_request", "nav.transfers_dispatch", "nav.transfers_receive",
         "transfers.request", "transfers.dispatch", "transfers.receive", "transfers.close",
@@ -347,9 +272,6 @@ ROLE_DEFAULTS = {
         "nav.sales_upload", "nav.sales_history",
         "nav.sales_returns_upload", "nav.sales_returns_history",
         "items.bulk_upload",
-        # POS — store users sell and manage their own shift
-        "nav.pos_terminal",
-        "pos.sell", "pos.shift_open", "pos.shift_close",
         # Transfers — store users may submit requests for their outlet
         "nav.transfers", "nav.transfers_request",
         "transfers.request",
@@ -358,8 +280,6 @@ ROLE_DEFAULTS = {
     "staff": [
         "nav.count",
         "nav.db_management",
-        "nav.pos_terminal",
-        "pos.sell", "pos.shift_open", "pos.shift_close",
     ],
 
     "ServiceProvider": [

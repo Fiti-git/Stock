@@ -20,7 +20,7 @@ import {
 } from "../../routes/config";
 import OutletSwitcher from "./OutletSwitcher";
 
-const SYSTEM_LABEL = { stock: "Stock", pos: "POS", ecom: "E-commerce", admin: "Admin" };
+const SYSTEM_LABEL = { stock: "Stock", admin: "Admin" };
 
 const EXPANDED_STORAGE_KEY = "sidebar_expanded_groups_v1";
 

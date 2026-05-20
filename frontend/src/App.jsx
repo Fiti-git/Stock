@@ -43,9 +43,6 @@ const ProductHistoryPage = lazy(() => import("./pages/admin/ProductHistoryPage")
 const DailyUploadReportPage = lazy(() => import("./pages/admin/DailyUploadReportPage"));
 const StockVarianceReportPage = lazy(() => import("./pages/admin/StockVarianceReportPage"));
 const CountCoverageReportPage = lazy(() => import("./pages/admin/CountCoverageReportPage"));
-const EcomOrdersPage = lazy(() => import("./pages/admin/ecom/OrdersPage"));
-const EcomProductEnrichmentPage = lazy(() => import("./pages/admin/ecom/ProductEnrichmentPage"));
-const EcomPriceListsPage = lazy(() => import("./pages/admin/ecom/PriceListsPage"));
 const CountedItemsReportPage = lazy(() => import("./pages/admin/CountedItemsReportPage"));
 const MobileDevicesPage = lazy(() => import("./pages/admin/MobileDevicesPage"));
 const LoginEventsPage = lazy(() => import("./pages/admin/LoginEventsPage"));
@@ -81,43 +78,10 @@ const DemandDashboardPage = lazy(() => import("./pages/admin/DemandDashboardPage
 const PurchasePlansPage = lazy(() => import("./pages/admin/PurchasePlansPage"));
 const PurchasePlanDetailPage = lazy(() => import("./pages/admin/PurchasePlanDetailPage"));
 const StockAgePage = lazy(() => import("./pages/admin/StockAgePage"));
-
-const PosTerminalPage = lazy(() => import("./pages/pos/PosTerminalPage"));
-const PosShiftsPage = lazy(() => import("./pages/pos/PosShiftsPage"));
-const PosBillsPage = lazy(() => import("./pages/pos/PosBillsPage"));
-const PosDailySalesPage = lazy(() => import("./pages/pos/PosDailySalesPage"));
-const PosCustomersPage = lazy(() => import("./pages/pos/PosCustomersPage"));
-const PosStockMovementsPage = lazy(() => import("./pages/pos/PosStockMovementsPage"));
-const PosOutletSettingsPage = lazy(() => import("./pages/pos/PosOutletSettingsPage"));
-const PosHardwareSettingsPage = lazy(() => import("./pages/pos/PosHardwareSettingsPage"));
-const PosGrnEntryPage = lazy(() => import("./pages/pos/PosGrnEntryPage"));
-const PosPurchaseOrdersPage = lazy(() => import("./pages/pos/PosPurchaseOrdersPage"));
-const PosBulkPricePage = lazy(() => import("./pages/pos/PosBulkPricePage"));
-const PosPriceHistoryPage = lazy(() => import("./pages/pos/PosPriceHistoryPage"));
-const PosPromotionsPage = lazy(() => import("./pages/pos/PosPromotionsPage"));
-const PosCouponsPage = lazy(() => import("./pages/pos/PosCouponsPage"));
-const PosGiftCardsPage = lazy(() => import("./pages/pos/PosGiftCardsPage"));
-const PosTaxComponentsPage = lazy(() => import("./pages/pos/PosTaxComponentsPage"));
-const PosCommissionRulesPage = lazy(() => import("./pages/pos/PosCommissionRulesPage"));
-const PosCommissionReportPage = lazy(() => import("./pages/pos/PosCommissionReportPage"));
-const PosProductsPage = lazy(() => import("./pages/pos/PosProductsPage"));
-const PosLowStockPage = lazy(() => import("./pages/pos/PosLowStockPage"));
-const PosNearExpiryPage = lazy(() => import("./pages/pos/PosNearExpiryPage"));
-const PosReportsPage = lazy(() => import("./pages/pos/PosReportsPage"));
-const PosExpensesPage = lazy(() => import("./pages/pos/PosExpensesPage"));
-const PosPurchaseReturnsPage = lazy(() => import("./pages/pos/PosPurchaseReturnsPage"));
-const PosPayablesPage = lazy(() => import("./pages/pos/PosPayablesPage"));
-const PosZReportPage = lazy(() => import("./pages/pos/PosZReportPage"));
-const PosGLAccountsPage = lazy(() => import("./pages/pos/PosGLAccountsPage"));
-const PosGLExportPage = lazy(() => import("./pages/pos/PosGLExportPage"));
-const PosCashHandoversPage = lazy(() => import("./pages/pos/PosCashHandoversPage"));
-const PosPaymentGatewaysPage = lazy(() => import("./pages/pos/PosPaymentGatewaysPage"));
-const PosSmsConfigPage = lazy(() => import("./pages/pos/PosSmsConfigPage"));
 const TransferRequestPage = lazy(() => import("./pages/transfers/TransferRequestPage"));
 const TransferDispatchPage = lazy(() => import("./pages/transfers/TransferDispatchPage"));
 const TransferReceivePage = lazy(() => import("./pages/transfers/TransferReceivePage"));
 const TransferDetailPage = lazy(() => import("./pages/transfers/TransferDetailPage"));
-const TerminalPage = lazy(() => import("./pages/terminal/TerminalPage"));
 const LicenseSetupRequired = lazy(() => import("./pages/LicenseSetupRequired"));
 const LicenseConfiguration = lazy(() => import("./pages/admin/LicenseConfiguration"));
 const DbManagement = lazy(() => import("./pages/DbManagement"));
@@ -160,11 +124,6 @@ function HomeRedirect() {
   const { user, loading } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
-  // Pos.* subdomain hardware (e.g. pos.merchant.com) is dedicated terminal
-  // hardware — bypass the launcher and go straight to the till.
-  const isPosHost = typeof window !== "undefined" && /^pos[\.-]/i.test(window.location.hostname);
-  if (isPosHost) return <Navigate to="/terminal" replace />;
-  // Every other authenticated user lands on the launcher.
   return <Navigate to="/select-app" replace />;
 }
 
@@ -204,9 +163,6 @@ export default function App() {
                     <Route path="/admin/reports/daily-upload" element={<PermissionRoute code="nav.daily_upload_report"><DailyUploadReportPage /></PermissionRoute>} />
                     <Route path="/admin/reports/stock-variance" element={<PermissionRoute code="nav.stock_variance"><StockVarianceReportPage /></PermissionRoute>} />
                     <Route path="/admin/reports/count-coverage" element={<PermissionRoute code="nav.count_coverage"><CountCoverageReportPage /></PermissionRoute>} />
-                    <Route path="/admin/ecom/orders" element={<PermissionRoute code="nav.ecom_orders"><EcomOrdersPage /></PermissionRoute>} />
-                    <Route path="/admin/ecom/products" element={<PermissionRoute code="nav.ecom_products"><EcomProductEnrichmentPage /></PermissionRoute>} />
-                    <Route path="/admin/ecom/price-lists" element={<PermissionRoute code="nav.ecom_price_lists"><EcomPriceListsPage /></PermissionRoute>} />
                     <Route path="/admin/reports/counted-items" element={<PermissionRoute code="nav.counted_items_report"><CountedItemsReportPage /></PermissionRoute>} />
                     <Route path="/admin/mobile-devices" element={<PermissionRoute code="nav.mobile_devices"><MobileDevicesPage /></PermissionRoute>} />
                     <Route path="/admin/login-events" element={<PermissionRoute code="nav.login_events"><LoginEventsPage /></PermissionRoute>} />
@@ -261,43 +217,10 @@ export default function App() {
                     <Route path="/reports/counter-performance" element={<PermissionRoute code="nav.counter_performance"><CounterPerformancePage /></PermissionRoute>} />
                     <Route path="/reports/mobile-usage" element={<PermissionRoute code="nav.mobile_usage"><MobileUsagePage /></PermissionRoute>} />
                     <Route path="/variance-reconciliation" element={<PermissionRoute code="nav.variance_reconciliation"><VarianceReconciliationPage /></PermissionRoute>} />
-                    <Route path="/pos" element={<PermissionRoute code="nav.pos_terminal"><PosTerminalPage /></PermissionRoute>} />
-                    <Route path="/pos/shifts" element={<PermissionRoute code="nav.pos_shifts"><PosShiftsPage /></PermissionRoute>} />
-                    <Route path="/pos/bills" element={<PermissionRoute code="nav.pos_bills"><PosBillsPage /></PermissionRoute>} />
-                    <Route path="/pos/daily-sales" element={<PermissionRoute code="nav.pos_daily_sales"><PosDailySalesPage /></PermissionRoute>} />
-                    <Route path="/pos/customers" element={<PermissionRoute code="nav.pos_customers"><PosCustomersPage /></PermissionRoute>} />
-                    <Route path="/pos/stock" element={<PermissionRoute code="nav.pos_stock"><PosStockMovementsPage /></PermissionRoute>} />
-                    <Route path="/pos/outlet-settings" element={<PermissionRoute code="nav.pos_outlet_settings"><PosOutletSettingsPage /></PermissionRoute>} />
-                    <Route path="/pos/hardware" element={<PermissionRoute code="nav.pos_terminal"><PosHardwareSettingsPage /></PermissionRoute>} />
-                    <Route path="/pos/grn" element={<PermissionRoute code="nav.pos_grn_entry"><PosGrnEntryPage /></PermissionRoute>} />
-                    <Route path="/pos/purchase-orders" element={<PermissionRoute code="nav.pos_grn_entry"><PosPurchaseOrdersPage /></PermissionRoute>} />
-                    <Route path="/pos/prices/bulk" element={<PermissionRoute code="nav.pos_bulk_price"><PosBulkPricePage /></PermissionRoute>} />
-                    <Route path="/pos/prices/history" element={<PermissionRoute code="nav.pos_price_history"><PosPriceHistoryPage /></PermissionRoute>} />
-                    <Route path="/pos/promotions" element={<PermissionRoute code="nav.pos_promotions"><PosPromotionsPage /></PermissionRoute>} />
-                    <Route path="/pos/coupons" element={<PermissionRoute code="nav.pos_promotions"><PosCouponsPage /></PermissionRoute>} />
-                    <Route path="/pos/gift-cards" element={<PermissionRoute code="nav.pos_promotions"><PosGiftCardsPage /></PermissionRoute>} />
-                    <Route path="/pos/tax-components" element={<PermissionRoute code="nav.pos_outlet_settings"><PosTaxComponentsPage /></PermissionRoute>} />
-                    <Route path="/pos/products" element={<PermissionRoute code="nav.pos_products"><PosProductsPage /></PermissionRoute>} />
-                    <Route path="/pos/low-stock" element={<PermissionRoute code="nav.pos_low_stock"><PosLowStockPage /></PermissionRoute>} />
-                    <Route path="/pos/near-expiry" element={<PermissionRoute code="nav.pos_near_expiry"><PosNearExpiryPage /></PermissionRoute>} />
-                    <Route path="/pos/reports" element={<PermissionRoute code="nav.pos_reports"><PosReportsPage /></PermissionRoute>} />
-                    <Route path="/pos/expenses" element={<PermissionRoute code="nav.pos_expenses"><PosExpensesPage /></PermissionRoute>} />
-                    <Route path="/pos/purchase-returns" element={<PermissionRoute code="nav.pos_rts"><PosPurchaseReturnsPage /></PermissionRoute>} />
-                    <Route path="/pos/payables" element={<PermissionRoute code="nav.pos_payables"><PosPayablesPage /></PermissionRoute>} />
-                    <Route path="/pos/z-report" element={<PermissionRoute code="nav.pos_shifts"><PosZReportPage /></PermissionRoute>} />
-                    <Route path="/pos/gl-accounts" element={<PermissionRoute code="nav.pos_outlet_settings"><PosGLAccountsPage /></PermissionRoute>} />
-                    <Route path="/pos/gl-export" element={<PermissionRoute code="nav.pos_reports"><PosGLExportPage /></PermissionRoute>} />
-                    <Route path="/pos/cash-handovers" element={<PermissionRoute code="nav.pos_reports"><PosCashHandoversPage /></PermissionRoute>} />
-                    <Route path="/pos/commission-rules" element={<PermissionRoute code="nav.pos_outlet_settings"><PosCommissionRulesPage /></PermissionRoute>} />
-                    <Route path="/pos/commission-report" element={<PermissionRoute code="nav.pos_reports"><PosCommissionReportPage /></PermissionRoute>} />
-                    <Route path="/pos/payment-gateways" element={<PermissionRoute code="nav.pos_outlet_settings"><PosPaymentGatewaysPage /></PermissionRoute>} />
-                    <Route path="/pos/sms-config" element={<PermissionRoute code="nav.pos_outlet_settings"><PosSmsConfigPage /></PermissionRoute>} />
                     <Route path="/transfers/request" element={<PermissionRoute code="nav.transfers_request"><TransferRequestPage /></PermissionRoute>} />
                     <Route path="/transfers/dispatch" element={<PermissionRoute code="nav.transfers_dispatch"><TransferDispatchPage /></PermissionRoute>} />
                     <Route path="/transfers/receive" element={<PermissionRoute code="nav.transfers_receive"><TransferReceivePage /></PermissionRoute>} />
                     <Route path="/transfers/:id" element={<PermissionRoute code="nav.transfers"><TransferDetailPage /></PermissionRoute>} />
-                    <Route path="/terminal" element={<PermissionRoute code="nav.pos_terminal"><TerminalPage /></PermissionRoute>} />
-                    <Route path="/terminal/bills" element={<PermissionRoute code="nav.pos_terminal"><TerminalPage /></PermissionRoute>} />
                   </Routes>
                 </Suspense>
               </BrowserRouter>

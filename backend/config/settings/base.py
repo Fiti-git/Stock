@@ -26,11 +26,8 @@ INSTALLED_APPS = [
     "apps.licensing",
     "apps.dbops",
     "apps.org_catalog",
-    "apps.pos",
     "apps.transfers",
     "apps.inventory",
-    "apps.catalog_ext",
-    "apps.ecom",
 ]
 
 # ---------------------------------------------------------------------------
@@ -41,38 +38,6 @@ INSTALLED_APPS = [
 # and confirming SUM(movements) == latest PosSnapshot per (outlet, item).
 # ---------------------------------------------------------------------------
 INVENTORY_LEDGER_ENABLED = config("INVENTORY_LEDGER_ENABLED", default=False, cast=bool)
-
-# ---------------------------------------------------------------------------
-# Storefront API (Phase 1). Off by default — every /api/storefront/ endpoint
-# returns 503 until this is flipped on. Lets the code ship without exposing a
-# half-finished storefront. Public endpoints are anonymous + throttled via
-# the "storefront" scope below.
-# ---------------------------------------------------------------------------
-STOREFRONT_API_ENABLED = config("STOREFRONT_API_ENABLED", default=False, cast=bool)
-# Public origin used to build absolute media URLs (so SSR fetches don't bake
-# the internal "http://backend:8000" host into product image URLs). Leave
-# empty in dev to fall back to request.build_absolute_uri.
-PUBLIC_MEDIA_BASE = config("PUBLIC_MEDIA_BASE", default="")
-
-# ---------------------------------------------------------------------------
-# Ecom API (Phase 2). Off by default — every /api/ecom/ endpoint returns 503
-# until this is flipped on. Cart and checkout are anonymous + throttled
-# (storefront scope shared with Phase 1). Payment confirm is admin-gated.
-# ---------------------------------------------------------------------------
-ECOM_API_ENABLED = config("ECOM_API_ENABLED", default=False, cast=bool)
-
-# ---------------------------------------------------------------------------
-# PayHere (Phase 5). Single-tenant for now — multi-outlet config can move
-# into apps.pos.PaymentGatewayConfig later. When the merchant id/secret are
-# blank, /api/ecom/orders/<n>/payhere/initiate/ returns 503 and the
-# storefront falls back to "pay at store" only.
-# ---------------------------------------------------------------------------
-PAYHERE_MERCHANT_ID = config("PAYHERE_MERCHANT_ID", default="")
-PAYHERE_MERCHANT_SECRET = config("PAYHERE_MERCHANT_SECRET", default="")
-PAYHERE_SANDBOX = config("PAYHERE_SANDBOX", default=True, cast=bool)
-PAYHERE_RETURN_URL = config("PAYHERE_RETURN_URL", default="")
-PAYHERE_CANCEL_URL = config("PAYHERE_CANCEL_URL", default="")
-PAYHERE_NOTIFY_URL = config("PAYHERE_NOTIFY_URL", default="")
 
 # ---------------------------------------------------------------------------
 # Celery (Phase 0). Optional in dev — if Redis isn't running, the web tier
@@ -89,10 +54,6 @@ CELERY_BEAT_SCHEDULE = {
     "rebuild-stock-balances-hourly": {
         "task": "apps.inventory.tasks.rebuild_balances",
         "schedule": 60 * 60,  # every hour
-    },
-    "expire-stale-reservations": {
-        "task": "apps.inventory.tasks.expire_stale_reservations",
-        "schedule": 60,  # every minute
     },
 }
 
@@ -162,11 +123,6 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": (
         "rest_framework.renderers.JSONRenderer",
     ),
-    # Phase 1: throttle the public storefront so it cannot starve the admin
-    # API. Per-IP, anonymous, generous burst.
-    "DEFAULT_THROTTLE_RATES": {
-        "storefront": "120/minute",
-    },
 }
 
 # Uploads that introduce this many or more new items are routed to admin

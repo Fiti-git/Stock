@@ -37,11 +37,6 @@ import StoreIcon from "@mui/icons-material/Store";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import CategoryIcon from "@mui/icons-material/Category";
 import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
-import LocalOfferIcon from "@mui/icons-material/LocalOffer";
-import CardGiftcardIcon from "@mui/icons-material/CardGiftcard";
-import ShoppingBagIcon from "@mui/icons-material/ShoppingBag";
-import PriceCheckIcon from "@mui/icons-material/PriceCheck";
-import CollectionsIcon from "@mui/icons-material/Collections";
 
 /**
  * Single source of truth for routes. Consumed by Sidebar, Breadcrumbs, CommandPalette.
@@ -50,9 +45,7 @@ import CollectionsIcon from "@mui/icons-material/Collections";
  * Each route carries:
  *   - `code`   — matches a backend permission code; gates access.
  *   - `group`  — top-level sidebar bucket.
- *   - `system` — "stock" | "pos" | "both". Mirrors the backend registry tag.
- *                Filters which routes the sidebar shows based on the user's
- *                active system (the STOCK | POS toggle).
+ *   - `system` — "stock" | "both". Mirrors the backend registry tag.
  *   - `roles`  — convenience field for a few legacy pages that still inspect
  *                `user.role` directly.
  */
@@ -73,45 +66,6 @@ export const routes = [
   { path: "/daily-counts",              code: "nav.daily_counts",         label: "Counted Stock Daily",icon: FactCheckIcon,          roles: ["manager","admin","super_admin"],                       group: "Operate", system: "stock", showInNav: false },
   { path: "/count-review",              code: "nav.count_review",         label: "Count Review",       icon: FactCheckIcon,          roles: ["manager","admin","super_admin"],                       group: "Operate", system: "stock", showInNav: false },
   { path: "/variance-reconciliation",   code: "nav.variance_reconciliation", label: "Variance Reconciliation", icon: ChecklistIcon,    roles: ["manager","admin","super_admin"],                       group: "Operate", system: "stock", showInNav: false },
-
-  // ------------------------- POS -------------------------
-  // Labels intentionally drop the "POS — " prefix. The system-toggle in the
-  // sidebar already establishes context; the prefix was redundant noise.
-  { path: "/pos",                       code: "nav.pos_terminal",         label: "Terminal",           icon: PointOfSaleIcon,        roles: ["store_user","staff","manager","admin","super_admin"], group: "POS", system: "pos" },
-  { path: "/pos/shifts",                code: "nav.pos_shifts",           label: "Shifts",             icon: ReceiptLongIcon,        roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/bills",                 code: "nav.pos_bills",            label: "Bills",              icon: ReceiptLongIcon,        roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/daily-sales",           code: "nav.pos_daily_sales",      label: "Daily Sales",        icon: QueryStatsIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/customers",             code: "nav.pos_customers",        label: "Customers",          icon: PeopleAltIcon,          roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/stock",                 code: "nav.pos_stock",            label: "Stock",              icon: Inventory2Icon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/outlet-settings",       code: "nav.pos_outlet_settings",  label: "Outlet Setup",       icon: StorefrontIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/tax-components",        code: "nav.pos_outlet_settings",  label: "Tax Components",     icon: ReceiptLongIcon,        roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/grn",                   code: "nav.pos_grn_entry",        label: "GRN Entry",          icon: MoveToInboxIcon,        roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/purchase-orders",       code: "nav.pos_grn_entry",        label: "Purchase Orders",    icon: AssignmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/prices/bulk",           code: "nav.pos_bulk_price",       label: "Bulk Price",         icon: EditNoteIcon,           roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/prices/history",        code: "nav.pos_price_history",    label: "Price History",      icon: HistoryIcon,            roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/promotions",            code: "nav.pos_promotions",       label: "Promotions",         icon: AssessmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/coupons",               code: "nav.pos_promotions",       label: "Coupons",            icon: LocalOfferIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/gift-cards",            code: "nav.pos_promotions",       label: "Gift Cards",         icon: CardGiftcardIcon,       roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/products",              code: "nav.pos_products",         label: "Products",           icon: Inventory2Icon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/low-stock",             code: "nav.pos_low_stock",        label: "Low Stock",          icon: ReportProblemIcon,      roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/near-expiry",           code: "nav.pos_near_expiry",      label: "Near-Expiry",        icon: ReportProblemIcon,      roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/reports",               code: "nav.pos_reports",          label: "Reports",            icon: QueryStatsIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/expenses",              code: "nav.pos_expenses",         label: "Expenses",           icon: AssignmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/purchase-returns",      code: "nav.pos_rts",              label: "Purchase Returns",   icon: KeyboardReturnIcon,     roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/payables",              code: "nav.pos_payables",         label: "Payables",           icon: AssessmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/z-report",              code: "nav.pos_shifts",           label: "Z Report",           icon: ReceiptLongIcon,        roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/gl-accounts",           code: "nav.pos_outlet_settings",  label: "GL Accounts",        icon: AssessmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/gl-export",             code: "nav.pos_reports",          label: "GL Export",          icon: AssessmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/cash-handovers",        code: "nav.pos_reports",          label: "Cash Handovers",     icon: ReceiptLongIcon,        roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/commission-rules",      code: "nav.pos_outlet_settings",  label: "Commission Rules",   icon: ReceiptLongIcon,        roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/commission-report",     code: "nav.pos_reports",          label: "Commission Report",  icon: AssessmentIcon,         roles: ["manager","admin","super_admin"],                       group: "POS", system: "pos" },
-  { path: "/pos/payment-gateways",      code: "nav.pos_outlet_settings",  label: "Payment Gateways",   icon: PointOfSaleIcon,        roles: ["admin","super_admin"],                                 group: "POS", system: "pos" },
-  { path: "/pos/sms-config",            code: "nav.pos_outlet_settings",  label: "SMS Configuration",  icon: ReceiptLongIcon,        roles: ["admin","super_admin"],                                 group: "POS", system: "pos" },
-
-  // ------------------------- ECOM (Phase 4) -------------------------
-  { path: "/admin/ecom/orders",       code: "nav.ecom_orders",      label: "Orders",              icon: ShoppingBagIcon, roles: ["admin","super_admin","manager"], group: "Ecom", system: "ecom" },
-  { path: "/admin/ecom/products",     code: "nav.ecom_products",    label: "Product Enrichment", icon: CollectionsIcon, roles: ["admin","super_admin","manager"], group: "Ecom", system: "ecom" },
-  { path: "/admin/ecom/price-lists",  code: "nav.ecom_price_lists", label: "Price Lists",         icon: PriceCheckIcon,  roles: ["admin","super_admin","manager"], group: "Ecom", system: "ecom" },
 
   // ------------------------- TRANSFERS -------------------------
   { path: "/transfers/request",  code: "nav.transfers_request",  label: "Request Transfer",  icon: MoveToInboxIcon,    roles: ["store_user","staff","manager","admin","super_admin"], group: "Transfers", system: "stock" },
@@ -192,7 +146,7 @@ export const routes = [
 /**
  * Return visible nav items for the given set of effective permission codes.
  *
- * `activeSystem` is "stock" | "pos" | "ecom" | "admin" | null.
+ * `activeSystem` is "stock" | "admin" | null.
  *   - null    → no filter (legacy; only used before launcher selection lands)
  *   - "admin" → cross-product pages only (routes tagged `system: "both"`)
  *   - else    → only routes whose `system` matches exactly. Cross-product
@@ -231,8 +185,8 @@ export function searchableRoutes(permissions, activeSystem = null) {
 }
 
 /**
- * Which "apps" (stock | pos | ecom | admin) the user can launch.
- * Stock/pos/ecom come from the backend-provided `user.systems` array.
+ * Which "apps" (stock | admin) the user can launch.
+ * Stock comes from the backend-provided `user.systems` array.
  * "admin" is reserved for admin/super_admin/ServiceProvider — the
  * cross-product app houses Users, Outlets, Audit Log, License, etc.
  * and is not intended for managers or store users.
@@ -252,10 +206,8 @@ export function availableSystems(user) {
   return systems;
 }
 
-// Default landing page per system. Stock varies by role; the rest are fixed.
+// Default landing page per system. Stock varies by role; admin is fixed.
 export function defaultPathForSystem(system, user) {
-  if (system === "pos") return "/pos";
-  if (system === "ecom") return "/admin/ecom/orders";
   if (system === "admin") return "/admin/users";
   // stock
   const role = user?.role;
@@ -277,9 +229,7 @@ export function findRoute(pathname) {
   });
 }
 
-export const GROUP_ORDER = ["Operate", "Transfers", "POS", "Ecom", "Analyze", "Organize", "Configure"];
+export const GROUP_ORDER = ["Operate", "Transfers", "Analyze", "Organize", "Configure"];
 
-// Groups that start expanded. POS is collapsed by default (it has many links);
-// the others auto-open. The user's per-group collapse state is persisted in
-// localStorage after the first visit.
+// Groups that start expanded.
 export const DEFAULT_EXPANDED_GROUPS = new Set(["Operate", "Transfers", "Analyze", "Organize", "Configure"]);

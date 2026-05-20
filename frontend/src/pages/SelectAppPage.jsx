@@ -2,8 +2,6 @@ import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Box, Typography, Stack, ButtonBase, Avatar } from "@mui/material";
 import InventoryIcon from "@mui/icons-material/Inventory2";
-import PointOfSaleIcon from "@mui/icons-material/PointOfSale";
-import ShoppingBagIcon from "@mui/icons-material/ShoppingBag";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import LogoutIcon from "@mui/icons-material/Logout";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
@@ -21,20 +19,6 @@ const TILES = {
     icon: InventoryIcon,
     accent: "#22c55e",
     glow: "rgba(34,197,94,0.35)",
-  },
-  pos: {
-    label: "POS",
-    tagline: "Terminal, bills, shifts & sales",
-    icon: PointOfSaleIcon,
-    accent: "#3b82f6",
-    glow: "rgba(59,130,246,0.35)",
-  },
-  ecom: {
-    label: "E-commerce",
-    tagline: "Online orders & product catalog",
-    icon: ShoppingBagIcon,
-    accent: "#a855f7",
-    glow: "rgba(168,85,247,0.35)",
   },
   admin: {
     label: "Admin",
