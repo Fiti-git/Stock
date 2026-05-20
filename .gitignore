@@ -42,6 +42,7 @@ docker-compose.override.yml
 # IDEs
 .vscode/
 .idea/
+.claude/
 *.suo
 *.ntvs*
 *.njsproj
