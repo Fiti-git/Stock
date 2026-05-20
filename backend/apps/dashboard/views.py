@@ -133,6 +133,12 @@ def variances(request):
             actual_qty=Subquery(counted_qty_subq, output_field=DecimalField(max_digits=14, decimal_places=3)),
             last_counted=Subquery(latest_count_date),
         )
+        # "Variance" only makes sense when something was actually counted.
+        # Items that have never been counted have actual_qty IS NULL and
+        # were previously rendered with "—" everywhere — pure noise. Drop
+        # them at the source so the dashboard table only shows real
+        # POS-vs-Counted comparisons.
+        .filter(actual_qty__isnull=False)
         .annotate(
             variance=ExpressionWrapper(
                 F("actual_qty") - F("pos_quantity"),
@@ -140,8 +146,7 @@ def variances(request):
             ),
         )
         .annotate(
-            # NULL variances (no count) sort last under DESC by giving them -1
-            abs_variance=Coalesce(Abs(F("variance")), Value(Decimal("-1"))),
+            abs_variance=Abs(F("variance")),
         )
         .order_by("-abs_variance")
     )
