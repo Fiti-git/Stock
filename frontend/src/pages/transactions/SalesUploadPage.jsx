@@ -11,7 +11,7 @@ export default function SalesUploadPage() {
         label: "Sales (Bill Listing)",
         icon: <PointOfSaleIcon />,
         api,
-        historyPath: "/transactions/sales/history",
+        historyPath: "/uploaded-sheets?pipeline=sales",
       }}
     />
   );

@@ -11,7 +11,7 @@ export default function VerificationUploadPage() {
         label: "Verification",
         icon: <FactCheckIcon />,
         api,
-        historyPath: "/transactions/verification/history",
+        historyPath: "/uploaded-sheets?pipeline=verification",
       }}
     />
   );

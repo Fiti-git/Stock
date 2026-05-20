@@ -11,7 +11,7 @@ export default function GrnUploadPage() {
         label: "GRN (Goods Received)",
         icon: <MoveToInboxIcon />,
         api,
-        historyPath: "/transactions/grn/history",
+        historyPath: "/uploaded-sheets?pipeline=grn",
       }}
     />
   );

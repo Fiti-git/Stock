@@ -11,7 +11,7 @@ export default function SalesReturnsUploadPage() {
         label: "Sales Returns",
         icon: <AssignmentReturnIcon />,
         api,
-        historyPath: "/transactions/sales_returns/history",
+        historyPath: "/uploaded-sheets?pipeline=sales_returns",
       }}
     />
   );

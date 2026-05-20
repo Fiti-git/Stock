@@ -11,7 +11,7 @@ export default function OfficeUploadPage() {
         label: "Office Use",
         icon: <AssignmentIcon />,
         api,
-        historyPath: "/transactions/office/history",
+        historyPath: "/uploaded-sheets?pipeline=office",
       }}
     />
   );

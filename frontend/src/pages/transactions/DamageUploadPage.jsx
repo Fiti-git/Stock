@@ -11,7 +11,7 @@ export default function DamageUploadPage() {
         label: "Damage / Wastage",
         icon: <BrokenImageIcon />,
         api,
-        historyPath: "/transactions/damage/history",
+        historyPath: "/uploaded-sheets?pipeline=damage",
       }}
     />
   );

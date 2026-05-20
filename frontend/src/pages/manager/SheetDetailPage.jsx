@@ -103,7 +103,7 @@ export default function SheetDetailPage() {
           <Stack direction="row" spacing={1}>
             <Button
               size="small" startIcon={<UploadFileIcon />}
-              onClick={() => navigate("/upload/hub", { state: { pipeline: sheet.pipeline, outletId: sheet.outlet_id, dateFrom: sheet.business_date, dateTo: sheet.business_date_to || sheet.business_date } })}
+              onClick={() => navigate("/transactions", { state: { pipeline: sheet.pipeline, outletId: sheet.outlet_id, dateFrom: sheet.business_date, dateTo: sheet.business_date_to || sheet.business_date } })}
               sx={{ textTransform: "none", color: "#6366f1", borderColor: "#6366f1" }}
               variant="outlined"
             >

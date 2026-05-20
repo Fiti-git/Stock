@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Box, Card, CardContent, Typography, Stack, TextField, MenuItem, Chip,
   Button, Pagination, Table, TableHead, TableRow, TableCell, TableBody,
@@ -51,12 +51,17 @@ const PIPELINE_COLORS = {
 export default function UploadedSheetsPage() {
   const notify = useNotify();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const isAdmin = ["admin", "super_admin"].includes(user?.role);
 
   const [outlets, setOutlets] = useState([]);
   const [filters, setFilters] = useState({
-    pipeline: "", outlet_id: "", approval_status: "", from_date: "", to_date: "",
+    pipeline: searchParams.get("pipeline") || "",
+    outlet_id: "",
+    approval_status: "",
+    from_date: "",
+    to_date: "",
   });
   const [page, setPage] = useState(1);
   const [data, setData] = useState({ count: 0, total_pages: 1, results: [] });
@@ -90,7 +95,17 @@ export default function UploadedSheetsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const setFilter = (k, v) => { setPage(1); setFilters((p) => ({ ...p, [k]: v })); };
+  const setFilter = (k, v) => {
+    setPage(1);
+    setFilters((p) => ({ ...p, [k]: v }));
+    if (k === "pipeline") {
+      // Keep the URL in sync so deep-links and "Back to history" links survive a reload.
+      const next = new URLSearchParams(searchParams);
+      if (v) next.set("pipeline", v);
+      else next.delete("pipeline");
+      setSearchParams(next, { replace: true });
+    }
+  };
 
   const allIds = data.results.map((s) => s.id);
   const allChecked = allIds.length > 0 && allIds.every((id) => selected.has(id));
@@ -146,7 +161,7 @@ export default function UploadedSheetsPage() {
   };
 
   const handleReUpload = (sheet) => {
-    navigate("/upload/hub", {
+    navigate("/transactions", {
       state: {
         pipeline: sheet.pipeline,
         outletId: sheet.outlet_id,
@@ -176,7 +191,7 @@ export default function UploadedSheetsPage() {
           <Button
             variant="contained"
             startIcon={<UploadFileIcon />}
-            onClick={() => navigate("/upload/hub")}
+            onClick={() => navigate("/transactions")}
             sx={{
               textTransform: "none", fontWeight: 600,
               background: "linear-gradient(135deg, #6366f1, #8b5cf6)",

@@ -11,7 +11,7 @@ export default function RtsUploadPage() {
         label: "Return to Supplier",
         icon: <KeyboardReturnIcon />,
         api,
-        historyPath: "/transactions/rts/history",
+        historyPath: "/uploaded-sheets?pipeline=rts",
       }}
     />
   );

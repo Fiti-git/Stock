@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 import {
-  Box, Grid, Button, Alert, Stack, Typography, Chip, Avatar,
+  Box, Grid, Button, Stack, Typography, Chip, Avatar,
   Card, CardActionArea, Divider, Skeleton,
 } from "@mui/material";
 import BrokenImageIcon from "@mui/icons-material/BrokenImage";
@@ -37,9 +37,30 @@ const PIPELINE_META = {
   sales_returns: { label: "Sales Returns",        icon: AssignmentReturnIcon,  color: "#a855f7", bg: "#faf5ff" },
 };
 
-const PIPELINE_KEYS = ["damage", "office", "verification", "grn", "rts", "sales", "sales_returns"];
+// Sections group the seven pipelines by their effect on inventory.
+// "Daily Snapshot" is rendered separately (it has a richer banner).
+const SECTIONS = [
+  {
+    key: "in",
+    title: "Goods In",
+    blurb: "What entered the outlet — purchases and customer returns.",
+    pipelines: ["grn", "sales_returns"],
+  },
+  {
+    key: "out",
+    title: "Goods Out",
+    blurb: "What left the outlet — customer sales and supplier returns.",
+    pipelines: ["sales", "rts"],
+  },
+  {
+    key: "adjust",
+    title: "Adjustments & Losses",
+    blurb: "Stock written off or moved out of saleable inventory.",
+    pipelines: ["damage", "office", "verification"],
+  },
+];
 
-// ─── POS Snapshot banner ─────────────────────────────────────────────────────
+// ─── POS Snapshot banner (Daily Snapshot section) ────────────────────────────
 function PosSnapshotBanner({ perms }) {
   const [lastUpload, setLastUpload] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -55,9 +76,9 @@ function PosSnapshotBanner({ perms }) {
   const today = new Date().toISOString().slice(0, 10);
   const isToday = lastUpload?.business_date === today;
 
-  const canUpload   = perms.has("nav.upload");
-  const canApprove  = perms.has("nav.upload_approvals");
-  const canHistory  = perms.has("nav.upload_history");
+  const canUpload  = perms.has("nav.upload");
+  const canApprove = perms.has("nav.upload_approvals");
+  const canHistory = perms.has("nav.uploaded_sheets");
 
   return (
     <Card
@@ -78,7 +99,6 @@ function PosSnapshotBanner({ perms }) {
           justifyContent="space-between"
           spacing={3}
         >
-          {/* Left: brand + description */}
           <Stack direction="row" spacing={2.5} alignItems="center">
             <Avatar
               variant="rounded"
@@ -111,7 +131,6 @@ function PosSnapshotBanner({ perms }) {
             </Box>
           </Stack>
 
-          {/* Right: last-upload status */}
           <Box sx={{ flexShrink: 0, minWidth: 220 }}>
             {loading ? (
               <Skeleton variant="rounded" width={200} height={48} />
@@ -157,7 +176,6 @@ function PosSnapshotBanner({ perms }) {
 
         <Divider sx={{ my: 2.5, borderColor: "rgba(99,102,241,0.12)" }} />
 
-        {/* Actions */}
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
           {canUpload && (
             <Button
@@ -190,7 +208,7 @@ function PosSnapshotBanner({ perms }) {
               variant="text"
               startIcon={<HistoryIcon />}
               component={RouterLink}
-              to="/upload/history"
+              to="/uploaded-sheets?pipeline=pos"
               sx={{ fontWeight: 600, color: "rgba(15,23,42,0.65)" }}
             >
               View History
@@ -217,10 +235,10 @@ function TxnCard({ pipelineKey }) {
       .finally(() => setLoading(false));
   }, [pipelineKey]);
 
-  const latest     = stats?.latest;
-  const pending    = stats?.pending_count ?? 0;
-  const total      = stats?.total_batches ?? 0;
-  const gaps       = stats?.missing_dates_count ?? 0;
+  const latest  = stats?.latest;
+  const pending = stats?.pending_count ?? 0;
+  const total   = stats?.total_batches ?? 0;
+  const gaps    = stats?.missing_dates_count ?? 0;
 
   return (
     <Card
@@ -238,7 +256,6 @@ function TxnCard({ pipelineKey }) {
       }}
     >
       <Box sx={{ p: 2.5, display: "flex", flexDirection: "column", height: "100%" }}>
-        {/* Header */}
         <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ mb: 2 }}>
           <Avatar
             variant="rounded"
@@ -270,7 +287,6 @@ function TxnCard({ pipelineKey }) {
           </Box>
         </Stack>
 
-        {/* Stats row */}
         {loading ? (
           <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
             <Skeleton variant="rounded" width={56} height={24} />
@@ -302,7 +318,6 @@ function TxnCard({ pipelineKey }) {
 
         <Box sx={{ flex: 1 }} />
 
-        {/* Actions */}
         <Stack direction="row" spacing={1}>
           <Button
             size="small"
@@ -325,7 +340,7 @@ function TxnCard({ pipelineKey }) {
             variant="outlined"
             startIcon={<HistoryIcon sx={{ fontSize: "0.9rem !important" }} />}
             component={RouterLink}
-            to={`/transactions/${pipelineKey}/history`}
+            to={`/uploaded-sheets?pipeline=${pipelineKey}`}
             sx={{
               flex: 1,
               fontWeight: 600,
@@ -379,50 +394,76 @@ function UploadedSheetsBanner() {
   );
 }
 
+// ─── Section header used by Goods In / Goods Out / Adjustments ───────────────
+function SectionHeader({ title, blurb, count }) {
+  return (
+    <Stack direction="row" alignItems="baseline" justifyContent="space-between" sx={{ mb: 1.5, mt: 4 }}>
+      <Box>
+        <Typography
+          sx={{
+            fontSize: "0.72rem", fontWeight: 800, letterSpacing: "0.16em",
+            textTransform: "uppercase", color: "rgba(15,23,42,0.5)",
+          }}
+        >
+          {title}
+        </Typography>
+        <Typography sx={{ fontSize: "0.85rem", color: "rgba(15,23,42,0.6)", mt: 0.25 }}>
+          {blurb}
+        </Typography>
+      </Box>
+      <Typography sx={{ fontSize: "0.75rem", color: "rgba(15,23,42,0.4)", flexShrink: 0, ml: 2 }}>
+        {count} pipeline{count === 1 ? "" : "s"}
+      </Typography>
+    </Stack>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function TransactionsHubPage() {
   const { user } = useAuth();
   const perms = new Set(user?.permissions || []);
 
-  const hasPosSection = perms.has("nav.upload") || perms.has("nav.upload_approvals") || perms.has("nav.upload_history");
+  const hasPosSection = perms.has("nav.upload") || perms.has("nav.upload_approvals") || perms.has("nav.uploaded_sheets");
 
   return (
     <Layout>
       <PageHeader
         title="Transactions"
-        subtitle="Upload and review daily stock movements — POS snapshots, GRN, damage, sales and more."
+        subtitle="Upload daily stock movements grouped by what they do to inventory."
         icon={<ReceiptLongIcon />}
       />
 
-      {/* POS Snapshot ── featured section */}
-      {hasPosSection && <PosSnapshotBanner perms={perms} />}
+      {/* ─── Section 1: Daily Snapshot ────────────────────────────────────── */}
+      {hasPosSection && (
+        <>
+          <SectionHeader
+            title="Daily Snapshot"
+            blurb="End-of-day balance file from POS — the source of truth for variance & shrinkage."
+            count={1}
+          />
+          <PosSnapshotBanner perms={perms} />
+        </>
+      )}
 
-      {/* Transaction report uploads */}
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-        <Stack direction="row" spacing={1} alignItems="center">
-          <Typography
-            sx={{
-              fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.14em",
-              textTransform: "uppercase", color: "rgba(15,23,42,0.45)",
-            }}
-          >
-            Stock Movement Reports
-          </Typography>
-        </Stack>
-        <Typography sx={{ fontSize: "0.78rem", color: "rgba(15,23,42,0.45)" }}>
-          {PIPELINE_KEYS.length} pipelines
-        </Typography>
-      </Stack>
-
-      <Grid container spacing={2.5}>
-        {PIPELINE_KEYS.map((key) => (
-          <Grid key={key} item xs={12} sm={6} md={4}>
-            <TxnCard pipelineKey={key} />
+      {/* ─── Sections 2-4: Goods In / Goods Out / Adjustments ─────────────── */}
+      {SECTIONS.map((section) => (
+        <Box key={section.key}>
+          <SectionHeader
+            title={section.title}
+            blurb={section.blurb}
+            count={section.pipelines.length}
+          />
+          <Grid container spacing={2.5}>
+            {section.pipelines.map((key) => (
+              <Grid key={key} item xs={12} sm={6} md={4}>
+                <TxnCard pipelineKey={key} />
+              </Grid>
+            ))}
           </Grid>
-        ))}
-      </Grid>
+        </Box>
+      ))}
 
-      {/* All Uploaded Sheets shortcut */}
+      {/* Footer link to the cross-pipeline browser */}
       <UploadedSheetsBanner />
     </Layout>
   );
