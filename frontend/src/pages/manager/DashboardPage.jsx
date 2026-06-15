@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 import {
-  Box, Grid, Card, CardContent, Typography, Stack, LinearProgress, Chip,
+  Box, Grid, Card, CardContent, CardActionArea, Typography, Stack, LinearProgress, Chip,
   TextField, InputAdornment, Skeleton, Button, Avatar, Divider,
+  Dialog, DialogTitle, DialogContent, DialogActions, IconButton,
+  Table, TableHead, TableRow, TableCell, TableBody, TableContainer,
 } from "@mui/material";
+import CloseIcon from "@mui/icons-material/Close";
+import VisibilityIcon from "@mui/icons-material/Visibility";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import SearchIcon from "@mui/icons-material/Search";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
@@ -23,7 +27,7 @@ import { PageHeader, DataTable, StatCard } from "../../components/ui";
 import {
   getCountProgress, getVariances, getAlerts,
   listCountSessions, listVarianceRecords,
-  getCoverageByDay,
+  getCoverageByDay, getDailyCounts,
 } from "../../api/dashboard";
 import { getUploadedSheets } from "../../api/uploads";
 import { useOutlet } from "../../contexts/OutletContext";
@@ -172,6 +176,30 @@ export default function DashboardPage() {
   const [search, setSearch] = useState("");
   const [coverage, setCoverage] = useState(null);
   const [coverageLoading, setCoverageLoading] = useState(false);
+
+  // "Today's count progress" → drill-in dialog. Picks a date and shows the
+  // items counted on that date for the active outlet.
+  const [progressDlgOpen, setProgressDlgOpen] = useState(false);
+  const [progressDate, setProgressDate] = useState(TODAY());
+  const [progressSearch, setProgressSearch] = useState("");
+  const [progressItems, setProgressItems] = useState({ results: [], count: 0 });
+  const [progressItemsLoading, setProgressItemsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!progressDlgOpen) return;
+    setProgressItemsLoading(true);
+    getDailyCounts({
+      outletId,
+      dateFrom: progressDate,
+      dateTo: progressDate,
+      search: progressSearch || undefined,
+      page: 1,
+      pageSize: 100,
+    })
+      .then((r) => setProgressItems(r.data || { results: [], count: 0 }))
+      .catch(() => setProgressItems({ results: [], count: 0 }))
+      .finally(() => setProgressItemsLoading(false));
+  }, [progressDlgOpen, progressDate, progressSearch, outletId]);
 
   // Daily coverage panel — last 14 days. Independent of step data so a
   // slow query doesn't block the workflow cards.
@@ -399,26 +427,121 @@ export default function DashboardPage() {
         </Grid>
       </Grid>
 
-      {/* Today's count progress bar (when there's something to count) */}
-      {!stepsLoading && totalItems > 0 && countPct < 100 && (
+      {/* Today's count progress — clickable. Tap to drill into the date and
+          see which items were counted that day. */}
+      {!stepsLoading && totalItems > 0 && (
         <Card variant="outlined" sx={{ mt: 3, borderRadius: 2 }}>
-          <CardContent>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-              <Typography variant="overline" color="text.secondary">Today's count progress</Typography>
-              <Typography variant="subtitle2" fontWeight={700}>{countPct}%</Typography>
-            </Stack>
-            <LinearProgress
-              variant="determinate"
-              value={countPct}
-              color={countPct === 100 ? "success" : "primary"}
-              sx={{ height: 8, borderRadius: 1 }}
-            />
-            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
-              {counted.toLocaleString()} of {totalItems.toLocaleString()} items
-            </Typography>
-          </CardContent>
+          <CardActionArea
+            onClick={() => {
+              setProgressDate(TODAY());
+              setProgressSearch("");
+              setProgressDlgOpen(true);
+            }}
+          >
+            <CardContent>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography variant="overline" color="text.secondary">Today's count progress</Typography>
+                  <VisibilityIcon sx={{ fontSize: 16, color: "text.secondary" }} />
+                </Stack>
+                <Typography variant="subtitle2" fontWeight={700}>{countPct}%</Typography>
+              </Stack>
+              <LinearProgress
+                variant="determinate"
+                value={countPct}
+                color={countPct === 100 ? "success" : "primary"}
+                sx={{ height: 8, borderRadius: 1 }}
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
+                {counted.toLocaleString()} of {totalItems.toLocaleString()} items · tap to view items by date
+              </Typography>
+            </CardContent>
+          </CardActionArea>
         </Card>
       )}
+
+      {/* Items counted on a chosen date — popup */}
+      <Dialog open={progressDlgOpen} onClose={() => setProgressDlgOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ pr: 6 }}>
+          Items counted
+          <Typography variant="caption" sx={{ display: "block", color: "text.secondary", mt: 0.5 }}>
+            {progressItems.count?.toLocaleString?.() || 0} count{progressItems.count === 1 ? "" : "s"} on {progressDate}
+            {coverage?.outlet_name ? ` · ${coverage.outlet_name}` : ""}
+          </Typography>
+          <IconButton
+            onClick={() => setProgressDlgOpen(false)}
+            sx={{ position: "absolute", right: 8, top: 8 }}
+            size="small"
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mb: 2 }}>
+            <TextField
+              size="small" type="date" label="Date"
+              InputLabelProps={{ shrink: true }}
+              value={progressDate}
+              onChange={(e) => setProgressDate(e.target.value)}
+              sx={{ width: 180 }}
+            />
+            <TextField
+              size="small" fullWidth label="Search" placeholder="Item code or name…"
+              value={progressSearch}
+              onChange={(e) => setProgressSearch(e.target.value)}
+              InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+            />
+          </Stack>
+          {progressItemsLoading ? (
+            <Skeleton variant="rectangular" height={240} />
+          ) : progressItems.results.length === 0 ? (
+            <Typography variant="body2" sx={{ color: "text.secondary", py: 4, textAlign: "center" }}>
+              No items counted on this date.
+            </Typography>
+          ) : (
+            <TableContainer sx={{ maxHeight: 420 }}>
+              <Table size="small" stickyHeader>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700, fontSize: "0.72rem", color: "text.secondary" }}>Item code</TableCell>
+                    <TableCell sx={{ fontWeight: 700, fontSize: "0.72rem", color: "text.secondary" }}>Item name</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, fontSize: "0.72rem", color: "text.secondary" }}>Counted</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, fontSize: "0.72rem", color: "text.secondary" }}>POS qty</TableCell>
+                    <TableCell sx={{ fontWeight: 700, fontSize: "0.72rem", color: "text.secondary" }}>Counter</TableCell>
+                    <TableCell sx={{ fontWeight: 700, fontSize: "0.72rem", color: "text.secondary" }}>Status</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {progressItems.results.map((r) => (
+                    <TableRow key={r.id} hover>
+                      <TableCell sx={{ fontSize: "0.82rem", fontFamily: "monospace" }}>{r.item_code}</TableCell>
+                      <TableCell sx={{ fontSize: "0.82rem" }}>{r.item_name}</TableCell>
+                      <TableCell align="right" sx={{ fontSize: "0.82rem", fontWeight: 600 }}>
+                        {Number(r.actual_qty).toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontSize: "0.82rem", color: r.pos_qty_at_count == null ? "text.disabled" : "text.primary" }}>
+                        {r.pos_qty_at_count == null ? "—" : Number(r.pos_qty_at_count).toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: "0.82rem" }}>{r.counted_by_username || "—"}</TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          label={r.approval_status}
+                          color={r.approval_status === "approved" ? "success" : r.approval_status === "submitted" ? "warning" : r.approval_status === "rejected" ? "error" : "default"}
+                          variant="outlined"
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setProgressDlgOpen(false)} sx={{ textTransform: "none" }}>Close</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Daily count coverage — last 14 days */}
       <Card variant="outlined" sx={{ mt: 3, borderRadius: 2 }}>
