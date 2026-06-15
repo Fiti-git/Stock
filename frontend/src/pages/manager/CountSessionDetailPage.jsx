@@ -149,7 +149,7 @@ export default function CountSessionDetailPage() {
   };
 
   const handleBulkApprove = async () => {
-    const ids = Array.from(countSelection.ids);
+    const ids = Array.from(countSelection.ids || []);
     if (!ids.length) return;
     try {
       const res = await bulkApproveCounts(ids);
@@ -216,7 +216,7 @@ export default function CountSessionDetailPage() {
   };
 
   const handleBulkResolve = async () => {
-    const ids = Array.from(varSelection.ids);
+    const ids = Array.from(varSelection.ids || []);
     try {
       const res = await bulkResolveVariance(ids, bulkVarForm);
       notify(`Resolved ${res.data.count} record(s).`, "success");
@@ -326,8 +326,11 @@ export default function CountSessionDetailPage() {
     },
   ];
 
-  const countSelectionIds = Array.from(countSelection.ids);
-  const varSelectionIds = Array.from(varSelection.ids);
+  // MUI X DataGrid v9 expects rowSelectionModel as the { type, ids: Set }
+  // object — passing the Array form here used to crash with
+  // "Cannot read properties of undefined (reading 'size')".
+  const countSelectionCount = countSelection.ids.size;
+  const varSelectionCount = varSelection.ids.size;
 
   if (sessionLoading) {
     return (
@@ -436,9 +439,9 @@ export default function CountSessionDetailPage() {
               <MenuItem value="rejected">Rejected</MenuItem>
             </TextField>
             <Button size="small" variant="outlined" startIcon={<RefreshIcon />} onClick={loadCounts} sx={{ textTransform: "none" }}>Refresh</Button>
-            {countSelectionIds.length > 0 && (
+            {countSelectionCount > 0 && (
               <Button size="small" variant="contained" color="success" startIcon={<CheckIcon />} onClick={handleBulkApprove} sx={{ textTransform: "none" }}>
-                Approve {countSelectionIds.length} Selected
+                Approve {countSelectionCount} Selected
               </Button>
             )}
           </Stack>
@@ -451,8 +454,8 @@ export default function CountSessionDetailPage() {
             page={countPage}
             onPageChange={setCountPage}
             checkboxSelection
-            rowSelectionModel={countSelectionIds}
-            onRowSelectionModelChange={(ids) => setCountSelection({ type: "include", ids: new Set(ids) })}
+            rowSelectionModel={countSelection}
+            onRowSelectionModelChange={(m) => setCountSelection(m)}
             getRowId={(r) => r.id}
           />
         </>
@@ -479,9 +482,9 @@ export default function CountSessionDetailPage() {
               <MenuItem value="closed">Closed</MenuItem>
             </TextField>
             <Button size="small" variant="outlined" startIcon={<RefreshIcon />} onClick={loadVarRecords} sx={{ textTransform: "none" }}>Refresh</Button>
-            {varSelectionIds.length > 0 && (
+            {varSelectionCount > 0 && (
               <Button size="small" variant="outlined" startIcon={<GavelIcon />} onClick={() => setBulkVarOpen(true)} sx={{ textTransform: "none" }}>
-                Resolve {varSelectionIds.length} Selected
+                Resolve {varSelectionCount} Selected
               </Button>
             )}
           </Stack>
@@ -494,8 +497,8 @@ export default function CountSessionDetailPage() {
             page={varPage}
             onPageChange={setVarPage}
             checkboxSelection
-            rowSelectionModel={varSelectionIds}
-            onRowSelectionModelChange={(ids) => setVarSelection({ type: "include", ids: new Set(ids) })}
+            rowSelectionModel={varSelection}
+            onRowSelectionModelChange={(m) => setVarSelection(m)}
             getRowId={(r) => r.id}
           />
         </>
@@ -555,7 +558,7 @@ export default function CountSessionDetailPage() {
 
       {/* Bulk resolve variance dialog */}
       <Dialog open={bulkVarOpen} onClose={() => setBulkVarOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Bulk Resolve {varSelectionIds.length} Variance(s)</DialogTitle>
+        <DialogTitle>Bulk Resolve {varSelectionCount} Variance(s)</DialogTitle>
         <DialogContent>
           <Stack spacing={1.5} sx={{ mt: 0.5 }}>
             <TextField
