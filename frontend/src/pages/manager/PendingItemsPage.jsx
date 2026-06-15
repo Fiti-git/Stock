@@ -11,8 +11,7 @@ import Layout from "../../components/Layout";
 import { PageHeader, EmptyState } from "../../components/ui";
 import { useNotify } from "../../providers/NotificationProvider";
 import { getPendingItems, assignBarcode, acceptChange, rejectChange, markPendingNbci } from "../../api/items";
-import { getOutlets } from "../../api/outlets";
-import { useAuth } from "../../contexts/AuthContext";
+import { useOutlet } from "../../contexts/OutletContext";
 
 function NewCodeCard({ item, onAssigned }) {
   const notify = useNotify();
@@ -144,20 +143,18 @@ function DataChangedCard({ item, onResolved }) {
 }
 
 export default function PendingItemsPage() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  // Outlet scope is driven by the global TopBar picker. Non-admins resolve
+  // to their own outlet (outletId=null), admins can pick a specific outlet
+  // or "All outlets" from the header.
+  const { outletId } = useOutlet();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const [outlets, setOutlets] = useState([]);
-  const [selectedOutlet, setSelectedOutlet] = useState("");
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("new");
   const searchTimer = useRef(null);
   const PAGE_SIZE = 10;
-
-  useEffect(() => { if (isAdmin) getOutlets().then(({ data }) => setOutlets(Array.isArray(data) ? data : [])); }, [isAdmin]);
 
   const fetchPage = (p, outlet, q) => {
     setLoading(true);
@@ -168,12 +165,12 @@ export default function PendingItemsPage() {
       })
       .finally(() => setLoading(false));
   };
-  useEffect(() => { fetchPage(page, selectedOutlet, search); }, [page, selectedOutlet]); // eslint-disable-line
+  useEffect(() => { fetchPage(page, outletId, search); }, [page, outletId]); // eslint-disable-line
 
   const onSearchChange = (e) => {
     const v = e.target.value; setSearch(v);
     clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => { setPage(1); fetchPage(1, selectedOutlet, v); }, 300);
+    searchTimer.current = setTimeout(() => { setPage(1); fetchPage(1, outletId, v); }, 300);
   };
 
   const removeItem = (id) => { setItems((p) => p.filter((i) => i.id !== id)); setTotalCount((c) => c - 1); };
@@ -192,16 +189,11 @@ export default function PendingItemsPage() {
 
       <Card variant="outlined" sx={{ mb: 2 }}>
         <CardContent>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-            <TextField size="small" fullWidth label="Search" placeholder="Item code or name…" value={search} onChange={onSearchChange}
-              InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }} />
-            {isAdmin && outlets.length > 0 && (
-              <TextField size="small" select label="Outlet" value={selectedOutlet} onChange={(e) => { setSelectedOutlet(e.target.value); setPage(1); }} sx={{ minWidth: 200 }}>
-                <MenuItem value="">All Outlets</MenuItem>
-                {outlets.map((o) => <MenuItem key={o.id} value={o.id}>{o.outlet_name}</MenuItem>)}
-              </TextField>
-            )}
-          </Stack>
+          <TextField size="small" fullWidth label="Search" placeholder="Item code or name…" value={search} onChange={onSearchChange}
+            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }} />
+          <Typography variant="caption" sx={{ display: "block", mt: 1, color: "text.secondary" }}>
+            Outlet scope is set from the top header.
+          </Typography>
         </CardContent>
       </Card>
 
