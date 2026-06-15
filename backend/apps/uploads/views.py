@@ -1117,19 +1117,25 @@ def _process_upload(parsed, outlet, user, snapshot_date, overwrite, filename, ex
         )
 
         # A new POS upload means the previous day's counts are frozen —
-        # auto-close any open count sessions for this outlet on dates
-        # strictly earlier than this upload's snapshot_date. Same-day
-        # sessions stay open so multi-upload-per-day still works.
-        from apps.dashboard.models import CountSession
-        from django.utils import timezone as _tz
-        CountSession.objects.filter(
-            outlet=outlet,
-            count_date__lt=snapshot_date,
-            status=CountSession.Status.OPEN,
-        ).update(
-            status=CountSession.Status.CLOSED,
-            closed_at=_tz.now(),
+        # finalize any open count sessions for this outlet on dates strictly
+        # earlier than this upload's snapshot_date. Same-day sessions stay
+        # open so multi-upload-per-day still works.
+        #
+        # finalize_count_session auto-approves still-submitted counts and
+        # generates variance records — the same end state a manual close
+        # produces. Earlier versions only flipped status to CLOSED, which
+        # left submitted counts in limbo forever.
+        from apps.dashboard.models import CountSession as _CountSession
+        from apps.dashboard.services import finalize_count_session as _finalize
+        stale_sessions = list(
+            _CountSession.objects.filter(
+                outlet=outlet,
+                count_date__lt=snapshot_date,
+                status=_CountSession.Status.OPEN,
+            )
         )
+        for _sess in stale_sessions:
+            _finalize(_sess, closed_by=user)
 
         log.matched_rows = matched
         log.new_items_count = new_items

@@ -1624,100 +1624,14 @@ def close_count_session(request, session_id):
             "variance_generated": VarianceRecord.objects.filter(session=session).count(),
         }, status=200)
 
-    snapshots = {
-        s.item_id: s for s in
-        PosSnapshot.objects.filter(outlet=session.outlet, snapshot_date=session.count_date)
-        .select_related("item")
-    }
-
-    # SME fallback: synthesize pseudo-snapshots from Item.on_hand if none uploaded
-    if not snapshots:
-        from apps.items.models import Item as _Item
-        active_items = _Item.objects.filter(outlet=session.outlet, status=_Item.Status.ACTIVE)
-
-        class _Pseudo:
-            def __init__(self, item):
-                self.item_id = item.id
-                self.item = item
-                self.pos_quantity = item.on_hand or Decimal("0")
-                self.cost_price = item.cost_price or None
-                self.selling_price = item.sell_price or None
-
-        snapshots = {it.id: _Pseudo(it) for it in active_items}
-
-    summed = {
-        row["item_id"]: row["total"] or Decimal("0")
-        for row in StockCount.objects.filter(
-            outlet=session.outlet,
-            count_date=session.count_date,
-            session=session,
-            approval_status__in=[
-                StockCount.ApprovalStatus.SUBMITTED,
-                StockCount.ApprovalStatus.APPROVED,
-            ],
-        ).values("item_id").annotate(total=Sum("actual_qty"))
-    }
-
-    created = 0
-    with transaction.atomic():
-        before_session = snapshot_session(session)
-
-        # Auto-approve any still-submitted counts at close time
-        still_submitted = StockCount.objects.filter(
-            session=session,
-            approval_status=StockCount.ApprovalStatus.SUBMITTED,
-        ).select_for_update()
-        now = timezone.now()
-        for sc in still_submitted:
-            before = snapshot_stock_count(sc)
-            sc.approval_status = StockCount.ApprovalStatus.APPROVED
-            sc.approved_by = request.user
-            sc.approved_at = now
-            sc.save(update_fields=["approval_status", "approved_by", "approved_at"])
-            record_audit(
-                user=request.user, action="stock_count.approve_on_close", entity=sc,
-                before=before, after=snapshot_stock_count(sc),
-            )
-
-        for item_id, snap in snapshots.items():
-            counted_qty = summed.get(item_id, Decimal("0"))
-            pos_qty = Decimal(snap.pos_quantity)
-            variance_qty = counted_qty - pos_qty
-            if variance_qty == 0:
-                continue
-            unit = snap.cost_price or snap.selling_price or Decimal("0")
-            variance_value = variance_qty * Decimal(unit or 0)
-
-            _, was_created = VarianceRecord.objects.update_or_create(
-                session=session,
-                item_id=item_id,
-                defaults=dict(
-                    outlet=session.outlet,
-                    count_date=session.count_date,
-                    pos_qty=pos_qty,
-                    counted_qty=counted_qty,
-                    variance_qty=variance_qty,
-                    variance_value=variance_value,
-                ),
-            )
-            if was_created:
-                created += 1
-
-        session.status = CountSession.Status.CLOSED
-        session.closed_by = request.user
-        session.closed_at = timezone.now()
-        session.save(update_fields=["status", "closed_by", "closed_at"])
-        record_audit(
-            user=request.user, action="count_session.close", entity=session,
-            before=before_session, after=snapshot_session(session),
-            extra={"variance_records_created": created},
-        )
+    from .services import finalize_count_session
+    result = finalize_count_session(session, closed_by=request.user)
 
     return Response({
         "session_id": session.id,
         "status": session.status,
         "variance_generated": VarianceRecord.objects.filter(session=session).count(),
-        "variance_created_now": created,
+        "variance_created_now": result["variances_created"],
     })
 
 
