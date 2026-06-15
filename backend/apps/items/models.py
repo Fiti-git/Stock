@@ -66,6 +66,10 @@ class Item(models.Model):
     # Queue. Flipping this back to False re-creates a pending request so a
     # barcode can be assigned later.
     is_nbci = models.BooleanField(default=False)
+    # Items flagged for the daily-count cycle — typically fast-movers, high-
+    # value SKUs, or shrinkage-prone categories. Surfaces them at the top of
+    # the count screens so they're never missed in the day's count window.
+    is_daily_count = models.BooleanField(default=False, db_index=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING_BARCODE)
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -64,7 +64,11 @@ class ItemUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Item
-        fields = ["item_name", "barcode", "category", "category_ref", "rack_number", "shelf", "is_nbci"]
+        fields = [
+            "item_name", "barcode", "category", "category_ref",
+            "rack_number", "shelf", "is_nbci", "is_daily_count",
+            "sell_price", "cost_price", "reorder_level", "on_hand",
+        ]
         extra_kwargs = {
             "item_name": {"required": False},
             "category": {"required": False, "allow_blank": True},
@@ -72,6 +76,11 @@ class ItemUpdateSerializer(serializers.ModelSerializer):
             "rack_number": {"required": False, "allow_blank": True},
             "shelf": {"required": False, "allow_blank": True},
             "is_nbci": {"required": False},
+            "is_daily_count": {"required": False},
+            "sell_price": {"required": False},
+            "cost_price": {"required": False},
+            "reorder_level": {"required": False},
+            "on_hand": {"required": False},
         }
 
 

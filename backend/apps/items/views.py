@@ -492,12 +492,13 @@ def catalog_list(request):
         except (ValueError, TypeError):
             pass
 
-    # Annotate with latest snapshot prices via subquery (single SQL query, no N+1)
+    # Annotate with latest snapshot prices + qty via subquery (single SQL query, no N+1)
     latest_snap = PosSnapshot.objects.filter(item=OuterRef("pk")).order_by("-snapshot_date")
     qs = qs.select_related("outlet").annotate(
         latest_selling_price=Subquery(latest_snap.values("selling_price")[:1]),
         latest_cost_price=Subquery(latest_snap.values("cost_price")[:1]),
         latest_snapshot_date=Subquery(latest_snap.values("snapshot_date")[:1]),
+        latest_pos_qty=Subquery(latest_snap.values("pos_quantity")[:1]),
     ).order_by("item_name")
 
     # Manual pagination (page_size=50)
@@ -515,9 +516,16 @@ def catalog_list(request):
     for ib in ItemBarcode.objects.filter(item_id__in=item_ids).order_by('-is_primary'):
         barcode_map.setdefault(ib.item_id, []).append(ib.barcode)
 
+    # Stock-age data for this page of items, keyed by item_id. Single query.
+    from apps.org_catalog.models import StockAgeSnapshot
+    age_by_item = {
+        s.item_id: s for s in StockAgeSnapshot.objects.filter(item_id__in=item_ids)
+    }
+
     results = []
     for item in items:
         barcodes = barcode_map.get(item.id, [])
+        age = age_by_item.get(item.id)
         results.append({
             "id": item.id,
             "item_code": item.item_code,
@@ -526,11 +534,23 @@ def catalog_list(request):
             "barcodes": barcodes,
             "category": item.category,
             "category_ref_id": item.category_ref_id,
+            "rack_number": item.rack_number,
+            "shelf": item.shelf,
             "status": item.status,
+            "is_nbci": item.is_nbci,
+            "is_daily_count": item.is_daily_count,
             "outlet_name": item.outlet.outlet_name,
             "latest_selling_price": str(item.latest_selling_price) if item.latest_selling_price is not None else None,
             "latest_cost_price": str(item.latest_cost_price) if item.latest_cost_price is not None else None,
             "latest_snapshot_date": str(item.latest_snapshot_date) if item.latest_snapshot_date else None,
+            "latest_pos_qty": str(item.latest_pos_qty) if item.latest_pos_qty is not None else None,
+            "on_hand": str(item.on_hand) if item.on_hand is not None else None,
+            "sell_price": str(item.sell_price) if item.sell_price is not None else None,
+            "cost_price": str(item.cost_price) if item.cost_price is not None else None,
+            "reorder_level": str(item.reorder_level) if item.reorder_level is not None else None,
+            "oldest_lot_age_days": age.oldest_lot_age_days if age else None,
+            "weighted_avg_age_days": age.weighted_avg_age_days if age else None,
+            "stock_age_computed_at": age.computed_at.isoformat() if age and age.computed_at else None,
         })
 
     return Response({
