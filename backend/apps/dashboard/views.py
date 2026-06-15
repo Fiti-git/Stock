@@ -547,10 +547,28 @@ def submit_count(request):
 @api_view(["GET"])
 @permission_classes([IsManager])
 def daily_counts(request):
-    """All StockCount records for an outlet on a given date range."""
-    outlet = _resolve_outlet(request)
-    if not outlet:
-        return Response({"detail": "No outlet."}, status=400)
+    """All StockCount records for an outlet on a given date range.
+
+    When `session_id` is provided, outlet + date scope are derived from the
+    session itself — the caller doesn't need to pass `outlet` or a date
+    range. This is the path used by the Count Session detail page, where
+    the admin may be in "All outlets" mode globally.
+    """
+    session_id = request.query_params.get("session_id")
+    session_obj = None
+    if session_id:
+        try:
+            session_obj = CountSession.objects.select_related("outlet").get(pk=session_id)
+        except CountSession.DoesNotExist:
+            return Response({"detail": "Session not found."}, status=404)
+        if request.user.role not in (User.Role.ADMIN, User.Role.SUPER_ADMIN):
+            if session_obj.outlet_id != request.user.outlet_id:
+                return Response({"detail": "Cross-outlet access denied."}, status=403)
+        outlet = session_obj.outlet
+    else:
+        outlet = _resolve_outlet(request)
+        if not outlet:
+            return Response({"detail": "No outlet."}, status=400)
 
     legacy = _parse_date(request.query_params.get("count_date", ""))
     date_from = _parse_date(request.query_params.get("date_from", "")) or legacy or date.today()
@@ -562,14 +580,18 @@ def daily_counts(request):
     status_filter = request.query_params.get("approval_status", "").strip()
 
     qs = (
-        StockCount.objects.filter(
-            outlet=outlet,
-            count_date__gte=date_from,
-            count_date__lte=date_to,
-        )
+        StockCount.objects.filter(outlet=outlet)
         .select_related("item", "counted_by", "approved_by")
         .order_by("-count_date", "item__item_code", "counted_at")
     )
+
+    if session_obj:
+        # session_id already pins this to a single (outlet, count_date) —
+        # the explicit date range is redundant and would mask older sessions
+        # when the default date_from defaults to today.
+        qs = qs.filter(session_id=session_obj.id)
+    else:
+        qs = qs.filter(count_date__gte=date_from, count_date__lte=date_to)
 
     if search:
         qs = qs.filter(
@@ -577,10 +599,6 @@ def daily_counts(request):
         )
     if status_filter:
         qs = qs.filter(approval_status=status_filter)
-
-    session_id = request.query_params.get("session_id")
-    if session_id:
-        qs = qs.filter(session_id=session_id)
 
     try:
         page = max(1, int(request.query_params.get("page", 1)))
