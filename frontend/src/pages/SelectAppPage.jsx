@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Box, Typography, Stack, ButtonBase, Avatar } from "@mui/material";
 import InventoryIcon from "@mui/icons-material/Inventory2";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
+import HubIcon from "@mui/icons-material/Hub";
 import LogoutIcon from "@mui/icons-material/Logout";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import { useAuth } from "../contexts/AuthContext";
@@ -19,6 +20,13 @@ const TILES = {
     icon: InventoryIcon,
     accent: "#22c55e",
     glow: "rgba(34,197,94,0.35)",
+  },
+  org: {
+    label: "Organization",
+    tagline: "Master products, suppliers & demand planning",
+    icon: HubIcon,
+    accent: "#6366f1",
+    glow: "rgba(99,102,241,0.35)",
   },
   admin: {
     label: "Admin",

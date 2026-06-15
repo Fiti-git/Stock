@@ -80,18 +80,22 @@ export const routes = [
   { path: "/items/history",             code: "nav.item_pos_history",     label: "Item History",       icon: QueryStatsIcon,         roles: ["manager","admin","super_admin"],              group: "Snapshot Reports", system: "stock" },
   { path: "/reports/counter-performance",  code: "nav.counter_performance",  label: "Counter Performance",  icon: LeaderboardIcon,    roles: ["manager","admin","super_admin"],              group: "Snapshot Reports", system: "stock" },
 
-  // ------------------------- ORGANIZE -------------------------
-  { path: "/admin/master-products",       code: "nav.master_products",  label: "Master Products",  icon: Inventory2Icon,       roles: ["manager","admin","super_admin"],         group: "Organize", system: "stock" },
-  { path: "/admin/master-mapping",        code: "nav.master_mapping",   label: "Master Mapping",   icon: EditNoteIcon,         roles: ["admin","super_admin"],                    group: "Organize", system: "stock" },
-  { path: "/admin/demand",                code: "nav.demand_dashboard", label: "Demand Dashboard", icon: QueryStatsIcon,       roles: ["manager","admin","super_admin"],         group: "Organize", system: "stock" },
-  { path: "/admin/purchase-plans",        code: "nav.purchase_plans",   label: "Purchase Plans",   icon: ListAltIcon,          roles: ["admin","super_admin"],                    group: "Organize", system: "stock" },
-  { path: "/admin/stock-age",             code: "nav.stock_age",        label: "Stock Age",        icon: HourglassEmptyIcon,   roles: ["manager","admin","super_admin"],         group: "Organize", system: "stock" },
+  // ------------------------- ORGANIZATION (org app) -------------------------
+  // Cross-outlet masters & planning. Shown only when the user picks the
+  // Organization launcher tile.
+  { path: "/admin/master-products",       code: "nav.master_products",  label: "Master Products",  icon: Inventory2Icon,       roles: ["manager","admin","super_admin"],         group: "Masters",  system: "org" },
+  { path: "/admin/master-mapping",        code: "nav.master_mapping",   label: "Master Mapping",   icon: EditNoteIcon,         roles: ["admin","super_admin"],                    group: "Masters",  system: "org" },
+  { path: "/admin/suppliers",             code: "nav.suppliers",        label: "Suppliers",        icon: LocalShippingIcon,    roles: ["admin","super_admin"],                    group: "Masters",  system: "org" },
+  { path: "/admin/categories",            code: "nav.categories",       label: "Categories",       icon: CategoryIcon,         roles: ["admin","super_admin"],                    group: "Masters",  system: "org" },
+  { path: "/admin/demand",                code: "nav.demand_dashboard", label: "Demand Dashboard", icon: QueryStatsIcon,       roles: ["manager","admin","super_admin"],         group: "Planning", system: "org" },
+  { path: "/admin/purchase-plans",        code: "nav.purchase_plans",   label: "Purchase Plans",   icon: ListAltIcon,          roles: ["admin","super_admin"],                    group: "Planning", system: "org" },
+
+  // Stock Age stays in the Stock app — it's an outlet-level analytical view, not a planning tool.
+  { path: "/admin/stock-age",             code: "nav.stock_age",        label: "Stock Age",        icon: HourglassEmptyIcon,   roles: ["manager","admin","super_admin"],         group: "Snapshot Reports", system: "stock" },
 
   // ------------------------- CONFIGURE -------------------------
   { path: "/product-master",              code: "nav.product_master",   label: "Product Master",   icon: EditNoteIcon,         roles: ["manager","admin","super_admin"],         group: "Configure", system: "stock" },
   { path: "/admin/barcode-master",        code: "nav.barcode_master",   label: "Barcode Master",   icon: QrCodeScannerIcon,    roles: ["manager","admin","super_admin"],         group: "Configure", system: "stock" },
-  { path: "/admin/categories",            code: "nav.categories",       label: "Categories",       icon: CategoryIcon,         roles: ["admin","super_admin"],                    group: "Configure", system: "stock" },
-  { path: "/admin/suppliers",             code: "nav.suppliers",        label: "Suppliers",        icon: LocalShippingIcon,    roles: ["admin","super_admin"],                    group: "Configure", system: "both" },
   { path: "/admin/outlets",               code: "nav.outlets",          label: "Outlets",          icon: StorefrontIcon,       roles: ["admin","super_admin"],                    group: "Configure", system: "both" },
   { path: "/admin/users",                 code: "nav.users",            label: "Users",            icon: PeopleAltIcon,        roles: ["admin","super_admin"],                    group: "Configure", system: "both" },
   { path: "/super-admin/user-permissions",code: "nav.user_permissions", label: "User Permissions", icon: AdminPanelSettingsIcon,roles: ["super_admin"],                           group: "Configure", system: "both" },
@@ -111,11 +115,12 @@ export const routes = [
 /**
  * Return visible nav items for the given set of effective permission codes.
  *
- * `activeSystem` is "stock" | "admin" | null.
+ * `activeSystem` is "stock" | "org" | "admin" | null.
  *   - null    → no filter (legacy; only used before launcher selection lands)
  *   - "admin" → cross-product pages only (routes tagged `system: "both"`)
- *   - else    → only routes whose `system` matches exactly. Cross-product
- *               routes live in the Admin app now, not in every sidebar.
+ *   - else    → only routes whose `system` matches exactly. Org-wide masters
+ *               live in the Organization app; cross-product admin pages live
+ *               in the Admin app — neither pollute the Stock sidebar.
  */
 export function routesForPermissions(permissions, activeSystem = null) {
   const set = permissions instanceof Set ? permissions : new Set(permissions || []);
@@ -149,15 +154,21 @@ export function searchableRoutes(permissions, activeSystem = null) {
 }
 
 /**
- * Which "apps" (stock | admin) the user can launch.
- * Stock comes from the backend-provided `user.systems` array.
- * "admin" is reserved for admin/super_admin/ServiceProvider — the
- * cross-product app houses Users, Outlets, Audit Log, etc.
- * and is not intended for managers or store users.
+ * Which "apps" the user can launch.
+ *   - "stock" and "org" come from the backend-provided `user.systems` array
+ *     (derived from their effective permissions).
+ *   - "admin" is appended client-side for admin/super_admin/ServiceProvider
+ *     when they have at least one `system: "both"` perm — the Admin app
+ *     houses cross-product pages (Users, Outlets, Audit Log, …).
+ *
+ * Returns systems in the preferred render order so the launcher tiles are
+ * deterministic regardless of how the backend sorts them.
  */
+const SYSTEM_RENDER_ORDER = ["stock", "org", "admin"];
+
 export function availableSystems(user) {
   if (!user) return [];
-  const systems = Array.isArray(user.systems) ? [...user.systems] : [];
+  const set = new Set(Array.isArray(user.systems) ? user.systems : []);
   const role = user.role;
   const isAdmin = role === "admin" || role === "super_admin" || role === "ServiceProvider";
   if (isAdmin) {
@@ -165,14 +176,15 @@ export function availableSystems(user) {
       ? user.permissions
       : new Set(user.permissions || []);
     const hasAdminPerm = routes.some((r) => r.system === "both" && r.code && perms.has(r.code));
-    if (hasAdminPerm) systems.push("admin");
+    if (hasAdminPerm) set.add("admin");
   }
-  return systems;
+  return SYSTEM_RENDER_ORDER.filter((s) => set.has(s));
 }
 
-// Default landing page per system. Stock varies by role; admin is fixed.
+// Default landing page per system. Stock varies by role; org/admin are fixed.
 export function defaultPathForSystem(system, user) {
   if (system === "admin") return "/admin/users";
+  if (system === "org") return "/admin/master-products";
   // stock
   const role = user?.role;
   if (role === "admin" || role === "super_admin") return "/admin/dashboard";
@@ -193,7 +205,7 @@ export function findRoute(pathname) {
   });
 }
 
-export const GROUP_ORDER = ["Operate", "Analyze", "Snapshot Reports", "Organize", "Configure"];
+export const GROUP_ORDER = ["Operate", "Analyze", "Snapshot Reports", "Masters", "Planning", "Configure"];
 
 // Groups that start expanded.
-export const DEFAULT_EXPANDED_GROUPS = new Set(["Operate", "Analyze", "Organize", "Configure"]);
+export const DEFAULT_EXPANDED_GROUPS = new Set(["Operate", "Analyze", "Masters", "Planning", "Configure"]);

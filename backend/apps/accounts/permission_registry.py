@@ -13,8 +13,9 @@ Three kinds of codes are tracked:
                  specific API endpoints and UI buttons.
 
 Each code also carries a *system* tag — one of:
-  "stock"  → belongs to the Stock product
-  "both"   → cross-product (login, audit, users, …)
+  "stock"  → outlet-level Stock product (counts, uploads, outlet masters)
+  "org"    → organization-wide masters & planning (cross-outlet)
+  "both"   → cross-product / Admin (users, outlets master, audit, …)
 
 The tag is purely informational — it does NOT gate access. A user's effective
 permissions are still the only source of truth for what they can see/do.
@@ -54,18 +55,18 @@ PERMISSIONS = [
     ("nav.catalog",               "Product Catalog",         "Navigation · Catalog", "stock"),
     ("nav.product_master",        "Product Master",          "Navigation · Catalog", "stock"),
     ("nav.barcode_master",        "Barcode Master",          "Navigation · Catalog", "stock"),
-    ("nav.master_products",       "Master Products (Org)",   "Navigation · Organization", "stock"),
-    ("nav.master_mapping",        "Master Mapping",          "Navigation · Organization", "stock"),
-    ("nav.demand_dashboard",      "Demand Dashboard",        "Navigation · Organization", "stock"),
-    ("nav.purchase_plans",        "Purchase Plans",          "Navigation · Organization", "stock"),
+    ("nav.master_products",       "Master Products",         "Navigation · Organization", "org"),
+    ("nav.master_mapping",        "Master Mapping",          "Navigation · Organization", "org"),
+    ("nav.demand_dashboard",      "Demand Dashboard",        "Navigation · Organization", "org"),
+    ("nav.purchase_plans",        "Purchase Plans",          "Navigation · Organization", "org"),
     ("nav.stock_age",             "Stock Age",               "Navigation · Organization", "stock"),
 
     # Cross-product admin pages — visible regardless of which system the user has.
     ("nav.outlets",               "Outlets",                 "Navigation · Administration", "both"),
     ("nav.users",                 "Users",                   "Navigation · Administration", "both"),
     ("nav.user_permissions",      "User Permissions",        "Navigation · Administration", "both"),
-    ("nav.suppliers",             "Suppliers",                 "Navigation · Administration", "both"),
-    ("nav.categories",            "Categories",                "Navigation · Catalog", "stock"),
+    ("nav.suppliers",             "Suppliers",                 "Navigation · Organization", "org"),
+    ("nav.categories",            "Categories",                "Navigation · Organization", "org"),
 
     ("nav.audit_log",             "Audit Log",               "Navigation · Audit & Security", "both"),
     ("nav.mobile_devices",        "Mobile Devices",          "Navigation · Audit & Security", "both"),
@@ -140,15 +141,16 @@ def registry_as_dicts():
 def systems_for_codes(codes):
     """
     Derive the user's active product systems from a set of permission codes.
-    Cross-product ('both') codes don't count toward 'has stock' on their own —
-    a user with only Audit Log access shouldn't be told they have the Stock
-    system. Returns a sorted list, possibly empty.
+    Cross-product ('both') codes don't count on their own — a user with only
+    Audit Log access shouldn't be told they have Stock or Org. The 'admin'
+    system is added by the frontend launcher when a 'both' perm is present.
+    Returns a sorted list, possibly empty.
     """
     code_set = codes if isinstance(codes, set) else set(codes or [])
     systems = set()
     for c in code_set:
         s = SYSTEM_BY_CODE.get(c)
-        if s == "stock":
+        if s in ("stock", "org"):
             systems.add(s)
     return sorted(systems)
 
