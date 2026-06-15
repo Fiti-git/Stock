@@ -883,39 +883,129 @@ def upload_history(request):
 @permission_classes([IsManager])
 def all_outlets_overview(request):
     """
-    Returns today's (or a given date's) upload status for every outlet.
+    Per-outlet operational snapshot for a given date.
+
+    Reports, per outlet:
+      - POS upload status for the date (uploaded / missing / pending)
+      - Stock count progress for the date (% counted, session status)
+      - Counts pending manager approval (this date)
+      - Open variance records (cross-session, not date-scoped)
+      - Last activity time (most recent count or upload)
+
+    The Admin's Outlets Overview page consumes this directly. Single
+    endpoint so the page loads in one round-trip.
+
     Query param: ?date=YYYY-MM-DD (default: today)
     """
     from datetime import datetime
+    from django.db.models import Count, Q, Max
+    from apps.items.models import Item
+    from apps.dashboard.models import CountSession, StockCount, VarianceRecord
+
     raw_date = request.query_params.get("date", "")
     try:
         target_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
     except ValueError:
         target_date = date.today()
 
-    outlets = Outlet.objects.all().order_by("outlet_name")
+    outlets = list(Outlet.objects.all().order_by("outlet_name"))
+    outlet_ids = [o.id for o in outlets]
 
-    # Fetch all successful upload logs for that date in one query
+    # --- POS upload on target_date ---
     logs_by_outlet = {
         log.outlet_id: log
         for log in UploadLog.objects.filter(
+            outlet_id__in=outlet_ids,
             snapshot_date=target_date,
             status=UploadLog.Status.SUCCESS,
         ).select_related("uploaded_by").order_by("-uploaded_at")
     }
 
+    # --- Active item count per outlet (denominator for count %) ---
+    item_totals = dict(
+        Item.objects.filter(outlet_id__in=outlet_ids, status=Item.Status.ACTIVE)
+        .values("outlet_id").annotate(n=Count("id")).values_list("outlet_id", "n")
+    )
+
+    # --- Count session for (outlet, target_date) ---
+    sessions_by_outlet = {
+        s.outlet_id: s
+        for s in CountSession.objects.filter(outlet_id__in=outlet_ids, count_date=target_date)
+    }
+
+    # --- StockCount aggregates per (outlet, status) for target_date ---
+    sc_rows = (
+        StockCount.objects
+        .filter(outlet_id__in=outlet_ids, count_date=target_date)
+        .exclude(approval_status=StockCount.ApprovalStatus.REJECTED)
+        .values("outlet_id", "approval_status")
+        .annotate(entries=Count("id"), distinct_items=Count("item_id", distinct=True))
+    )
+    sc_summary = {oid: {"submitted": 0, "approved": 0, "items_counted": 0} for oid in outlet_ids}
+    # Need distinct items per outlet regardless of status, computed separately:
+    distinct_rows = (
+        StockCount.objects
+        .filter(outlet_id__in=outlet_ids, count_date=target_date)
+        .exclude(approval_status=StockCount.ApprovalStatus.REJECTED)
+        .values("outlet_id").annotate(distinct_items=Count("item_id", distinct=True))
+    )
+    for r in distinct_rows:
+        sc_summary[r["outlet_id"]]["items_counted"] = r["distinct_items"]
+    for r in sc_rows:
+        oid = r["outlet_id"]
+        if r["approval_status"] == StockCount.ApprovalStatus.SUBMITTED:
+            sc_summary[oid]["submitted"] = r["entries"]
+        elif r["approval_status"] == StockCount.ApprovalStatus.APPROVED:
+            sc_summary[oid]["approved"] = r["entries"]
+
+    # --- Open variances (cross-session, current) ---
+    var_open = dict(
+        VarianceRecord.objects
+        .filter(outlet_id__in=outlet_ids, status__in=("pending", "investigating"))
+        .values("outlet_id").annotate(n=Count("id")).values_list("outlet_id", "n")
+    )
+
+    # --- Last activity per outlet — max(last upload, last count) ---
+    last_count_by_outlet = dict(
+        StockCount.objects
+        .filter(outlet_id__in=outlet_ids)
+        .values("outlet_id").annotate(t=Max("counted_at")).values_list("outlet_id", "t")
+    )
+
     results = []
     for outlet in outlets:
-        log = logs_by_outlet.get(outlet.id)
+        oid = outlet.id
+        log = logs_by_outlet.get(oid)
+        sess = sessions_by_outlet.get(oid)
+        sc = sc_summary.get(oid, {"submitted": 0, "approved": 0, "items_counted": 0})
+        total_items = item_totals.get(oid, 0)
+        items_counted = sc["items_counted"]
+        pct = round(items_counted / total_items * 100, 1) if total_items else 0
+        last_upload_t = log.uploaded_at if log else None
+        last_count_t = last_count_by_outlet.get(oid)
+        last_activity = max(filter(None, [last_upload_t, last_count_t]), default=None)
+
         results.append({
-            "outlet_id": outlet.id,
+            "outlet_id": oid,
             "outlet_name": outlet.outlet_name,
             "short_code": outlet.short_code,
+            # POS
             "uploaded": log is not None,
             "uploaded_at": log.uploaded_at.isoformat() if log else None,
             "uploaded_by": log.uploaded_by.username if log else None,
             "total_rows": log.total_rows if log else None,
             "approval_status": log.approval_status if log else None,
+            # Count
+            "total_items": total_items,
+            "items_counted_today": items_counted,
+            "count_pct": pct,
+            "session_status": sess.status if sess else None,
+            "counts_submitted": sc["submitted"],
+            "counts_approved": sc["approved"],
+            # Variance
+            "open_variances": var_open.get(oid, 0),
+            # Activity
+            "last_activity": last_activity.isoformat() if last_activity else None,
         })
 
     uploaded_count = sum(1 for r in results if r["uploaded"])
@@ -924,6 +1014,8 @@ def all_outlets_overview(request):
         "total_outlets": len(results),
         "uploaded_count": uploaded_count,
         "missing_count": len(results) - uploaded_count,
+        "outlets_with_open_variances": sum(1 for r in results if r["open_variances"] > 0),
+        "outlets_with_pending_counts": sum(1 for r in results if r["counts_submitted"] > 0),
         "outlets": results,
     })
 
