@@ -8,14 +8,22 @@ import SearchIcon from "@mui/icons-material/Search";
 import LogoutIcon from "@mui/icons-material/Logout";
 import PersonIcon from "@mui/icons-material/Person";
 import { useAuth } from "../../contexts/AuthContext";
+import { useSystem } from "../../contexts/SystemContext";
 import Breadcrumbs from "./Breadcrumbs";
+import OutletSwitcher from "./OutletSwitcher";
+import AppSwitcher from "./AppSwitcher";
 
 export default function TopBar({ onMenuClick, onOpenPalette }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const isSmall = useMediaQuery(theme.breakpoints.down("sm"));
   const { user, logout } = useAuth();
+  const { activeSystem } = useSystem();
   const [anchor, setAnchor] = useState(null);
-  // Outlet selector now lives pinned in the Sidebar — no duplicate here.
+
+  // Outlet context is meaningful only in the Stock app; org-wide and admin
+  // pages don't operate against a single outlet.
+  const showOutlet = activeSystem === "stock";
 
   const initials = (user?.username || "?").slice(0, 2).toUpperCase();
 
@@ -31,7 +39,7 @@ export default function TopBar({ onMenuClick, onOpenPalette }) {
         zIndex: (t) => t.zIndex.drawer - 1,
       }}
     >
-      <Toolbar sx={{ gap: 1.5, minHeight: { xs: 56, md: 64 } }}>
+      <Toolbar sx={{ gap: 1.25, minHeight: { xs: 56, md: 64 } }}>
         {isMobile && (
           <IconButton edge="start" onClick={onMenuClick}>
             <MenuIcon />
@@ -42,6 +50,25 @@ export default function TopBar({ onMenuClick, onOpenPalette }) {
 
         <Box sx={{ flex: 1 }} />
 
+        {/* Global context: outlet + app switchers. Outlet hidden in Org / Admin. */}
+        {showOutlet && (
+          <Box sx={{ display: { xs: "none", md: "inline-flex" } }}>
+            <OutletSwitcher variant="topbar" />
+          </Box>
+        )}
+        {showOutlet && (
+          <Box sx={{ display: { xs: "inline-flex", md: "none" } }}>
+            <OutletSwitcher variant="topbar-compact" />
+          </Box>
+        )}
+
+        <Box sx={{ display: { xs: "none", md: "inline-flex" } }}>
+          <AppSwitcher />
+        </Box>
+        <Box sx={{ display: { xs: "inline-flex", md: "none" } }}>
+          <AppSwitcher compact />
+        </Box>
+
         <Tooltip title="Search (Ctrl/⌘ + K)">
           <Button
             onClick={onOpenPalette}
@@ -50,12 +77,12 @@ export default function TopBar({ onMenuClick, onOpenPalette }) {
             startIcon={<SearchIcon fontSize="small" />}
             size="small"
             sx={{
-              display: { xs: "none", sm: "inline-flex" },
+              display: { xs: "none", lg: "inline-flex" },
               color: "text.secondary",
               borderColor: "divider",
               textTransform: "none",
               fontWeight: 400,
-              minWidth: 220,
+              minWidth: 200,
               justifyContent: "flex-start",
               bgcolor: "action.hover",
               "&:hover": { bgcolor: "action.hover", borderColor: "divider" },
@@ -79,7 +106,7 @@ export default function TopBar({ onMenuClick, onOpenPalette }) {
           </Button>
         </Tooltip>
 
-        <IconButton onClick={onOpenPalette} sx={{ display: { xs: "inline-flex", sm: "none" } }}>
+        <IconButton onClick={onOpenPalette} sx={{ display: { xs: "inline-flex", lg: "none" } }}>
           <SearchIcon />
         </IconButton>
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Box, Typography, Stack, ButtonBase, Avatar } from "@mui/material";
 import InventoryIcon from "@mui/icons-material/Inventory2";
@@ -7,11 +7,8 @@ import HubIcon from "@mui/icons-material/Hub";
 import LogoutIcon from "@mui/icons-material/Logout";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import { useAuth } from "../contexts/AuthContext";
-import {
-  availableSystems,
-  defaultPathForSystem,
-  ACTIVE_SYSTEM_STORAGE_KEY,
-} from "../routes/config";
+import { useSystem } from "../contexts/SystemContext";
+import { defaultPathForSystem } from "../routes/config";
 
 const TILES = {
   stock: {
@@ -46,8 +43,7 @@ const SURFACE_BORDER_STRONG = "rgba(15,23,42,0.22)";
 export default function SelectAppPage() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-
-  const systems = useMemo(() => availableSystems(user), [user]);
+  const { systems, setActiveSystem } = useSystem();
 
   // Launcher is the canonical landing page — even single-app users see it
   // so the login → choose → enter flow stays consistent.
@@ -61,7 +57,7 @@ export default function SelectAppPage() {
   }, [user, navigate]);
 
   const pick = (system) => {
-    try { localStorage.setItem(ACTIVE_SYSTEM_STORAGE_KEY, system); } catch { /* ignore */ }
+    setActiveSystem(system);
     navigate(defaultPathForSystem(system, user), { replace: true });
   };
 

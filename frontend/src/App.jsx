@@ -5,6 +5,7 @@ import { ThemeModeProvider } from "./theme/ThemeModeContext";
 import { NotificationProvider } from "./providers/NotificationProvider";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { OutletProvider } from "./contexts/OutletContext";
+import { SystemProvider } from "./contexts/SystemContext";
 import LoginPage from "./pages/auth/LoginPage";
 
 // Everything below is route-split: keep the initial bundle small, ship JS
@@ -108,6 +109,7 @@ export default function App() {
       <NotificationProvider>
         <AuthProvider>
           <OutletProvider>
+            <SystemProvider>
               <BrowserRouter>
                 <Suspense fallback={<FullScreenLoader />}>
                   <Routes>
@@ -194,6 +196,7 @@ export default function App() {
                   </Routes>
                 </Suspense>
               </BrowserRouter>
+            </SystemProvider>
           </OutletProvider>
         </AuthProvider>
       </NotificationProvider>

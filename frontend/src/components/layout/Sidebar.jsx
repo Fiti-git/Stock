@@ -1,36 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   Box, Drawer, List, ListItemButton, ListItemIcon, ListItemText,
   Typography, IconButton, Tooltip, Collapse, Avatar, useTheme, useMediaQuery,
-  Chip,
 } from "@mui/material";
 import MenuOpenIcon from "@mui/icons-material/MenuOpen";
 import InventoryIcon from "@mui/icons-material/Inventory";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import LogoutIcon from "@mui/icons-material/Logout";
-import AppsIcon from "@mui/icons-material/Apps";
 import { useAuth } from "../../contexts/AuthContext";
+import { useSystem } from "../../contexts/SystemContext";
 import {
   routesForPermissions,
   GROUP_ORDER,
   DEFAULT_EXPANDED_GROUPS,
-  ACTIVE_SYSTEM_STORAGE_KEY,
-  availableSystems,
 } from "../../routes/config";
-import OutletSwitcher from "./OutletSwitcher";
-
-const SYSTEM_LABEL = { stock: "Stock", admin: "Admin" };
 
 const EXPANDED_STORAGE_KEY = "sidebar_expanded_groups_v1";
-
-function loadActiveSystem(systems) {
-  try {
-    const saved = localStorage.getItem(ACTIVE_SYSTEM_STORAGE_KEY);
-    if (saved && systems.includes(saved)) return saved;
-  } catch { /* ignore */ }
-  return systems[0] || null;
-}
 
 function loadExpandedState() {
   try {
@@ -54,28 +40,10 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }) 
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const { user, logout } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
 
-  // Active system is picked on the launcher (/select-app) and persisted in
-  // localStorage. The sidebar only renders that system's routes — there's no
-  // in-sidebar toggle anymore. Users can hit "Switch app" to go back.
-  const userSystems = useMemo(() => availableSystems(user), [user]);
-  const [activeSystem, setActiveSystem] = useState(() => loadActiveSystem(userSystems));
-
-  useEffect(() => {
-    if (userSystems.length === 0) {
-      setActiveSystem(null);
-      return;
-    }
-    if (!activeSystem || !userSystems.includes(activeSystem)) {
-      setActiveSystem(userSystems[0]);
-    }
-  }, [userSystems]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const goLauncher = () => {
-    if (isMobile) onClose?.();
-    navigate("/select-app");
-  };
+  // Active system + app switching live in the TopBar (SystemContext). The
+  // sidebar only renders the routes for the active app.
+  const { activeSystem } = useSystem();
 
   const items = routesForPermissions(user?.permissions, activeSystem);
 
@@ -158,7 +126,7 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }) 
           {!isCollapsedRail && (
             <Box sx={{ minWidth: 0 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 800, lineHeight: 1.2, color: "text.primary" }} noWrap>
-                Arunalu {activeSystem ? SYSTEM_LABEL[activeSystem] || "" : ""}
+                Arunalu
               </Typography>
               <Typography variant="caption" sx={{ color: "text.secondary" }} noWrap>
                 Super Mart
@@ -175,52 +143,7 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }) 
         )}
       </Box>
 
-      {/* Switch app — visible only when the user has more than one app */}
-      {userSystems.length > 1 && (
-        isCollapsedRail ? (
-          <Box sx={{ display: "flex", justifyContent: "center", pb: 1 }}>
-            <Tooltip title="Switch app" placement="right">
-              <IconButton size="small" onClick={goLauncher} sx={{ color: "text.secondary" }}>
-                <AppsIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          </Box>
-        ) : (
-          <Box sx={{ px: 2, pb: 1.5 }}>
-            <ListItemButton
-              onClick={goLauncher}
-              sx={{
-                borderRadius: 1.5,
-                px: 1.25, py: 0.75,
-                bgcolor: "background.neutral",
-                "&:hover": { bgcolor: "background.sidebarHover" },
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 32, color: "text.secondary" }}>
-                <AppsIcon fontSize="small" />
-              </ListItemIcon>
-              <ListItemText
-                primary="Switch app"
-                primaryTypographyProps={{ fontSize: "0.78rem", fontWeight: 600 }}
-              />
-              {activeSystem && (
-                <Chip
-                  size="small"
-                  label={(SYSTEM_LABEL[activeSystem] || activeSystem).toUpperCase()}
-                  sx={{ height: 20, fontSize: "0.62rem", fontWeight: 700, letterSpacing: "0.06em" }}
-                />
-              )}
-            </ListItemButton>
-          </Box>
-        )
-      )}
-
-      {/* Outlet selector — pinned so the active outlet is always visible.
-          Admins get a dropdown; non-admins see a read-only chip. Collapsed
-          rail mode renders an icon instead. */}
-      <Box sx={{ pb: 1 }}>
-        <OutletSwitcher variant="sidebar" collapsed={isCollapsedRail} />
-      </Box>
+      {/* App + outlet switchers live in the TopBar now — sidebar is nav-only. */}
 
       {/* Nav */}
       <Box sx={{ flex: 1, overflowY: "auto", px: 1, py: 1 }}>
