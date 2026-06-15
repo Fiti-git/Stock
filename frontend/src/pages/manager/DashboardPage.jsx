@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 import {
-  Box, Grid, Card, CardContent, CardActionArea, Typography, Stack, LinearProgress, Chip,
+  Box, Grid, Card, CardContent, Typography, Stack, LinearProgress, Chip,
   TextField, InputAdornment, Skeleton, Button, Avatar, Divider,
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton,
   Table, TableHead, TableRow, TableCell, TableBody, TableContainer,
@@ -427,36 +427,56 @@ export default function DashboardPage() {
         </Grid>
       </Grid>
 
-      {/* Today's count progress — clickable. Tap to drill into the date and
-          see which items were counted that day. */}
+      {/* Today's count progress — large stat + explicit "View by date" CTA */}
       {!stepsLoading && totalItems > 0 && (
         <Card variant="outlined" sx={{ mt: 3, borderRadius: 2 }}>
-          <CardActionArea
-            onClick={() => {
-              setProgressDate(TODAY());
-              setProgressSearch("");
-              setProgressDlgOpen(true);
-            }}
-          >
-            <CardContent>
-              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Typography variant="overline" color="text.secondary">Today's count progress</Typography>
-                  <VisibilityIcon sx={{ fontSize: 16, color: "text.secondary" }} />
+          <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+            <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems={{ md: "center" }}>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="baseline" sx={{ mb: 1 }}>
+                  <Typography variant="overline" sx={{ color: "text.secondary", letterSpacing: "0.12em" }}>
+                    Today's count progress
+                  </Typography>
+                  <Typography sx={{ fontWeight: 800, fontSize: "1.25rem", color: countPct === 100 ? "success.main" : "primary.main" }}>
+                    {countPct}%
+                  </Typography>
                 </Stack>
-                <Typography variant="subtitle2" fontWeight={700}>{countPct}%</Typography>
-              </Stack>
-              <LinearProgress
-                variant="determinate"
-                value={countPct}
-                color={countPct === 100 ? "success" : "primary"}
-                sx={{ height: 8, borderRadius: 1 }}
-              />
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
-                {counted.toLocaleString()} of {totalItems.toLocaleString()} items · tap to view items by date
-              </Typography>
-            </CardContent>
-          </CardActionArea>
+                <LinearProgress
+                  variant="determinate"
+                  value={countPct}
+                  color={countPct === 100 ? "success" : "primary"}
+                  sx={{ height: 10, borderRadius: 1 }}
+                />
+                <Stack direction="row" justifyContent="space-between" sx={{ mt: 1 }}>
+                  <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                    <Box component="span" sx={{ fontWeight: 700, color: "text.primary" }}>{counted.toLocaleString()}</Box>
+                    {" "}of <Box component="span" sx={{ fontWeight: 700, color: "text.primary" }}>{totalItems.toLocaleString()}</Box> items counted
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                    {(totalItems - counted).toLocaleString()} remaining
+                  </Typography>
+                </Stack>
+              </Box>
+              <Button
+                variant="contained"
+                startIcon={<VisibilityIcon />}
+                onClick={() => {
+                  setProgressDate(TODAY());
+                  setProgressSearch("");
+                  setProgressDlgOpen(true);
+                }}
+                sx={{
+                  textTransform: "none",
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
+                  minWidth: { md: 200 },
+                  alignSelf: { xs: "stretch", md: "auto" },
+                }}
+              >
+                View items by date
+              </Button>
+            </Stack>
+          </CardContent>
         </Card>
       )}
 
