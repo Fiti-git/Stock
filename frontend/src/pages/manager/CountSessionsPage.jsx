@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Stack, TextField, Button, Typography, Chip, InputAdornment, MenuItem, Tooltip,
+  Stack, TextField, Button, Typography, Chip, MenuItem, Tooltip,
 } from "@mui/material";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
 import SearchIcon from "@mui/icons-material/Search";
@@ -15,19 +15,37 @@ import { useNotification } from "../../providers/NotificationProvider";
 
 const SESSION_STATUS_COLORS = { open: "warning", closed: "success" };
 
+// First-of-month → today as ISO YYYY-MM-DD. Default range, matches the
+// Uploaded Sheets page so admins get a consistent "this month" lens.
+function currentMonthRange() {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return { from: fmt(first), to: fmt(now) };
+}
+
 export default function CountSessionsPage() {
   const { outletId } = useOutlet();
   const { notify } = useNotification();
   const navigate = useNavigate();
-  const today = new Date().toISOString().slice(0, 10);
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+  const initialRange = useMemo(() => currentMonthRange(), []);
 
-  const [dateFrom, setDateFrom] = useState(thirtyDaysAgo);
-  const [dateTo, setDateTo] = useState(today);
+  const [dateFrom, setDateFrom] = useState(initialRange.from);
+  const [dateTo, setDateTo] = useState(initialRange.to);
   const [statusFilter, setStatusFilter] = useState("");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const PAGE_SIZE = 50;
+
+  const resetRange = () => {
+    const r = currentMonthRange();
+    setDateFrom(r.from);
+    setDateTo(r.to);
+  };
+
+  // When one outlet is pinned globally, every row shows the same outlet —
+  // hide the column so the table breathes.
+  const outletColumnVisible = !outletId;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -52,9 +70,9 @@ export default function CountSessionsPage() {
     {
       field: "count_date", headerName: "Count Date", flex: 0.7, minWidth: 120,
     },
-    {
-      field: "outlet_name", headerName: "Outlet", flex: 1, minWidth: 140,
-    },
+    ...(outletColumnVisible
+      ? [{ field: "outlet_name", headerName: "Outlet", flex: 1, minWidth: 140 }]
+      : []),
     {
       field: "status", headerName: "Status", flex: 0.5, minWidth: 90,
       renderCell: (p) => (
@@ -129,10 +147,9 @@ export default function CountSessionsPage() {
       <PageHeader
         icon={<FactCheckIcon />}
         title="Count Sessions"
-        subtitle="Review and manage stock count sessions"
       />
 
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mb: 2, flexWrap: "wrap" }}>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mb: 1, flexWrap: "wrap", alignItems: { sm: "center" } }}>
         <TextField
           size="small" label="From" type="date" value={dateFrom}
           onChange={(e) => setDateFrom(e.target.value)}
@@ -152,6 +169,9 @@ export default function CountSessionsPage() {
           <MenuItem value="open">Open</MenuItem>
           <MenuItem value="closed">Closed</MenuItem>
         </TextField>
+        <Button size="small" onClick={resetRange} sx={{ textTransform: "none" }}>
+          This month
+        </Button>
         <Button
           variant="outlined" size="small" startIcon={<RefreshIcon />}
           onClick={load} sx={{ textTransform: "none" }}
@@ -159,6 +179,9 @@ export default function CountSessionsPage() {
           Refresh
         </Button>
       </Stack>
+      <Typography variant="caption" sx={{ display: "block", mb: 2, color: "text.secondary" }}>
+        Outlet scope is set from the top header.
+      </Typography>
 
       <DataTable
         rows={data?.results || []}
