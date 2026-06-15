@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { OutletProvider } from "./contexts/OutletContext";
 import { SystemProvider } from "./contexts/SystemContext";
 import LoginPage from "./pages/auth/LoginPage";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 // Everything below is route-split: keep the initial bundle small, ship JS
 // only for the page the user actually navigates to. The MUI DataGrid, recharts
@@ -112,6 +113,7 @@ export default function App() {
             <SystemProvider>
               <BrowserRouter>
                 <Suspense fallback={<FullScreenLoader />}>
+                  <ErrorBoundary>
                   <Routes>
                     <Route path="/" element={<HomeRedirect />} />
                     <Route path="/select-app" element={<SelectAppPage />} />
@@ -194,6 +196,7 @@ export default function App() {
                     {/* Legacy transfer routes — Transfers app removed 2026-05-20. */}
                     <Route path="/transfers/*" element={<Navigate to="/admin/dashboard" replace />} />
                   </Routes>
+                  </ErrorBoundary>
                 </Suspense>
               </BrowserRouter>
             </SystemProvider>
