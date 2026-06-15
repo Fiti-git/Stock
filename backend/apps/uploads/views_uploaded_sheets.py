@@ -9,9 +9,11 @@ Detail endpoint uses a two-tier strategy:
   2. Otherwise — query the pipeline's line table dynamically (pipeline_registry).
 """
 
-from datetime import date
+from collections import defaultdict
+from datetime import date, datetime, timedelta
 
 from django.db import transaction
+from django.db.models import Count
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -22,6 +24,15 @@ from apps.accounts.permissions import IsManager
 
 from .models import UploadedSheet, AuditLog
 from .pipeline_registry import get_pipeline_config
+
+
+def _parse_date(s):
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return None
 
 
 def _can_delete_sheet(user, sheet: UploadedSheet) -> bool:
@@ -351,3 +362,135 @@ def uploaded_sheet_bulk_delete(request):
             errors.append({"id": sid, "error": str(exc)})
 
     return Response({"deleted": deleted, "errors": errors})
+
+
+# Pipelines where a missing date in the selected range is a real coverage gap.
+# Event-based pipelines (damage/office/etc.) are excluded — a day with no
+# damage report isn't a "missing upload."
+DAILY_PIPELINES = {"pos", "grn", "sales"}
+
+
+@api_view(["GET"])
+@permission_classes([IsManager])
+def uploaded_sheets_coverage(request):
+    """
+    GET /api/uploads/all-uploads/coverage/
+
+    Returns two aggregates for the same filter set as the list view:
+      - by_uploader: { uploader, pipeline, count } rows
+      - missing:     [{ outlet_id, outlet_name, pipeline, pipeline_label,
+                        missing_count, total_days, missing_dates }] — only for
+                     daily pipelines (POS / GRN / Sales). Capped at 60 days
+                     range to keep the response bounded.
+
+    Query params mirror uploaded_sheets_list (pipeline, outlet_id,
+    approval_status, from_date, to_date). from_date + to_date are required
+    for `missing` to be computed.
+    """
+    qs = _scope_qs(request)
+
+    pipeline = request.query_params.get("pipeline")
+    if pipeline:
+        qs = qs.filter(pipeline=pipeline)
+
+    outlet_id_param = request.query_params.get("outlet_id")
+    if outlet_id_param and request.user.role in (User.Role.ADMIN, User.Role.SUPER_ADMIN):
+        qs = qs.filter(outlet_id=outlet_id_param)
+
+    approval = request.query_params.get("approval_status")
+    if approval:
+        qs = qs.filter(approval_status=approval)
+
+    from_date = _parse_date(request.query_params.get("from_date"))
+    to_date = _parse_date(request.query_params.get("to_date"))
+    if from_date:
+        qs = qs.filter(business_date__gte=from_date)
+    if to_date:
+        qs = qs.filter(business_date__lte=to_date)
+
+    by_uploader_rows = (
+        qs.values("uploaded_by__username", "pipeline")
+          .annotate(count=Count("id"))
+          .order_by("-count")
+    )
+    by_uploader = [
+        {
+            "uploader": r["uploaded_by__username"] or "—",
+            "pipeline": r["pipeline"],
+            "pipeline_label": dict(UploadedSheet.Pipeline.choices).get(r["pipeline"], r["pipeline"]),
+            "count": r["count"],
+        }
+        for r in by_uploader_rows
+    ]
+
+    missing = []
+    if from_date and to_date and from_date <= to_date and (to_date - from_date).days <= 60:
+        # Which outlets are in scope?
+        if outlet_id_param and request.user.role in (User.Role.ADMIN, User.Role.SUPER_ADMIN):
+            from apps.outlets.models import Outlet
+            outlet_objs = list(Outlet.objects.filter(pk=outlet_id_param))
+        elif request.user.role in (User.Role.ADMIN, User.Role.SUPER_ADMIN):
+            # Active outlets only — anything that has uploaded in the last 60 days.
+            from apps.outlets.models import Outlet
+            active_ids = set(
+                UploadedSheet.objects
+                .filter(business_date__gte=date.today() - timedelta(days=60))
+                .values_list("outlet_id", flat=True)
+                .distinct()
+            )
+            outlet_objs = list(Outlet.objects.filter(pk__in=active_ids))
+        else:
+            from apps.outlets.models import Outlet
+            outlet_objs = list(Outlet.objects.filter(pk=request.user.outlet_id))
+
+        # Which pipelines to check?
+        if pipeline and pipeline in DAILY_PIPELINES:
+            pipelines_to_check = [pipeline]
+        elif pipeline:
+            pipelines_to_check = []  # event pipeline — no "missing" concept
+        else:
+            pipelines_to_check = list(DAILY_PIPELINES)
+
+        if outlet_objs and pipelines_to_check:
+            outlet_ids = [o.id for o in outlet_objs]
+            # Single query — all (outlet, pipeline, date) tuples that DO exist.
+            present_rows = UploadedSheet.objects.filter(
+                outlet_id__in=outlet_ids,
+                pipeline__in=pipelines_to_check,
+                business_date__gte=from_date,
+                business_date__lte=to_date,
+            ).values_list("outlet_id", "pipeline", "business_date").distinct()
+
+            present_set = set(present_rows)
+
+            total_days = (to_date - from_date).days + 1
+            label_map = dict(UploadedSheet.Pipeline.choices)
+
+            for outlet_obj in outlet_objs:
+                for p in pipelines_to_check:
+                    missing_dates = []
+                    for n in range(total_days):
+                        d = from_date + timedelta(days=n)
+                        if (outlet_obj.id, p, d) not in present_set:
+                            missing_dates.append(str(d))
+                    if not missing_dates:
+                        continue
+                    missing.append({
+                        "outlet_id": outlet_obj.id,
+                        "outlet_name": outlet_obj.outlet_name,
+                        "pipeline": p,
+                        "pipeline_label": label_map.get(p, p),
+                        "total_days": total_days,
+                        "missing_count": len(missing_dates),
+                        "missing_dates": missing_dates,
+                    })
+
+            missing.sort(key=lambda r: (-r["missing_count"], r["outlet_name"], r["pipeline"]))
+
+    return Response({
+        "by_uploader": by_uploader,
+        "missing": missing,
+        "from_date": str(from_date) if from_date else None,
+        "to_date": str(to_date) if to_date else None,
+        "daily_pipelines": sorted(DAILY_PIPELINES),
+    })

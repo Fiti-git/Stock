@@ -1,22 +1,27 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Box, Card, CardContent, Typography, Stack, TextField, MenuItem, Chip,
   Button, Pagination, Table, TableHead, TableRow, TableCell, TableBody,
   TableContainer, Paper, IconButton, Tooltip, Checkbox, Dialog,
-  DialogTitle, DialogContent, DialogActions, CircularProgress,
+  DialogTitle, DialogContent, DialogActions, CircularProgress, Divider,
 } from "@mui/material";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import DeleteIcon from "@mui/icons-material/Delete";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+import PersonIcon from "@mui/icons-material/Person";
 import Layout from "../../components/Layout";
 import { PageHeader } from "../../components/ui";
 import { useNotify } from "../../providers/NotificationProvider";
-import { getUploadedSheets, deleteUploadedSheet, bulkDeleteUploadedSheets } from "../../api/uploads";
-import { getOutlets } from "../../api/outlets";
+import {
+  getUploadedSheets, deleteUploadedSheet, bulkDeleteUploadedSheets,
+  getUploadedSheetsCoverage,
+} from "../../api/uploads";
 import { useAuth } from "../../contexts/AuthContext";
+import { useOutlet } from "../../contexts/OutletContext";
 
 const PIPELINES = [
   { value: "", label: "All pipelines" },
@@ -48,58 +53,82 @@ const PIPELINE_COLORS = {
   sales_returns: "#a855f7",
 };
 
+// First-of-month → today as ISO YYYY-MM-DD strings. Drives the default range.
+function currentMonthRange() {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return { from: fmt(first), to: fmt(now) };
+}
+
 export default function UploadedSheetsPage() {
   const notify = useNotify();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
+  const { outletId: globalOutletId } = useOutlet();
   const isAdmin = ["admin", "super_admin"].includes(user?.role);
 
-  const [outlets, setOutlets] = useState([]);
+  const initialRange = useMemo(() => currentMonthRange(), []);
   const [filters, setFilters] = useState({
     pipeline: searchParams.get("pipeline") || "",
-    outlet_id: "",
     approval_status: "",
-    from_date: "",
-    to_date: "",
+    from_date: initialRange.from,
+    to_date: initialRange.to,
   });
   const [page, setPage] = useState(1);
   const [data, setData] = useState({ count: 0, total_pages: 1, results: [] });
   const [loading, setLoading] = useState(false);
 
-  // Selection state
-  const [selected, setSelected] = useState(new Set());
+  // Coverage aggregates (by_uploader + missing dates)
+  const [coverage, setCoverage] = useState({ by_uploader: [], missing: [] });
+  const [coverageLoading, setCoverageLoading] = useState(false);
 
-  // Delete dialog
-  const [deleteTarget, setDeleteTarget] = useState(null); // single sheet or null
+  // Selection / delete state
+  const [selected, setSelected] = useState(new Set());
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    if (!isAdmin) return;
-    getOutlets().then((r) => setOutlets(r.data || [])).catch(() => {});
-  }, [isAdmin]);
+  // Common params: respect global outlet (TopBar picker), no page-level outlet filter.
+  const commonParams = useMemo(() => {
+    const p = {};
+    if (filters.pipeline) p.pipeline = filters.pipeline;
+    if (filters.approval_status) p.approval_status = filters.approval_status;
+    if (filters.from_date) p.from_date = filters.from_date;
+    if (filters.to_date) p.to_date = filters.to_date;
+    if (isAdmin && globalOutletId) p.outlet_id = globalOutletId;
+    return p;
+  }, [filters, isAdmin, globalOutletId]);
 
-  const load = useCallback(async () => {
+  const loadList = useCallback(async () => {
     setLoading(true);
     setSelected(new Set());
     try {
-      const params = { page, page_size: 25 };
-      Object.entries(filters).forEach(([k, v]) => { if (v) params[k] = v; });
-      const r = await getUploadedSheets(params);
+      const r = await getUploadedSheets({ ...commonParams, page, page_size: 25 });
       setData(r.data);
     } catch (err) {
       notify.error(err.response?.data?.detail || "Failed to load uploaded sheets.");
     } finally { setLoading(false); }
-  }, [page, filters, notify]);
+  }, [commonParams, page, notify]);
 
-  useEffect(() => { load(); }, [load]);
+  const loadCoverage = useCallback(async () => {
+    setCoverageLoading(true);
+    try {
+      const r = await getUploadedSheetsCoverage(commonParams);
+      setCoverage(r.data || { by_uploader: [], missing: [] });
+    } catch {
+      setCoverage({ by_uploader: [], missing: [] });
+    } finally { setCoverageLoading(false); }
+  }, [commonParams]);
+
+  useEffect(() => { loadList(); }, [loadList]);
+  useEffect(() => { loadCoverage(); }, [loadCoverage]);
 
   const setFilter = (k, v) => {
     setPage(1);
     setFilters((p) => ({ ...p, [k]: v }));
     if (k === "pipeline") {
-      // Keep the URL in sync so deep-links and "Back to history" links survive a reload.
       const next = new URLSearchParams(searchParams);
       if (v) next.set("pipeline", v);
       else next.delete("pipeline");
@@ -107,6 +136,34 @@ export default function UploadedSheetsPage() {
     }
   };
 
+  const resetRange = () => {
+    const r = currentMonthRange();
+    setPage(1);
+    setFilters((p) => ({ ...p, from_date: r.from, to_date: r.to }));
+  };
+
+  const refreshAll = () => { loadList(); loadCoverage(); };
+
+  // ---- Uploader × Pipeline matrix ----
+  const uploaderMatrix = useMemo(() => {
+    const rows = new Map(); // uploader -> { pipeline -> count, total }
+    const pipelineSet = new Set();
+    for (const r of coverage.by_uploader) {
+      if (!rows.has(r.uploader)) rows.set(r.uploader, { _total: 0, _byPipeline: {} });
+      const row = rows.get(r.uploader);
+      row._byPipeline[r.pipeline] = (row._byPipeline[r.pipeline] || 0) + r.count;
+      row._total += r.count;
+      pipelineSet.add(r.pipeline);
+    }
+    const pipelines = Array.from(pipelineSet)
+      .map((p) => ({ value: p, label: PIPELINES.find((x) => x.value === p)?.label || p }));
+    const out = Array.from(rows.entries())
+      .map(([uploader, v]) => ({ uploader, byPipeline: v._byPipeline, total: v._total }))
+      .sort((a, b) => b.total - a.total);
+    return { pipelines, rows: out };
+  }, [coverage.by_uploader]);
+
+  // ---- Selection / delete handlers ----
   const allIds = data.results.map((s) => s.id);
   const allChecked = allIds.length > 0 && allIds.every((id) => selected.has(id));
   const someChecked = allIds.some((id) => selected.has(id));
@@ -121,11 +178,7 @@ export default function UploadedSheetsPage() {
 
   const toggleAll = () => {
     if (allChecked) {
-      setSelected((prev) => {
-        const next = new Set(prev);
-        allIds.forEach((id) => next.delete(id));
-        return next;
-      });
+      setSelected((prev) => { const n = new Set(prev); allIds.forEach((id) => n.delete(id)); return n; });
     } else {
       setSelected((prev) => new Set([...prev, ...allIds]));
     }
@@ -138,7 +191,7 @@ export default function UploadedSheetsPage() {
       await deleteUploadedSheet(deleteTarget.id);
       notify.success(`Sheet deleted (${deleteTarget.row_count?.toLocaleString()} rows removed).`);
       setDeleteTarget(null);
-      load();
+      refreshAll();
     } catch (err) {
       notify.error(err.response?.data?.detail || "Delete failed.");
     } finally { setDeleting(false); }
@@ -146,15 +199,14 @@ export default function UploadedSheetsPage() {
 
   const handleBulkDelete = async () => {
     setDeleting(true);
-    const ids = Array.from(selected);
     try {
-      const res = await bulkDeleteUploadedSheets(ids);
+      const res = await bulkDeleteUploadedSheets(Array.from(selected));
       const { deleted, errors } = res.data;
       if (deleted > 0) notify.success(`Deleted ${deleted} sheet(s).`);
       if (errors?.length) notify.error(`${errors.length} sheet(s) could not be deleted.`);
       setBulkDeleteOpen(false);
       setSelected(new Set());
-      load();
+      refreshAll();
     } catch (err) {
       notify.error(err.response?.data?.detail || "Bulk delete failed.");
     } finally { setDeleting(false); }
@@ -172,11 +224,13 @@ export default function UploadedSheetsPage() {
   };
 
   const selectedCount = selected.size;
+  const showOutletColumn = !globalOutletId || !isAdmin === false; // show when not pinned to one outlet — i.e. "All outlets"
+  const outletColumnVisible = !globalOutletId;
 
   return (
     <Layout>
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2 }}>
-        <PageHeader title="Uploaded XLS Sheets" subtitle="All file uploads across every pipeline" />
+        <PageHeader title="Uploaded Sheets" />
         <Stack direction="row" spacing={1}>
           {selectedCount > 0 && (
             <Button
@@ -192,12 +246,7 @@ export default function UploadedSheetsPage() {
             variant="contained"
             startIcon={<UploadFileIcon />}
             onClick={() => navigate("/transactions")}
-            sx={{
-              textTransform: "none", fontWeight: 600,
-              background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-              boxShadow: "0 4px 12px rgba(99,102,241,0.3)",
-              "&:hover": { background: "linear-gradient(135deg, #4f46e5, #7c3aed)" },
-            }}
+            sx={{ textTransform: "none", fontWeight: 600 }}
           >
             New Upload
           </Button>
@@ -212,13 +261,6 @@ export default function UploadedSheetsPage() {
               onChange={(e) => setFilter("pipeline", e.target.value)} sx={{ minWidth: 170 }}>
               {PIPELINES.map((p) => <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>)}
             </TextField>
-            {isAdmin && (
-              <TextField select size="small" label="Outlet" value={filters.outlet_id}
-                onChange={(e) => setFilter("outlet_id", e.target.value)} sx={{ minWidth: 190 }}>
-                <MenuItem value="">All outlets</MenuItem>
-                {outlets.map((o) => <MenuItem key={o.id} value={o.id}>{o.outlet_name}</MenuItem>)}
-              </TextField>
-            )}
             <TextField select size="small" label="Status" value={filters.approval_status}
               onChange={(e) => setFilter("approval_status", e.target.value)} sx={{ minWidth: 130 }}>
               <MenuItem value="">All</MenuItem>
@@ -231,15 +273,135 @@ export default function UploadedSheetsPage() {
               value={filters.from_date} onChange={(e) => setFilter("from_date", e.target.value)} />
             <TextField type="date" size="small" label="To" InputLabelProps={{ shrink: true }}
               value={filters.to_date} onChange={(e) => setFilter("to_date", e.target.value)} />
+            <Button size="small" onClick={resetRange} sx={{ textTransform: "none" }}>
+              This month
+            </Button>
+            <Box sx={{ flex: 1 }} />
             <Tooltip title="Refresh">
-              <IconButton onClick={load} disabled={loading} size="small"><RefreshIcon /></IconButton>
+              <IconButton onClick={refreshAll} disabled={loading || coverageLoading} size="small">
+                <RefreshIcon />
+              </IconButton>
             </Tooltip>
           </Stack>
+          <Typography variant="caption" sx={{ display: "block", mt: 1, color: "text.secondary" }}>
+            Outlet scope is set from the top header (currently {globalOutletId ? "one outlet" : "All outlets"}).
+          </Typography>
         </CardContent>
       </Card>
 
-      {/* Table */}
+      {/* Two summary panels: who uploaded what + missing dates */}
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 2, mb: 2 }}>
+        {/* Who uploaded what */}
+        <Card variant="outlined" sx={{ borderRadius: 2 }}>
+          <CardContent>
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+              <PersonIcon fontSize="small" sx={{ color: "primary.main" }} />
+              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Who uploaded what</Typography>
+              {coverageLoading && <CircularProgress size={14} />}
+            </Stack>
+            {uploaderMatrix.rows.length === 0 ? (
+              <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                No uploads in this period.
+              </Typography>
+            ) : (
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 700, fontSize: "0.72rem", color: "text.secondary" }}>User</TableCell>
+                      {uploaderMatrix.pipelines.map((p) => (
+                        <TableCell key={p.value} align="right" sx={{ fontWeight: 700, fontSize: "0.72rem", color: "text.secondary" }}>
+                          <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end">
+                            <Box sx={{ width: 6, height: 6, borderRadius: "50%", bgcolor: PIPELINE_COLORS[p.value] || "#64748b" }} />
+                            <span>{p.label}</span>
+                          </Stack>
+                        </TableCell>
+                      ))}
+                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: "0.72rem", color: "text.secondary" }}>Total</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {uploaderMatrix.rows.map((r) => (
+                      <TableRow key={r.uploader} hover>
+                        <TableCell sx={{ fontSize: "0.82rem", fontWeight: 600 }}>{r.uploader}</TableCell>
+                        {uploaderMatrix.pipelines.map((p) => (
+                          <TableCell key={p.value} align="right" sx={{ fontSize: "0.82rem", color: r.byPipeline[p.value] ? "text.primary" : "text.disabled" }}>
+                            {r.byPipeline[p.value] || "—"}
+                          </TableCell>
+                        ))}
+                        <TableCell align="right" sx={{ fontSize: "0.82rem", fontWeight: 700 }}>{r.total}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Missing dates */}
+        <Card variant="outlined" sx={{ borderRadius: 2 }}>
+          <CardContent>
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+              <WarningAmberIcon fontSize="small" sx={{ color: "warning.main" }} />
+              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Missing dates</Typography>
+              {coverageLoading && <CircularProgress size={14} />}
+              <Box sx={{ flex: 1 }} />
+              <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                Daily pipelines · POS · GRN · Sales
+              </Typography>
+            </Stack>
+            {coverage.missing.length === 0 ? (
+              <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                No coverage gaps in this period.
+              </Typography>
+            ) : (
+              <TableContainer sx={{ maxHeight: 320 }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 700, fontSize: "0.72rem", color: "text.secondary" }}>Outlet</TableCell>
+                      <TableCell sx={{ fontWeight: 700, fontSize: "0.72rem", color: "text.secondary" }}>Pipeline</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: "0.72rem", color: "text.secondary" }}>Missing</TableCell>
+                      <TableCell sx={{ fontWeight: 700, fontSize: "0.72rem", color: "text.secondary" }}>Dates</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {coverage.missing.map((m, i) => (
+                      <TableRow key={`${m.outlet_id}-${m.pipeline}-${i}`} hover>
+                        <TableCell sx={{ fontSize: "0.82rem", fontWeight: 600 }}>{m.outlet_name}</TableCell>
+                        <TableCell sx={{ fontSize: "0.82rem" }}>
+                          <Stack direction="row" alignItems="center" spacing={0.75}>
+                            <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: PIPELINE_COLORS[m.pipeline] || "#64748b" }} />
+                            <span>{m.pipeline_label}</span>
+                          </Stack>
+                        </TableCell>
+                        <TableCell align="right" sx={{ fontSize: "0.82rem", fontWeight: 700, color: "error.main" }}>
+                          {m.missing_count} / {m.total_days}
+                        </TableCell>
+                        <TableCell sx={{ fontSize: "0.75rem", color: "text.secondary" }}>
+                          <Tooltip title={m.missing_dates.join(", ")}>
+                            <Typography variant="caption" sx={{ display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 280 }}>
+                              {m.missing_dates.slice(0, 4).join(", ")}{m.missing_dates.length > 4 ? `, +${m.missing_dates.length - 4} more` : ""}
+                            </Typography>
+                          </Tooltip>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </CardContent>
+        </Card>
+      </Box>
+
+      {/* Sheets table */}
       <Card variant="outlined" sx={{ borderRadius: 2 }}>
+        <Box sx={{ px: 2, py: 1.25, borderBottom: "1px solid", borderColor: "divider", display: "flex", alignItems: "center", gap: 1 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>All uploads</Typography>
+          <Chip size="small" label={data.count?.toLocaleString() || 0} sx={{ height: 20 }} />
+        </Box>
         <TableContainer component={Paper} variant="outlined" sx={{ border: 0 }}>
           <Table size="small">
             <TableHead>
@@ -252,21 +414,20 @@ export default function UploadedSheetsPage() {
                     onChange={toggleAll}
                   />
                 </TableCell>
-                <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem", color: "rgba(15,23,42,0.55)" }}>Pipeline</TableCell>
-                <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem", color: "rgba(15,23,42,0.55)" }}>Outlet</TableCell>
-                <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem", color: "rgba(15,23,42,0.55)" }}>Business Date</TableCell>
-                <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem", color: "rgba(15,23,42,0.55)" }}>Uploaded By</TableCell>
-                <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem", color: "rgba(15,23,42,0.55)" }}>Uploaded At</TableCell>
-                <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem", color: "rgba(15,23,42,0.55)" }}>File</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 700, fontSize: "0.75rem", color: "rgba(15,23,42,0.55)" }}>Rows</TableCell>
-                <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem", color: "rgba(15,23,42,0.55)" }}>Status</TableCell>
-                <TableCell align="center" sx={{ fontWeight: 700, fontSize: "0.75rem", color: "rgba(15,23,42,0.55)" }}>Actions</TableCell>
+                <TableCell sx={{ fontWeight: 700, fontSize: "0.72rem", color: "text.secondary" }}>Pipeline</TableCell>
+                {outletColumnVisible && <TableCell sx={{ fontWeight: 700, fontSize: "0.72rem", color: "text.secondary" }}>Outlet</TableCell>}
+                <TableCell sx={{ fontWeight: 700, fontSize: "0.72rem", color: "text.secondary" }}>Business Date</TableCell>
+                <TableCell sx={{ fontWeight: 700, fontSize: "0.72rem", color: "text.secondary" }}>Uploaded</TableCell>
+                <TableCell sx={{ fontWeight: 700, fontSize: "0.72rem", color: "text.secondary" }}>File</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, fontSize: "0.72rem", color: "text.secondary" }}>Rows</TableCell>
+                <TableCell sx={{ fontWeight: 700, fontSize: "0.72rem", color: "text.secondary" }}>Status</TableCell>
+                <TableCell align="center" sx={{ fontWeight: 700, fontSize: "0.72rem", color: "text.secondary" }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {data.results.length === 0 && !loading && (
                 <TableRow>
-                  <TableCell colSpan={10} align="center" sx={{ py: 6, color: "rgba(15,23,42,0.4)" }}>
+                  <TableCell colSpan={outletColumnVisible ? 9 : 8} align="center" sx={{ py: 6, color: "rgba(15,23,42,0.4)" }}>
                     No uploaded sheets found.
                   </TableCell>
                 </TableRow>
@@ -282,46 +443,53 @@ export default function UploadedSheetsPage() {
                     <TableCell>
                       <Stack direction="row" alignItems="center" spacing={0.75}>
                         <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: pipelineColor, flexShrink: 0 }} />
-                        <Typography sx={{ fontSize: "0.82rem", fontWeight: 500 }}>
-                          {s.pipeline_label}
-                        </Typography>
+                        <Typography sx={{ fontSize: "0.82rem", fontWeight: 500 }}>{s.pipeline_label}</Typography>
                       </Stack>
                     </TableCell>
-                    <TableCell sx={{ fontSize: "0.82rem" }}>{s.outlet_name}</TableCell>
+                    {outletColumnVisible && <TableCell sx={{ fontSize: "0.82rem" }}>{s.outlet_name}</TableCell>}
                     <TableCell sx={{ fontSize: "0.82rem", whiteSpace: "nowrap" }}>
                       {s.business_date}
                       {s.business_date_to && s.business_date_to !== s.business_date ? ` – ${s.business_date_to}` : ""}
                     </TableCell>
-                    <TableCell sx={{ fontSize: "0.82rem" }}>{s.uploaded_by || "—"}</TableCell>
-                    <TableCell sx={{ fontSize: "0.82rem", whiteSpace: "nowrap" }}>
-                      {new Date(s.uploaded_at).toLocaleString()}
+                    <TableCell sx={{ fontSize: "0.82rem" }}>
+                      <Tooltip title={new Date(s.uploaded_at).toLocaleString()}>
+                        <Box>
+                          <Typography sx={{ fontSize: "0.82rem", fontWeight: 500 }}>{s.uploaded_by || "—"}</Typography>
+                          <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                            {new Date(s.uploaded_at).toLocaleDateString()}
+                          </Typography>
+                        </Box>
+                      </Tooltip>
                     </TableCell>
-                    <TableCell sx={{ fontFamily: "monospace", fontSize: "0.75rem", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", color: "rgba(15,23,42,0.5)" }}>
-                      {s.filename}
+                    <TableCell sx={{ fontFamily: "monospace", fontSize: "0.72rem", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", color: "text.secondary" }}>
+                      <Tooltip title={s.filename || ""}>
+                        <Box component="span" sx={{ display: "inline-block", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", verticalAlign: "middle" }}>
+                          {s.filename}
+                        </Box>
+                      </Tooltip>
                     </TableCell>
                     <TableCell align="right" sx={{ fontSize: "0.82rem", fontWeight: 600 }}>
                       {s.row_count?.toLocaleString()}
                     </TableCell>
                     <TableCell>
-                      <Chip size="small" label={chip.label} color={chip.color} variant={s.approval_reason ? "outlined" : "filled"} />
-                      {s.approval_reason && (
-                        <Typography variant="caption" sx={{ ml: 0.5, color: "text.secondary" }}>{s.approval_reason}</Typography>
-                      )}
+                      <Tooltip title={s.approval_reason || ""} placement="top">
+                        <Chip size="small" label={chip.label} color={chip.color} variant={s.approval_reason ? "outlined" : "filled"} />
+                      </Tooltip>
                     </TableCell>
                     <TableCell align="center">
                       <Stack direction="row" spacing={0.25} justifyContent="center">
                         <Tooltip title="View rows">
-                          <IconButton size="small" onClick={() => navigate(`/uploaded-sheets/${s.id}`)} sx={{ color: "#6366f1" }}>
+                          <IconButton size="small" onClick={() => navigate(`/uploaded-sheets/${s.id}`)} sx={{ color: "primary.main" }}>
                             <VisibilityIcon sx={{ fontSize: 18 }} />
                           </IconButton>
                         </Tooltip>
                         <Tooltip title="Re-upload (pre-fills date & pipeline)">
-                          <IconButton size="small" onClick={() => handleReUpload(s)} sx={{ color: "#6366f1" }}>
+                          <IconButton size="small" onClick={() => handleReUpload(s)} sx={{ color: "primary.main" }}>
                             <UploadFileIcon sx={{ fontSize: 18 }} />
                           </IconButton>
                         </Tooltip>
                         <Tooltip title="Delete sheet">
-                          <IconButton size="small" onClick={() => setDeleteTarget(s)} sx={{ color: "#ef4444" }}>
+                          <IconButton size="small" onClick={() => setDeleteTarget(s)} sx={{ color: "error.main" }}>
                             <DeleteIcon sx={{ fontSize: 18 }} />
                           </IconButton>
                         </Tooltip>
@@ -342,13 +510,12 @@ export default function UploadedSheetsPage() {
       <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} maxWidth="xs" fullWidth>
         <DialogTitle>Delete Upload?</DialogTitle>
         <DialogContent>
-          <Typography sx={{ fontSize: "0.9rem", color: "rgba(15,23,42,0.7)" }}>
+          <Typography sx={{ fontSize: "0.9rem", color: "text.secondary" }}>
             This will permanently delete{" "}
             <strong>{deleteTarget?.row_count?.toLocaleString()} row(s)</strong> from the database.
-            <br />
-            <Typography component="span" sx={{ fontSize: "0.82rem", color: "rgba(15,23,42,0.5)" }}>
-              {deleteTarget?.pipeline_label} · {deleteTarget?.business_date}
-            </Typography>
+          </Typography>
+          <Typography variant="caption" sx={{ display: "block", mt: 1, color: "text.secondary" }}>
+            {deleteTarget?.pipeline_label} · {deleteTarget?.business_date}
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -358,9 +525,7 @@ export default function UploadedSheetsPage() {
             disabled={deleting}
             startIcon={deleting ? <CircularProgress size={16} /> : <DeleteIcon />}
             sx={{ textTransform: "none" }}
-          >
-            Delete
-          </Button>
+          >Delete</Button>
         </DialogActions>
       </Dialog>
 
@@ -368,7 +533,7 @@ export default function UploadedSheetsPage() {
       <Dialog open={bulkDeleteOpen} onClose={() => setBulkDeleteOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Delete {selectedCount} Sheet(s)?</DialogTitle>
         <DialogContent>
-          <Typography sx={{ fontSize: "0.9rem", color: "rgba(15,23,42,0.7)" }}>
+          <Typography sx={{ fontSize: "0.9rem", color: "text.secondary" }}>
             This will permanently delete all rows from the selected uploads. This cannot be undone.
           </Typography>
         </DialogContent>
@@ -379,9 +544,7 @@ export default function UploadedSheetsPage() {
             disabled={deleting}
             startIcon={deleting ? <CircularProgress size={16} /> : <DeleteSweepIcon />}
             sx={{ textTransform: "none" }}
-          >
-            Delete All
-          </Button>
+          >Delete All</Button>
         </DialogActions>
       </Dialog>
     </Layout>

@@ -69,16 +69,32 @@ export default function OutletSwitcher({ variant = "topbar" }) {
       : <Box sx={{ height: 36, width: 180 }} />;
   }
 
+  const ALL_VALUE = "__all__";
+  const isAll = !selectedOutlet?.id;
+  const displayName = isAll ? "All outlets" : name;
+
   // Compact (mobile) — icon button → menu.
   if (variant === "topbar-compact") {
     return (
       <>
-        <Tooltip title={`Outlet: ${name}`}>
+        <Tooltip title={`Outlet: ${displayName}`}>
           <IconButton size="small" onClick={(e) => setAnchor(e.currentTarget)}>
             <StorefrontIcon fontSize="small" />
           </IconButton>
         </Tooltip>
         <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={() => setAnchor(null)}>
+          <MenuItem
+            selected={isAll}
+            onClick={() => {
+              setSelectedOutlet(null);
+              setAnchor(null);
+            }}
+          >
+            <Box sx={{ width: 24, display: "flex", justifyContent: "center", mr: 1 }}>
+              {isAll && <CheckIcon fontSize="small" color="primary" />}
+            </Box>
+            <ListItemText primary="All outlets" primaryTypographyProps={{ fontStyle: "italic" }} />
+          </MenuItem>
           {outlets.map((o) => {
             const active = o.id === selectedOutlet?.id;
             return (
@@ -103,13 +119,18 @@ export default function OutletSwitcher({ variant = "topbar" }) {
   }
 
   // Default topbar — full pill select.
-  const value = selectedOutlet?.id ?? "";
+  const value = isAll ? ALL_VALUE : selectedOutlet.id;
   return (
     <Select
       size="small"
       value={value}
       onChange={(e) => {
-        const found = outlets.find((o) => o.id === Number(e.target.value));
+        const v = e.target.value;
+        if (v === ALL_VALUE) {
+          setSelectedOutlet(null);
+          return;
+        }
+        const found = outlets.find((o) => o.id === Number(v));
         if (found) setSelectedOutlet({ id: found.id, name: found.outlet_name });
       }}
       input={
@@ -135,6 +156,7 @@ export default function OutletSwitcher({ variant = "topbar" }) {
       }
       startAdornment={<StorefrontIcon fontSize="small" sx={{ color: "text.secondary", mr: 0.75 }} />}
     >
+      <MenuItem value={ALL_VALUE} sx={{ fontStyle: "italic" }}>All outlets</MenuItem>
       {outlets.map((o) => (
         <MenuItem key={o.id} value={o.id}>
           {o.outlet_name}

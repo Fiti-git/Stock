@@ -62,6 +62,7 @@ from .views_suppliers import (
 from .views_uploaded_sheets import (
     uploaded_sheets_list, uploaded_sheet_detail,
     uploaded_sheet_delete, uploaded_sheet_bulk_delete,
+    uploaded_sheets_coverage,
 )
 
 urlpatterns = [
@@ -168,6 +169,7 @@ urlpatterns = [
 
     # Unified uploaded-sheets (manager + admin)
     path("all-uploads/", uploaded_sheets_list, name="uploaded-sheets-list"),
+    path("all-uploads/coverage/", uploaded_sheets_coverage, name="uploaded-sheets-coverage"),
     path("all-uploads/bulk-delete/", uploaded_sheet_bulk_delete, name="uploaded-sheets-bulk-delete"),
     path("all-uploads/<int:sheet_id>/", uploaded_sheet_detail, name="uploaded-sheet-detail"),
     path("all-uploads/<int:sheet_id>/delete/", uploaded_sheet_delete, name="uploaded-sheet-delete"),
