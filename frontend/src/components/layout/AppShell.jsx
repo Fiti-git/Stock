@@ -3,7 +3,6 @@ import { Box, useTheme, useMediaQuery } from "@mui/material";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
 import CommandPalette from "./CommandPalette";
-import LicenseBanner from "../LicenseBanner";
 
 export default function AppShell({ children }) {
   const theme = useTheme();
@@ -37,7 +36,6 @@ export default function AppShell({ children }) {
           onOpenPalette={() => setPaletteOpen(true)}
         />
         <Box component="main" sx={{ flex: 1, px: { xs: 2, md: 3 }, py: { xs: 2, md: 3 }, minWidth: 0 }}>
-          <LicenseBanner />
           {children}
         </Box>
       </Box>

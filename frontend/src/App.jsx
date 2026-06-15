@@ -5,7 +5,6 @@ import { ThemeModeProvider } from "./theme/ThemeModeContext";
 import { NotificationProvider } from "./providers/NotificationProvider";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { OutletProvider } from "./contexts/OutletContext";
-import { LicenseProvider } from "./contexts/LicenseContext";
 import LoginPage from "./pages/auth/LoginPage";
 
 // Everything below is route-split: keep the initial bundle small, ship JS
@@ -60,8 +59,6 @@ const DemandDashboardPage = lazy(() => import("./pages/admin/DemandDashboardPage
 const PurchasePlansPage = lazy(() => import("./pages/admin/PurchasePlansPage"));
 const PurchasePlanDetailPage = lazy(() => import("./pages/admin/PurchasePlanDetailPage"));
 const StockAgePage = lazy(() => import("./pages/admin/StockAgePage"));
-const LicenseSetupRequired = lazy(() => import("./pages/LicenseSetupRequired"));
-const LicenseConfiguration = lazy(() => import("./pages/admin/LicenseConfiguration"));
 const DbManagement = lazy(() => import("./pages/DbManagement"));
 const SelectAppPage = lazy(() => import("./pages/SelectAppPage"));
 
@@ -111,15 +108,12 @@ export default function App() {
       <NotificationProvider>
         <AuthProvider>
           <OutletProvider>
-            <LicenseProvider>
               <BrowserRouter>
                 <Suspense fallback={<FullScreenLoader />}>
                   <Routes>
                     <Route path="/" element={<HomeRedirect />} />
                     <Route path="/select-app" element={<SelectAppPage />} />
                     <Route path="/login" element={<LoginPage />} />
-                    <Route path="/license-setup-required" element={<LicenseSetupRequired />} />
-                    <Route path="/admin/license-configuration" element={<PermissionRoute code="nav.license"><LicenseConfiguration /></PermissionRoute>} />
 
                     <Route path="/db-management" element={<PermissionRoute code="nav.db_management"><DbManagement /></PermissionRoute>} />
                     <Route path="/items/:id" element={<RoleRoute allowedRoles={["store_user","staff","manager","admin","super_admin"]}><ItemDetailPage /></RoleRoute>} />
@@ -200,7 +194,6 @@ export default function App() {
                   </Routes>
                 </Suspense>
               </BrowserRouter>
-            </LicenseProvider>
           </OutletProvider>
         </AuthProvider>
       </NotificationProvider>

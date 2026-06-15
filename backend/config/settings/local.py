@@ -47,6 +47,3 @@ CSRF_TRUSTED_ORIGINS = [
 # OPTIONAL (GOOD PRACTICE)
 # ------------------------
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-
-# Dev bypass: skip license middleware locally
-MIDDLEWARE = [m for m in MIDDLEWARE if "LicenseMiddleware" not in m]

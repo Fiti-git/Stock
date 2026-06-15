@@ -70,7 +70,7 @@ export default function UserPermissionsPage() {
 
   // Categories filtered by the active system chip. "both" codes always show
   // regardless of filter, so picking "stock" still surfaces shared admin
-  // pages (Users, Audit Log, License) the super admin needs to grant.
+  // pages (Users, Audit Log) the super admin needs to grant.
   const categories = useMemo(() => {
     const visible = registry.filter((p) => {
       if (systemFilter === "all") return true;

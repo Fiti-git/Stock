@@ -14,15 +14,9 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// On 503 license-not-configured, redirect to setup page
-// On 402 license expired, log warning
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
-    if (error.response?.status === 503 && error.response?.data?.setup_required) {
-      window.location.href = "/license-setup-required";
-      return new Promise(() => {});
-    }
     const original = error.config;
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true;

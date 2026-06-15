@@ -14,7 +14,7 @@ Three kinds of codes are tracked:
 
 Each code also carries a *system* tag — one of:
   "stock"  → belongs to the Stock product
-  "both"   → cross-product (login, audit, license, users, …)
+  "both"   → cross-product (login, audit, users, …)
 
 The tag is purely informational — it does NOT gate access. A user's effective
 permissions are still the only source of truth for what they can see/do.
@@ -63,7 +63,6 @@ PERMISSIONS = [
     # Cross-product admin pages — visible regardless of which system the user has.
     ("nav.outlets",               "Outlets",                 "Navigation · Administration", "both"),
     ("nav.users",                 "Users",                   "Navigation · Administration", "both"),
-    ("nav.license",               "License",                 "Navigation · Administration", "both"),
     ("nav.user_permissions",      "User Permissions",        "Navigation · Administration", "both"),
     ("nav.suppliers",             "Suppliers",                 "Navigation · Administration", "both"),
     ("nav.categories",            "Categories",                "Navigation · Catalog", "stock"),
@@ -169,7 +168,7 @@ ROLE_DEFAULTS = {
         "nav.daily_upload_report", "nav.negative_pos", "nav.stock_variance",
         "nav.counted_items_report", "nav.counter_performance",
         "nav.catalog", "nav.product_master", "nav.barcode_master",
-        "nav.outlets", "nav.users", "nav.license",
+        "nav.outlets", "nav.users",
         "nav.audit_log", "nav.mobile_devices", "nav.login_events",
         "nav.orphan_cleanup", "nav.db_management",
         "nav.transactions_hub",
@@ -246,10 +245,6 @@ ROLE_DEFAULTS = {
     "staff": [
         "nav.count",
         "nav.db_management",
-    ],
-
-    "ServiceProvider": [
-        "nav.license",
     ],
 }
 

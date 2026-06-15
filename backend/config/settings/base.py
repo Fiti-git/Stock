@@ -23,7 +23,6 @@ INSTALLED_APPS = [
     "apps.items",
     "apps.uploads",
     "apps.dashboard",
-    "apps.licensing",
     "apps.dbops",
     "apps.org_catalog",
     "apps.inventory",
@@ -70,7 +69,6 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
-    "apps.licensing.middleware.LicenseMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -115,9 +113,6 @@ MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-
-# License encryption
-LICENSE_ENCRYPTION_KEY = config("LICENSE_ENCRYPTION_KEY", default="")
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (

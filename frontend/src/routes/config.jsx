@@ -15,7 +15,6 @@ import QueryStatsIcon from "@mui/icons-material/QueryStats";
 import ChecklistIcon from "@mui/icons-material/Checklist";
 import ListAltIcon from "@mui/icons-material/ListAlt";
 import StorageIcon from "@mui/icons-material/Storage";
-import WorkspacePremiumIcon from "@mui/icons-material/WorkspacePremium";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 import PhoneAndroidIcon from "@mui/icons-material/PhoneAndroid";
 import SecurityIcon from "@mui/icons-material/Security";
@@ -96,7 +95,6 @@ export const routes = [
   { path: "/admin/outlets",               code: "nav.outlets",          label: "Outlets",          icon: StorefrontIcon,       roles: ["admin","super_admin"],                    group: "Configure", system: "both" },
   { path: "/admin/users",                 code: "nav.users",            label: "Users",            icon: PeopleAltIcon,        roles: ["admin","super_admin"],                    group: "Configure", system: "both" },
   { path: "/super-admin/user-permissions",code: "nav.user_permissions", label: "User Permissions", icon: AdminPanelSettingsIcon,roles: ["super_admin"],                           group: "Configure", system: "both" },
-  { path: "/admin/license-configuration", code: "nav.license",          label: "License",          icon: WorkspacePremiumIcon, roles: ["admin","super_admin","ServiceProvider"], group: "Configure", system: "both" },
   { path: "/admin/audit-log",             code: "nav.audit_log",        label: "Audit Log",        icon: ListAltIcon,          roles: ["admin","super_admin"],                    group: "Configure", system: "both" },
   { path: "/admin/mobile-devices",        code: "nav.mobile_devices",   label: "Mobile Devices",   icon: PhoneAndroidIcon,     roles: ["admin","super_admin"],                    group: "Configure", system: "both" },
   { path: "/admin/login-events",          code: "nav.login_events",     label: "Login Events",     icon: SecurityIcon,         roles: ["admin","super_admin"],                    group: "Configure", system: "both" },
@@ -108,7 +106,6 @@ export const routes = [
   { path: "/items/:id",                       label: "Item Detail",              roles: ["store_user","staff","manager","admin","super_admin"], showInNav: false },
   { path: "/admin/products/:itemId/history",  label: "Product History",          roles: ["manager","admin","super_admin"],                      showInNav: false },
   { path: "/login",                           label: "Login",                    roles: ["public"],                                              showInNav: false },
-  { path: "/license-setup-required",          label: "License Setup Required",   roles: ["public"],                                              showInNav: false },
 ];
 
 /**
@@ -136,7 +133,7 @@ export function routesForPermissions(permissions, activeSystem = null) {
  * the sidebar (showInNav: false) — used by the Cmd-K command palette so
  * users can jump straight to URL-reachable pages that no longer have a
  * sidebar entry. Skips parameterised routes (e.g. /items/:id) and
- * internal-only entries (login, license setup) that have no `code`.
+ * internal-only entries (login) that have no `code`.
  */
 export function searchableRoutes(permissions, activeSystem = null) {
   const set = permissions instanceof Set ? permissions : new Set(permissions || []);
@@ -155,7 +152,7 @@ export function searchableRoutes(permissions, activeSystem = null) {
  * Which "apps" (stock | admin) the user can launch.
  * Stock comes from the backend-provided `user.systems` array.
  * "admin" is reserved for admin/super_admin/ServiceProvider — the
- * cross-product app houses Users, Outlets, Audit Log, License, etc.
+ * cross-product app houses Users, Outlets, Audit Log, etc.
  * and is not intended for managers or store users.
  */
 export function availableSystems(user) {
