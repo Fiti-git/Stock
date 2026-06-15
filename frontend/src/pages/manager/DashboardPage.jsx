@@ -538,58 +538,6 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {/* ─── C. Variance details ───────────────────────────────────────────── */}
-      <SectionHeader
-        overline="POS vs Counted"
-        title="Variance report — today"
-        action={
-          <Button
-            size="small"
-            variant="outlined"
-            component={RouterLink}
-            to="/count-sessions"
-            endIcon={<ArrowForwardIcon />}
-            sx={{ fontWeight: 600 }}
-          >
-            Reconciliation page
-          </Button>
-        }
-      />
-      <Card variant="outlined" sx={{ borderRadius: 2 }}>
-        <CardContent sx={{ pb: 1 }}>
-          <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "center" }} spacing={2}>
-            <Box>
-              {varData ? (
-                <Typography variant="caption" color="text.secondary">
-                  Snapshot: <b>{varData.snapshot_date}</b> · {filtered.length.toLocaleString()} of {allRows.length.toLocaleString()} item{allRows.length === 1 ? "" : "s"}{search ? " (filtered)" : ""}
-                </Typography>
-              ) : (
-                <Typography variant="caption" color="text.secondary">No variance data yet.</Typography>
-              )}
-            </Box>
-            <TextField
-              size="small"
-              placeholder="Search code / name / category…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
-              sx={{ minWidth: { sm: 300 } }}
-            />
-          </Stack>
-        </CardContent>
-        <Divider />
-        <Box sx={{ px: 2, pb: 2, pt: 1 }}>
-          <DataTable
-            rows={filtered}
-            columns={columns}
-            getRowId={(r) => r.item_id}
-            loading={varLoading}
-            toolbar={false}
-            height={520}
-            emptyText="No variance data yet — start a stock count to populate this."
-          />
-        </Box>
-      </Card>
     </Layout>
   );
 }

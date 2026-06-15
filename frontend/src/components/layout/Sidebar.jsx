@@ -5,6 +5,7 @@ import {
   Typography, IconButton, Tooltip, Collapse, Avatar, useTheme, useMediaQuery,
 } from "@mui/material";
 import MenuOpenIcon from "@mui/icons-material/MenuOpen";
+import MenuIcon from "@mui/icons-material/Menu";
 import InventoryIcon from "@mui/icons-material/Inventory";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import LogoutIcon from "@mui/icons-material/Logout";
@@ -142,6 +143,18 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }) 
           </Tooltip>
         )}
       </Box>
+      {/* Expand button — only visible when collapsed to the icon rail.
+          Previously the toggle was hidden in this mode, leaving users no
+          way to re-open the sidebar without a page reload. */}
+      {isCollapsedRail && (
+        <Box sx={{ display: "flex", justifyContent: "center", pb: 1 }}>
+          <Tooltip title="Expand sidebar" placement="right">
+            <IconButton size="small" onClick={onToggleCollapse} sx={{ color: "text.secondary" }}>
+              <MenuIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      )}
 
       {/* App + outlet switchers live in the TopBar now — sidebar is nav-only. */}
 
