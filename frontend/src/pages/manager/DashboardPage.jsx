@@ -23,6 +23,7 @@ import { PageHeader, DataTable, StatCard } from "../../components/ui";
 import {
   getCountProgress, getVariances, getAlerts,
   listCountSessions, listVarianceRecords,
+  getCoverageByDay,
 } from "../../api/dashboard";
 import { getUploadedSheets } from "../../api/uploads";
 import { useOutlet } from "../../contexts/OutletContext";
@@ -169,6 +170,18 @@ export default function DashboardPage() {
   const [stepsLoading, setStepsLoading] = useState(true);
   const [varLoading, setVarLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const [coverage, setCoverage] = useState(null);
+  const [coverageLoading, setCoverageLoading] = useState(false);
+
+  // Daily coverage panel — last 14 days. Independent of step data so a
+  // slow query doesn't block the workflow cards.
+  useEffect(() => {
+    setCoverageLoading(true);
+    getCoverageByDay(outletId)
+      .then((r) => setCoverage(r.data))
+      .catch(() => setCoverage(null))
+      .finally(() => setCoverageLoading(false));
+  }, [outletId]);
 
   // Step data — single Promise.all so the workflow cards animate in together.
   useEffect(() => {
@@ -296,23 +309,23 @@ export default function DashboardPage() {
 
   const step4 = useMemo(() => {
     if (openVariancesCount === null) {
-      return { status: "todo", headline: "—", sub: "Loading…", ctaLabel: "Open reconciliation", ctaTo: "/variance-reconciliation" };
+      return { status: "todo", headline: "—", sub: "Loading…", ctaLabel: "Open sessions", ctaTo: "/count-sessions" };
     }
     if (openVariancesCount === 0) {
       return {
         status: "ok",
         headline: "Nothing to reconcile",
         sub: "No open variances right now.",
-        ctaLabel: "Open reconciliation",
-        ctaTo: "/variance-reconciliation",
+        ctaLabel: "Open sessions",
+        ctaTo: "/count-sessions",
       };
     }
     return {
       status: "warn",
       headline: `${openVariancesCount} variance${openVariancesCount === 1 ? "" : "s"} open`,
       sub: "Explain, adjust or write off each line.",
-      ctaLabel: "Reconcile now",
-      ctaTo: "/variance-reconciliation",
+      ctaLabel: "Review variances",
+      ctaTo: "/count-sessions",
     };
   }, [openVariancesCount]);
 
@@ -407,6 +420,89 @@ export default function DashboardPage() {
         </Card>
       )}
 
+      {/* Daily count coverage — last 14 days */}
+      <Card variant="outlined" sx={{ mt: 3, borderRadius: 2 }}>
+        <CardContent>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+            <Box>
+              <Typography variant="overline" color="text.secondary" sx={{ lineHeight: 1 }}>
+                Daily count coverage · last 14 days
+              </Typography>
+              <Typography variant="caption" sx={{ color: "text.secondary", display: "block" }}>
+                {coverage?.total_items?.toLocaleString() || "—"} items in this outlet
+              </Typography>
+            </Box>
+            {coverage?.outlet_name && (
+              <Typography variant="caption" sx={{ color: "text.secondary" }}>{coverage.outlet_name}</Typography>
+            )}
+          </Stack>
+
+          {coverageLoading ? (
+            <Skeleton variant="rectangular" height={180} />
+          ) : !coverage || coverage.days.length === 0 ? (
+            <Typography variant="body2" sx={{ color: "text.secondary", py: 2 }}>
+              No coverage data yet.
+            </Typography>
+          ) : (
+            <Box sx={{ overflowX: "auto" }}>
+              <Box sx={{ display: "grid", gridTemplateColumns: `repeat(${coverage.days.length}, minmax(60px, 1fr))`, gap: 1 }}>
+                {coverage.days.map((d) => {
+                  const pct = Math.min(100, d.pct || 0);
+                  const tone =
+                    pct === 0 ? "#e2e8f0" :
+                    pct < 25 ? "#fca5a5" :
+                    pct < 60 ? "#fde68a" :
+                    pct < 100 ? "#86efac" : "#22c55e";
+                  return (
+                    <Box
+                      key={d.date}
+                      sx={{
+                        display: "flex", flexDirection: "column", alignItems: "center", gap: 0.5,
+                      }}
+                    >
+                      <Box sx={{ width: "100%", height: 80, bgcolor: "#f1f5f9", borderRadius: 1, position: "relative", overflow: "hidden" }}>
+                        <Box
+                          sx={{
+                            position: "absolute", bottom: 0, left: 0, right: 0,
+                            height: `${pct}%`,
+                            bgcolor: tone,
+                            transition: "height 240ms ease",
+                          }}
+                        />
+                      </Box>
+                      <Typography sx={{ fontSize: "0.66rem", fontWeight: 700, color: "rgba(15,23,42,0.85)" }}>
+                        {d.pct?.toFixed?.(0) ?? 0}%
+                      </Typography>
+                      <Typography sx={{ fontSize: "0.62rem", color: "rgba(15,23,42,0.5)", textAlign: "center", lineHeight: 1.2 }}>
+                        {d.date.slice(5)}<br />
+                        <Box component="span" sx={{ fontWeight: 700, color: "rgba(15,23,42,0.7)" }}>
+                          {d.items_counted.toLocaleString()}
+                        </Box>
+                      </Typography>
+                    </Box>
+                  );
+                })}
+              </Box>
+              <Stack direction="row" spacing={2} justifyContent="space-between" sx={{ mt: 1.5, flexWrap: "wrap" }}>
+                <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                  Bars show distinct items counted that day · numbers under each bar are the day's item count.
+                </Typography>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Box sx={{ width: 10, height: 10, borderRadius: 0.5, bgcolor: "#fca5a5" }} />
+                  <Typography variant="caption" sx={{ color: "text.secondary" }}>&lt;25%</Typography>
+                  <Box sx={{ width: 10, height: 10, borderRadius: 0.5, bgcolor: "#fde68a" }} />
+                  <Typography variant="caption" sx={{ color: "text.secondary" }}>&lt;60%</Typography>
+                  <Box sx={{ width: 10, height: 10, borderRadius: 0.5, bgcolor: "#86efac" }} />
+                  <Typography variant="caption" sx={{ color: "text.secondary" }}>&lt;100%</Typography>
+                  <Box sx={{ width: 10, height: 10, borderRadius: 0.5, bgcolor: "#22c55e" }} />
+                  <Typography variant="caption" sx={{ color: "text.secondary" }}>100%</Typography>
+                </Stack>
+              </Stack>
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+
       {/* ─── B. At-a-glance metrics ───────────────────────────────────────── */}
       <SectionHeader overline="At a glance" title="Outlet health right now" />
       <Grid container spacing={2}>
@@ -451,7 +547,7 @@ export default function DashboardPage() {
             size="small"
             variant="outlined"
             component={RouterLink}
-            to="/variance-reconciliation"
+            to="/count-sessions"
             endIcon={<ArrowForwardIcon />}
             sx={{ fontWeight: 600 }}
           >

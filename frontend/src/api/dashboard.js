@@ -5,6 +5,15 @@ const outletParam = (outletId) =>
 
 export const getCountProgress = (outletId) =>
   api.get("/dashboard/count-progress/", outletParam(outletId));
+
+export const getCoverageByDay = (outletId, fromDate, toDate) =>
+  api.get("/dashboard/coverage-by-day/", {
+    params: {
+      ...(outletId ? { outlet: outletId } : {}),
+      ...(fromDate ? { from_date: fromDate } : {}),
+      ...(toDate ? { to_date: toDate } : {}),
+    },
+  });
 export const getVariances = (outletId, page = 1, pageSize = 50) =>
   api.get("/dashboard/variances/", {
     params: { ...(outletId ? { outlet: outletId } : {}), page, page_size: pageSize },

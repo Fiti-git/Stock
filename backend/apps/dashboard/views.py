@@ -1808,3 +1808,95 @@ def bulk_resolve_variance(request):
             updated.append(rec.id)
 
     return Response({"resolved": updated, "count": len(updated)})
+
+
+@api_view(["GET"])
+@permission_classes([IsManager])
+def coverage_by_day(request):
+    """
+    Day-by-day count coverage for an outlet.
+
+    For each day in the range, return:
+      - date
+      - items_counted (distinct items with at least one non-rejected count)
+      - approved_count (counts already approved, for variance)
+      - submitted_count (counts still awaiting approval)
+    Plus the constant total_items (active items in the outlet's master
+    catalog at the time the report is run).
+
+    Drives the Manager Dashboard's "Daily count coverage" panel — gives a
+    manager a single-glance view of "did the team count today, and how
+    does today compare to the last 14 days?"
+    """
+    outlet = _resolve_outlet(request)
+    if not outlet:
+        return Response({"detail": "No outlet."}, status=400)
+
+    today = date.today()
+    from_date = _parse_date(request.query_params.get("from_date")) or (today - timedelta(days=13))
+    to_date = _parse_date(request.query_params.get("to_date")) or today
+    if to_date < from_date:
+        from_date, to_date = to_date, from_date
+
+    total_items = Item.objects.filter(outlet=outlet, status=Item.Status.ACTIVE).count()
+
+    rows = (
+        StockCount.objects
+        .filter(outlet=outlet, count_date__gte=from_date, count_date__lte=to_date)
+        .exclude(approval_status=StockCount.ApprovalStatus.REJECTED)
+        .values("count_date", "approval_status")
+        .annotate(items=Count("item_id", distinct=True), entries=Count("id"))
+    )
+
+    per_day = {}
+    for r in rows:
+        d = str(r["count_date"])
+        slot = per_day.setdefault(d, {
+            "date": d,
+            "items_counted": 0,
+            "approved_count": 0,
+            "submitted_count": 0,
+        })
+        slot["items_counted"] = max(slot["items_counted"], r["items"])
+        if r["approval_status"] == StockCount.ApprovalStatus.APPROVED:
+            slot["approved_count"] = r["entries"]
+        elif r["approval_status"] == StockCount.ApprovalStatus.SUBMITTED:
+            slot["submitted_count"] = r["entries"]
+
+    # The above max() under-reports items_counted when a day has counts in
+    # multiple statuses — recompute it as one distinct-item query per day.
+    distinct_per_day = (
+        StockCount.objects
+        .filter(outlet=outlet, count_date__gte=from_date, count_date__lte=to_date)
+        .exclude(approval_status=StockCount.ApprovalStatus.REJECTED)
+        .values("count_date")
+        .annotate(distinct_items=Count("item_id", distinct=True))
+    )
+    for r in distinct_per_day:
+        d = str(r["count_date"])
+        if d in per_day:
+            per_day[d]["items_counted"] = r["distinct_items"]
+
+    # Emit one row per day in range so the chart/table has no gaps.
+    days = []
+    cur = from_date
+    while cur <= to_date:
+        d = str(cur)
+        slot = per_day.get(d, {
+            "date": d,
+            "items_counted": 0,
+            "approved_count": 0,
+            "submitted_count": 0,
+        })
+        slot["pct"] = round(slot["items_counted"] / total_items * 100, 1) if total_items else 0
+        days.append(slot)
+        cur += timedelta(days=1)
+
+    return Response({
+        "outlet_id": outlet.id,
+        "outlet_name": outlet.outlet_name,
+        "from_date": str(from_date),
+        "to_date": str(to_date),
+        "total_items": total_items,
+        "days": days,
+    })
