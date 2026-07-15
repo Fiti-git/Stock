@@ -40,9 +40,9 @@ PERMISSIONS = [
     ("nav.pending",               "Pending Items",           "Navigation · Review", "stock"),
     ("nav.uploaded_sheets",       "Uploaded Sheets",         "Navigation · Review", "stock"),
     ("nav.upload_approvals",      "Upload Approvals",        "Navigation · Review", "stock"),
-    ("nav.count_sessions",        "Count Sessions",          "Navigation · Review", "stock"),
-    ("nav.count_review",          "Count Review",            "Navigation · Review", "stock"),
-    ("nav.variance_reconciliation", "Variance Reconciliation", "Navigation · Review", "stock"),
+    ("nav.count_sessions",        "Count Sessions",          "Navigation · Review", "ops"),
+    ("nav.count_review",          "Count Review",            "Navigation · Review", "ops"),
+    ("nav.variance_reconciliation", "Variance Reconciliation", "Navigation · Review", "ops"),
 
     ("nav.shrinkage",             "Shrinkage",               "Navigation · Reports", "stock"),
     ("nav.item_pos_history",      "Item History",            "Navigation · Reports", "stock"),
@@ -150,7 +150,7 @@ def systems_for_codes(codes):
     systems = set()
     for c in code_set:
         s = SYSTEM_BY_CODE.get(c)
-        if s in ("stock", "org"):
+        if s in ("stock", "org", "ops"):
             systems.add(s)
     return sorted(systems)
 

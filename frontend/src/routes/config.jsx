@@ -52,12 +52,9 @@ export const routes = [
   { path: "/uploaded-sheets",           code: "nav.uploaded_sheets",      label: "Uploaded Sheets",    icon: HistoryIcon,            roles: ["store_user","manager","admin","super_admin"],         group: "Operate", system: "stock" },
   { path: "/admin/upload-approvals",    code: "nav.upload_approvals",     label: "Upload Approvals",   icon: AssignmentTurnedInIcon, roles: ["admin","super_admin"],                                 group: "Operate", system: "stock", showInNav: false },
   { path: "/dashboard/pending",         code: "nav.pending",              label: "Pending Items",      icon: ChecklistIcon,          roles: ["manager","admin","super_admin"],                       group: "Operate", system: "stock" },
-  { path: "/count-sessions",            code: "nav.count_sessions",       label: "Count Sessions",     icon: FactCheckIcon,          roles: ["manager","admin","super_admin"],                       group: "Operate", system: "stock" },
-  { path: "/count-review",              code: "nav.count_review",         label: "Count Review",       icon: FactCheckIcon,          roles: ["manager","admin","super_admin"],                       group: "Operate", system: "stock", showInNav: false },
-  // Variance reconciliation is the same workflow as the Variances tab on a
-  // Count Session — kept reachable by URL but dropped from the sidebar so
-  // managers reconcile inside the session they came from.
-  { path: "/variance-reconciliation",   code: "nav.variance_reconciliation", label: "Variance Reconciliation", icon: ChecklistIcon,    roles: ["manager","admin","super_admin"],                       group: "Operate", system: "stock", showInNav: false },
+  { path: "/count-sessions",            code: "nav.count_sessions",       label: "Count Sessions",     icon: FactCheckIcon,          roles: ["manager","admin","super_admin"],                       group: "Operate", system: "ops" },
+  { path: "/count-review",              code: "nav.count_review",         label: "Count Review",       icon: FactCheckIcon,          roles: ["manager","admin","super_admin"],                       group: "Operate", system: "ops", showInNav: false },
+  { path: "/variance-reconciliation",   code: "nav.variance_reconciliation", label: "Variance Reconciliation", icon: ChecklistIcon,    roles: ["manager","admin","super_admin"],                       group: "Operate", system: "ops" },
 
   // Per-pipeline upload pages — reachable by URL from the /transactions hub, not listed in the sidebar.
   { path: "/transactions/damage/upload",         code: "nav.damage_upload",         label: "Damage — Upload",           icon: ReceiptLongIcon,       roles: ["store_user","staff","manager","admin","super_admin"], group: "Operate", system: "stock", showInNav: false },
@@ -167,7 +164,7 @@ export function searchableRoutes(permissions, activeSystem = null) {
  * Returns systems in the preferred render order so the launcher tiles are
  * deterministic regardless of how the backend sorts them.
  */
-const SYSTEM_RENDER_ORDER = ["stock", "org", "admin"];
+const SYSTEM_RENDER_ORDER = ["stock", "ops", "org", "admin"];
 
 export function availableSystems(user) {
   if (!user) return [];
@@ -188,6 +185,7 @@ export function availableSystems(user) {
 export function defaultPathForSystem(system, user) {
   if (system === "admin") return "/admin/users";
   if (system === "org") return "/admin/master-products";
+  if (system === "ops") return "/count-sessions";
   // stock
   const role = user?.role;
   if (role === "admin" || role === "super_admin") return "/admin/dashboard";

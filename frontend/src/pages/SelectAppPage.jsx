@@ -4,6 +4,7 @@ import { Box, Typography, Stack, ButtonBase, Avatar } from "@mui/material";
 import InventoryIcon from "@mui/icons-material/Inventory2";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import HubIcon from "@mui/icons-material/Hub";
+import FactCheckIcon from "@mui/icons-material/FactCheck";
 import LogoutIcon from "@mui/icons-material/Logout";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import { useAuth } from "../contexts/AuthContext";
@@ -17,6 +18,13 @@ const TILES = {
     icon: InventoryIcon,
     accent: "#22c55e",
     glow: "rgba(34,197,94,0.35)",
+  },
+  ops: {
+    label: "Operations",
+    tagline: "Count sessions & variance reconciliation",
+    icon: FactCheckIcon,
+    accent: "#0ea5e9",
+    glow: "rgba(14,165,233,0.35)",
   },
   org: {
     label: "Organization",
