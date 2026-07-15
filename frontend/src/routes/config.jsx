@@ -68,7 +68,6 @@ export const routes = [
   // ------------------------- ANALYZE -------------------------
   { path: "/admin/dashboard",           code: "nav.admin_dashboard",      label: "Admin Dashboard",    icon: DashboardIcon,          roles: ["admin","super_admin"],                        group: "Analyze", system: "stock" },
   { path: "/dashboard",                 code: "nav.manager_dashboard",    label: "Dashboard",          icon: DashboardIcon,          roles: ["manager"],                                     group: "Analyze", system: "stock" },
-  { path: "/overview",                  code: "nav.overview",             label: "Outlets Overview",   icon: GridViewIcon,           roles: ["manager","admin","super_admin"],              group: "Analyze", system: "stock" },
   { path: "/catalog",                   code: "nav.catalog",              label: "Product Catalog",    icon: Inventory2Icon,         roles: ["manager","admin","super_admin"],              group: "Analyze", system: "stock" },
 
   // POS-snapshot reports — grouped under "Snapshot Reports" so they don't scatter across Analyze.

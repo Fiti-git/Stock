@@ -55,9 +55,6 @@ export const approveUpload = (logId) => api.post(`/uploads/${logId}/approve/`);
 
 export const rejectUpload = (logId) => api.post(`/uploads/${logId}/reject/`);
 
-export const getAllOutletsOverview = (date) =>
-  api.get("/uploads/overview/", date ? { params: { date } } : undefined);
-
 export const getAuditLog = (params) => api.get("/uploads/audit-log/", { params });
 
 export const getUploadDiff = (logId) => api.get(`/uploads/${logId}/diff/`);

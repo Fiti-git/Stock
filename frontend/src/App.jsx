@@ -25,7 +25,6 @@ const ItemPosHistoryPage = lazy(() => import("./pages/manager/ItemPosHistoryPage
 const UploadApprovalsPage = lazy(() => import("./pages/admin/UploadApprovalsPage"));
 const OutletsPage = lazy(() => import("./pages/admin/OutletsPage"));
 const UsersPage = lazy(() => import("./pages/admin/UsersPage"));
-const OutletsOverviewPage = lazy(() => import("./pages/admin/OutletsOverviewPage"));
 const AuditLogPage = lazy(() => import("./pages/admin/AuditLogPage"));
 const NegativePosReportPage = lazy(() => import("./pages/admin/NegativePosReportPage"));
 const AdminDashboardPage = lazy(() => import("./pages/admin/AdminDashboardPage"));
@@ -125,8 +124,6 @@ export default function App() {
 
                     <Route path="/upload" element={<PermissionRoute code="nav.upload"><UploadPage /></PermissionRoute>} />
                     <Route path="/upload/history" element={<Navigate to="/uploaded-sheets?pipeline=pos" replace />} />
-
-                    <Route path="/overview" element={<PermissionRoute code="nav.overview"><OutletsOverviewPage /></PermissionRoute>} />
 
                     <Route path="/admin/upload-approvals" element={<PermissionRoute code="nav.upload_approvals"><UploadApprovalsPage /></PermissionRoute>} />
                     <Route path="/admin/outlets" element={<PermissionRoute code="nav.outlets"><OutletsPage /></PermissionRoute>} />

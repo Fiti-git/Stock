@@ -35,7 +35,6 @@ PERMISSIONS = [
 
     ("nav.admin_dashboard",       "Admin Dashboard",         "Navigation · Dashboards", "stock"),
     ("nav.manager_dashboard",     "Manager Dashboard",       "Navigation · Dashboards", "stock"),
-    ("nav.overview",              "Outlets Overview",        "Navigation · Dashboards", "stock"),
 
     ("nav.pending",               "Pending Items",           "Navigation · Review", "stock"),
     ("nav.uploaded_sheets",       "Uploaded Sheets",         "Navigation · Review", "stock"),
@@ -162,7 +161,7 @@ ROLE_DEFAULTS = {
     "admin": [
         # Sidebar — everything except the super-admin-only page
         "nav.count", "nav.upload", "nav.upload_history",
-        "nav.admin_dashboard", "nav.overview",
+        "nav.admin_dashboard",
         "nav.pending", "nav.uploaded_sheets", "nav.upload_approvals",
         "nav.count_sessions",
         "nav.count_review", "nav.variance_reconciliation",
