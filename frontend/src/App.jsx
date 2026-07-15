@@ -26,14 +26,12 @@ const UsersPage = lazy(() => import("./pages/admin/UsersPage"));
 const AuditLogPage = lazy(() => import("./pages/admin/AuditLogPage"));
 const NegativePosReportPage = lazy(() => import("./pages/admin/NegativePosReportPage"));
 const AdminDashboardPage = lazy(() => import("./pages/admin/AdminDashboardPage"));
-const ProductMasterPage = lazy(() => import("./pages/manager/ProductMasterPage"));
 const CountReviewPage = lazy(() => import("./pages/manager/CountReviewPage"));
 const CountSessionsPage = lazy(() => import("./pages/manager/CountSessionsPage"));
 const CountSessionDetailPage = lazy(() => import("./pages/manager/CountSessionDetailPage"));
 const CounterPerformancePage = lazy(() => import("./pages/manager/CounterPerformancePage"));
 const SheetDetailPage = lazy(() => import("./pages/manager/SheetDetailPage"));
 const VarianceReconciliationPage = lazy(() => import("./pages/manager/VarianceReconciliationPage"));
-const BarcodeMasterPage = lazy(() => import("./pages/admin/BarcodeMasterPage"));
 const ProductHistoryPage = lazy(() => import("./pages/admin/ProductHistoryPage"));
 const DailyUploadReportPage = lazy(() => import("./pages/admin/DailyUploadReportPage"));
 const StockVarianceReportPage = lazy(() => import("./pages/admin/StockVarianceReportPage"));
@@ -129,7 +127,7 @@ export default function App() {
                     <Route path="/admin/dashboard" element={<PermissionRoute code="nav.admin_dashboard"><AdminDashboardPage /></PermissionRoute>} />
                     <Route path="/admin/audit-log" element={<PermissionRoute code="nav.audit_log"><AuditLogPage /></PermissionRoute>} />
                     <Route path="/admin/negative-pos" element={<PermissionRoute code="nav.negative_pos"><NegativePosReportPage /></PermissionRoute>} />
-                    <Route path="/admin/barcode-master" element={<PermissionRoute code="nav.barcode_master"><BarcodeMasterPage /></PermissionRoute>} />
+                    <Route path="/admin/barcode-master" element={<Navigate to="/catalog" replace />} />
                     <Route path="/admin/products/:itemId/history" element={<RoleRoute allowedRoles={["manager","admin","super_admin"]}><ProductHistoryPage /></RoleRoute>} />
                     <Route path="/admin/reports/daily-upload" element={<PermissionRoute code="nav.daily_upload_report"><DailyUploadReportPage /></PermissionRoute>} />
                     <Route path="/admin/reports/stock-variance" element={<PermissionRoute code="nav.stock_variance"><StockVarianceReportPage /></PermissionRoute>} />
@@ -175,7 +173,7 @@ export default function App() {
                     <Route path="/uploaded-sheets/:id" element={<PermissionRoute code="nav.uploaded_sheets"><SheetDetailPage /></PermissionRoute>} />
                     <Route path="/upload/hub" element={<Navigate to="/transactions" replace />} />
                     <Route path="/catalog" element={<PermissionRoute code="nav.catalog"><CatalogPage /></PermissionRoute>} />
-                    <Route path="/product-master" element={<PermissionRoute code="nav.product_master"><ProductMasterPage /></PermissionRoute>} />
+                    <Route path="/product-master" element={<Navigate to="/catalog" replace />} />
                     <Route path="/count-sessions" element={<PermissionRoute code="nav.count_sessions"><CountSessionsPage /></PermissionRoute>} />
                     <Route path="/count-sessions/:id" element={<PermissionRoute code="nav.count_sessions"><CountSessionDetailPage /></PermissionRoute>} />
                     <Route path="/daily-counts" element={<Navigate to="/count-sessions" replace />} />

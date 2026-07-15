@@ -90,8 +90,6 @@ export const routes = [
   { path: "/admin/stock-age",             code: "nav.stock_age",        label: "Stock Age",        icon: HourglassEmptyIcon,   roles: ["manager","admin","super_admin"],         group: "Operate", system: "ops" },
 
   // ------------------------- CONFIGURE -------------------------
-  { path: "/product-master",              code: "nav.product_master",   label: "Product Master",   icon: EditNoteIcon,         roles: ["manager","admin","super_admin"],         group: "Configure", system: "stock" },
-  { path: "/admin/barcode-master",        code: "nav.barcode_master",   label: "Barcode Master",   icon: QrCodeScannerIcon,    roles: ["manager","admin","super_admin"],         group: "Configure", system: "stock" },
   { path: "/admin/outlets",               code: "nav.outlets",          label: "Outlets",          icon: StorefrontIcon,       roles: ["admin","super_admin"],                    group: "Configure", system: "both" },
   { path: "/admin/users",                 code: "nav.users",            label: "Users",            icon: PeopleAltIcon,        roles: ["admin","super_admin"],                    group: "Configure", system: "both" },
   { path: "/super-admin/user-permissions",code: "nav.user_permissions", label: "User Permissions", icon: AdminPanelSettingsIcon,roles: ["super_admin"],                           group: "Configure", system: "both" },

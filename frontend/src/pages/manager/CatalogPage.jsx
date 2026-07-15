@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  Card, CardContent, Typography, Stack, TextField, MenuItem, Chip, Box, Alert,
-  IconButton, InputAdornment, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions,
-  Button, Switch, FormControlLabel, CircularProgress, Grid, Divider,
+  Card, Typography, Stack, TextField, MenuItem, Chip, Box, Alert, IconButton,
+  InputAdornment, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions,
+  Button, Switch, FormControlLabel, CircularProgress, Grid, Divider, Drawer,
 } from "@mui/material";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import SearchIcon from "@mui/icons-material/Search";
@@ -11,12 +12,20 @@ import HistoryIcon from "@mui/icons-material/History";
 import CloseIcon from "@mui/icons-material/Close";
 import StarIcon from "@mui/icons-material/Star";
 import StarBorderIcon from "@mui/icons-material/StarBorder";
+import QrCodeScannerIcon from "@mui/icons-material/QrCodeScanner";
+import DeleteIcon from "@mui/icons-material/Delete";
+import AddIcon from "@mui/icons-material/Add";
+import TimelineIcon from "@mui/icons-material/Timeline";
 import Layout from "../../components/Layout";
 import { PageHeader, DataTable } from "../../components/ui";
 import { useOutlet } from "../../contexts/OutletContext";
+import { useAuth } from "../../contexts/AuthContext";
 import { useNotify } from "../../providers/NotificationProvider";
 import { getCatalog, getItemPriceHistory } from "../../api/catalog";
-import { updateItem } from "../../api/items";
+import {
+  updateItem, listItemBarcodes, addItemBarcode, deleteItemBarcode, setPrimaryBarcode,
+} from "../../api/items";
+import { getOutlets } from "../../api/outlets";
 
 function PriceHistoryDialog({ open, onClose, itemId, itemName }) {
   const [data, setData] = useState(null);
@@ -90,7 +99,6 @@ function EditItemDialog({ open, onClose, item, onSaved }) {
     if (!item) return;
     setSaving(true);
     const payload = { ...form };
-    // Empty string → drop the field so we don't send "" for numeric ones.
     ["sell_price", "cost_price", "reorder_level", "on_hand"].forEach((k) => {
       if (payload[k] === "" || payload[k] === null) delete payload[k];
     });
@@ -167,8 +175,139 @@ function EditItemDialog({ open, onClose, item, onSaved }) {
   );
 }
 
+function BarcodeDrawer({ open, onClose, item, onChanged }) {
+  const notify = useNotify();
+  const [barcodes, setBarcodes] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [newBarcode, setNewBarcode] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  const load = () => {
+    if (!item) return;
+    setLoading(true);
+    listItemBarcodes(item.id)
+      .then(({ data }) => setBarcodes(Array.isArray(data) ? data : (data.results || [])))
+      .catch(() => setBarcodes([]))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { if (open && item) load(); /* eslint-disable-next-line */ }, [open, item?.id]);
+
+  const handleAdd = async () => {
+    const code = newBarcode.trim();
+    if (!code || !item) return;
+    setAdding(true);
+    try {
+      await addItemBarcode(item.id, code);
+      notify.success("Barcode added.");
+      setNewBarcode("");
+      load();
+      onChanged?.();
+    } catch (err) {
+      const status = err.response?.status;
+      const data = err.response?.data;
+      if (status === 409 && data?.conflict) {
+        notify.error(`Barcode "${code}" already assigned to ${data.conflict.item_code} — ${data.conflict.item_name}.`);
+      } else {
+        notify.error(data?.detail || "Failed to add barcode.");
+      }
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleDelete = async (bc) => {
+    try {
+      await deleteItemBarcode(item.id, bc.id);
+      notify.success("Barcode removed.");
+      load();
+      onChanged?.();
+    } catch (err) {
+      notify.error(err.response?.data?.detail || "Failed to delete.");
+    }
+  };
+
+  const handleSetPrimary = async (bc) => {
+    try {
+      await setPrimaryBarcode(item.id, bc.id);
+      notify.success("Primary barcode updated.");
+      load();
+      onChanged?.();
+    } catch (err) {
+      notify.error(err.response?.data?.detail || "Failed to set primary.");
+    }
+  };
+
+  return (
+    <Drawer anchor="right" open={open} onClose={onClose} PaperProps={{ sx: { width: { xs: "100%", sm: 460 } } }}>
+      <Box sx={{ p: 2.5, display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: 1, borderColor: "divider" }}>
+        <Box>
+          <Typography sx={{ fontWeight: 700, fontSize: "1.05rem" }}>Barcodes</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "monospace" }}>
+            {item?.item_code} — {item?.item_name}
+          </Typography>
+        </Box>
+        <IconButton size="small" onClick={onClose}><CloseIcon fontSize="small" /></IconButton>
+      </Box>
+
+      <Box sx={{ p: 2.5, flex: 1, overflow: "auto" }}>
+        <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+          <TextField
+            size="small" fullWidth placeholder="New barcode…"
+            value={newBarcode} onChange={(e) => setNewBarcode(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
+            InputProps={{ sx: { fontFamily: "monospace" } }}
+          />
+          <Button variant="contained" onClick={handleAdd} disabled={adding || !newBarcode.trim()} startIcon={<AddIcon />} sx={{ textTransform: "none", whiteSpace: "nowrap" }}>
+            Add
+          </Button>
+        </Stack>
+
+        {loading && <CircularProgress size={22} />}
+        {!loading && barcodes.length === 0 && (
+          <Typography variant="body2" color="text.secondary">No barcodes assigned yet.</Typography>
+        )}
+        <Stack spacing={1}>
+          {barcodes.map((bc) => (
+            <Card key={bc.id} variant="outlined" sx={{ p: 1.5, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <Box sx={{ minWidth: 0 }}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography sx={{ fontFamily: "monospace", fontWeight: 600 }}>{bc.barcode}</Typography>
+                  {bc.is_primary && <Chip size="small" label="Primary" color="warning" variant="outlined" icon={<StarIcon fontSize="small" />} />}
+                </Stack>
+                <Typography variant="caption" color="text.secondary">
+                  {bc.assigned_at ? `Added ${new Date(bc.assigned_at).toLocaleDateString()}` : ""}
+                  {bc.assigned_by_username ? ` by ${bc.assigned_by_username}` : ""}
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={0.5}>
+                {!bc.is_primary && (
+                  <Tooltip title="Set as primary">
+                    <IconButton size="small" onClick={() => handleSetPrimary(bc)}>
+                      <StarBorderIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                )}
+                <Tooltip title="Delete">
+                  <IconButton size="small" onClick={() => handleDelete(bc)}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Stack>
+            </Card>
+          ))}
+        </Stack>
+      </Box>
+    </Drawer>
+  );
+}
+
 export default function CatalogPage() {
-  const { selectedOutlet } = useOutlet();
+  const { user } = useAuth();
+  const { selectedOutlet, setSelectedOutlet } = useOutlet();
+  const navigate = useNavigate();
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -180,7 +319,13 @@ export default function CatalogPage() {
   const [categories, setCategories] = useState([]);
   const [historyTarget, setHistoryTarget] = useState(null);
   const [editTarget, setEditTarget] = useState(null);
+  const [barcodeTarget, setBarcodeTarget] = useState(null);
+  const [outlets, setOutlets] = useState([]);
   const debounceRef = useRef(null);
+
+  useEffect(() => {
+    if (isAdmin) getOutlets().then(({ data }) => setOutlets(Array.isArray(data) ? data : []));
+  }, [isAdmin]);
 
   const load = (q, cat, pg, outletId) => {
     setLoading(true); setError("");
@@ -203,13 +348,11 @@ export default function CatalogPage() {
 
   useEffect(() => { load(search, category, page, selectedOutlet?.id); }, [page]); // eslint-disable-line
 
-  // Daily-count filter is client-side over the current page — backend filter
-  // would need an extra param; keep it simple for now.
   const filteredItems = dailyOnly ? items.filter((i) => i.is_daily_count) : items;
 
   const applyUpdate = (updated) => {
     setItems((prev) => prev.map((i) => i.id === updated.id
-      ? { ...i, ...updated, // backend returns full ItemSerializer; map to catalog row shape
+      ? { ...i, ...updated,
           item_name: updated.item_name ?? i.item_name,
           category: updated.category ?? i.category,
           rack_number: updated.rack_number ?? i.rack_number,
@@ -225,6 +368,8 @@ export default function CatalogPage() {
     ));
   };
 
+  const refreshCurrent = () => load(search, category, page, selectedOutlet?.id);
+
   const columns = [
     {
       field: "is_daily_count", headerName: "", width: 44, sortable: false, filterable: false,
@@ -234,8 +379,25 @@ export default function CatalogPage() {
     },
     { field: "item_name", headerName: "Item Name", flex: 1.4, minWidth: 200 },
     { field: "item_code", headerName: "SKU / Code", flex: 0.8, minWidth: 120 },
-    { field: "barcode", headerName: "Barcode", flex: 0.9, minWidth: 130, valueGetter: (v) => v || "—" },
+    {
+      field: "barcode", headerName: "Barcode", flex: 0.9, minWidth: 140,
+      renderCell: (p) => {
+        const primary = p.row.barcode;
+        const extra = (p.row.barcodes?.length || 0) - (primary ? 1 : 0);
+        return (
+          <Stack direction="row" spacing={0.5} alignItems="center" sx={{ cursor: "pointer" }}
+                 onClick={(e) => { e.stopPropagation(); setBarcodeTarget(p.row); }}>
+            {primary
+              ? <Typography variant="body2" sx={{ fontFamily: "monospace" }}>{primary}</Typography>
+              : <Chip size="small" label="Add" icon={<AddIcon fontSize="small" />} variant="outlined" />}
+            {extra > 0 && <Chip size="small" label={`+${extra}`} variant="outlined" />}
+          </Stack>
+        );
+      },
+    },
     { field: "category", headerName: "Category", flex: 0.8, minWidth: 120, valueGetter: (v) => v || "—" },
+    { field: "rack_number", headerName: "Rack", flex: 0.4, minWidth: 70, valueGetter: (v) => v || "—" },
+    { field: "shelf", headerName: "Shelf", flex: 0.4, minWidth: 70, valueGetter: (v) => v || "—" },
     { field: "latest_selling_price", headerName: "Sell", type: "number", flex: 0.5, minWidth: 80, valueGetter: (v) => v != null ? Number(v).toFixed(2) : "—" },
     { field: "latest_cost_price", headerName: "Cost", type: "number", flex: 0.5, minWidth: 80, valueGetter: (v) => v != null ? Number(v).toFixed(2) : "—" },
     {
@@ -268,13 +430,20 @@ export default function CatalogPage() {
       },
     },
     {
+      field: "is_nbci", headerName: "NBCI", flex: 0.4, minWidth: 70,
+      renderCell: (p) => p.value
+        ? <Chip size="small" label="Yes" color="secondary" variant="outlined" />
+        : <span style={{ color: "rgba(15,23,42,0.3)" }}>—</span>,
+    },
+    {
       field: "status", headerName: "Status", flex: 0.7, minWidth: 110,
       renderCell: (p) => p.value === "active"
         ? <Chip size="small" label="Active" color="success" variant="outlined" />
         : <Chip size="small" label="Pending Barcode" color="warning" variant="outlined" />,
     },
+    ...(isAdmin ? [{ field: "outlet_name", headerName: "Outlet", flex: 0.8, minWidth: 130, valueGetter: (v) => v || "—" }] : []),
     {
-      field: "actions", headerName: "Actions", width: 110, sortable: false, filterable: false, align: "center", headerAlign: "center",
+      field: "actions", headerName: "Actions", width: 170, sortable: false, filterable: false, align: "center", headerAlign: "center",
       renderCell: (p) => (
         <Stack direction="row" spacing={0.25}>
           <Tooltip title="Edit">
@@ -282,9 +451,19 @@ export default function CatalogPage() {
               <EditIcon sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
+          <Tooltip title="Barcodes">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); setBarcodeTarget(p.row); }} sx={{ color: "text.secondary" }}>
+              <QrCodeScannerIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
           <Tooltip title="Price &amp; POS history">
             <IconButton size="small" onClick={(e) => { e.stopPropagation(); setHistoryTarget(p.row); }} sx={{ color: "text.secondary" }}>
               <HistoryIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Full product timeline">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); navigate(`/admin/products/${p.row.id}/history`); }} sx={{ color: "text.secondary" }}>
+              <TimelineIcon sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
         </Stack>
@@ -292,12 +471,28 @@ export default function CatalogPage() {
     },
   ];
 
+  const onOutletPick = (id) => {
+    const o = outlets.find((x) => x.id === id);
+    setSelectedOutlet(o ? { id: o.id, outlet_name: o.outlet_name } : null);
+  };
+
   return (
     <Layout>
       <PageHeader
         title="Product Catalog"
-        subtitle={totalCount > 0 ? `${totalCount.toLocaleString()} items in this outlet` : "Browse products, prices, POS quantities and stock age"}
+        subtitle={totalCount > 0
+          ? `${totalCount.toLocaleString()} items — edit details, manage barcodes, view history`
+          : "Browse products, prices, POS quantities, stock age, and barcodes"}
         icon={<Inventory2Icon />}
+        actions={
+          isAdmin && outlets.length > 0 ? (
+            <TextField size="small" select label="Outlet" value={selectedOutlet?.id || ""}
+              onChange={(e) => onOutletPick(e.target.value)} sx={{ minWidth: 200 }}>
+              <MenuItem value=""><em>All outlets</em></MenuItem>
+              {outlets.map((o) => <MenuItem key={o.id} value={o.id}>{o.outlet_name}</MenuItem>)}
+            </TextField>
+          ) : null
+        }
       />
 
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mb: 2, alignItems: { sm: "center" } }}>
@@ -340,6 +535,12 @@ export default function CatalogPage() {
         onClose={() => setEditTarget(null)}
         item={editTarget}
         onSaved={applyUpdate}
+      />
+      <BarcodeDrawer
+        open={!!barcodeTarget}
+        onClose={() => setBarcodeTarget(null)}
+        item={barcodeTarget}
+        onChanged={refreshCurrent}
       />
     </Layout>
   );
