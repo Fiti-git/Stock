@@ -25,17 +25,7 @@ INSTALLED_APPS = [
     "apps.dashboard",
     "apps.dbops",
     "apps.org_catalog",
-    "apps.inventory",
 ]
-
-# ---------------------------------------------------------------------------
-# Inventory ledger (Phase 0). When False (default) the producer signals
-# short-circuit and never write to stock_movements — the live system is
-# unaffected. Flip to True ONLY after running:
-#   python manage.py backfill_movements --verify
-# and confirming SUM(movements) == latest PosSnapshot per (outlet, item).
-# ---------------------------------------------------------------------------
-INVENTORY_LEDGER_ENABLED = config("INVENTORY_LEDGER_ENABLED", default=False, cast=bool)
 
 # ---------------------------------------------------------------------------
 # Celery (Phase 0). Optional in dev — if Redis isn't running, the web tier
@@ -49,10 +39,6 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_TASK_TIME_LIMIT = 60 * 60          # 1h hard limit
 CELERY_TASK_SOFT_TIME_LIMIT = 55 * 60
 CELERY_BEAT_SCHEDULE = {
-    "rebuild-stock-balances-hourly": {
-        "task": "apps.inventory.tasks.rebuild_balances",
-        "schedule": 60 * 60,  # every hour
-    },
     "auto-close-stale-count-sessions": {
         # Every 15 min, close any count session that has been OPEN for >24h.
         # Synchronous close also happens on next-day POS upload — this is the
