@@ -19,9 +19,7 @@ const ItemDetailPage = lazy(() => import("./pages/store-user/ItemDetailPage"));
 const DashboardPage = lazy(() => import("./pages/manager/DashboardPage"));
 const PendingItemsPage = lazy(() => import("./pages/manager/PendingItemsPage"));
 const UploadedSheetsPage = lazy(() => import("./pages/manager/UploadedSheetsPage"));
-const ShrinkagePage = lazy(() => import("./pages/manager/ShrinkagePage"));
 const CatalogPage = lazy(() => import("./pages/manager/CatalogPage"));
-const ItemPosHistoryPage = lazy(() => import("./pages/manager/ItemPosHistoryPage"));
 const UploadApprovalsPage = lazy(() => import("./pages/admin/UploadApprovalsPage"));
 const OutletsPage = lazy(() => import("./pages/admin/OutletsPage"));
 const UsersPage = lazy(() => import("./pages/admin/UsersPage"));
@@ -176,9 +174,7 @@ export default function App() {
                     <Route path="/uploaded-sheets" element={<PermissionRoute code="nav.uploaded_sheets"><UploadedSheetsPage /></PermissionRoute>} />
                     <Route path="/uploaded-sheets/:id" element={<PermissionRoute code="nav.uploaded_sheets"><SheetDetailPage /></PermissionRoute>} />
                     <Route path="/upload/hub" element={<Navigate to="/transactions" replace />} />
-                    <Route path="/shrinkage" element={<PermissionRoute code="nav.shrinkage"><ShrinkagePage /></PermissionRoute>} />
                     <Route path="/catalog" element={<PermissionRoute code="nav.catalog"><CatalogPage /></PermissionRoute>} />
-                    <Route path="/items/history" element={<PermissionRoute code="nav.item_pos_history"><ItemPosHistoryPage /></PermissionRoute>} />
                     <Route path="/product-master" element={<PermissionRoute code="nav.product_master"><ProductMasterPage /></PermissionRoute>} />
                     <Route path="/count-sessions" element={<PermissionRoute code="nav.count_sessions"><CountSessionsPage /></PermissionRoute>} />
                     <Route path="/count-sessions/:id" element={<PermissionRoute code="nav.count_sessions"><CountSessionDetailPage /></PermissionRoute>} />

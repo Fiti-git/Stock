@@ -19,9 +19,6 @@ export const markPendingNbci = (pendingId) =>
 
 export const getItemDetail = (id) => api.get(`/items/${id}/`);
 
-export const getItemPosHistory = (itemId, page = 1, pageSize = 60) =>
-  api.get(`/items/${itemId}/price-history/`, { params: { page, page_size: pageSize } });
-
 export const searchCatalog = (q, outletId) =>
   api.get("/items/catalog/", { params: { q, outlet: outletId, page_size: 20 } });
 

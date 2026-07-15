@@ -73,11 +73,9 @@ export const routes = [
   // POS-snapshot reports — grouped under "Snapshot Reports" so they don't scatter across Analyze.
   { path: "/admin/reports/daily-upload",code: "nav.daily_upload_report",  label: "Daily Upload",       icon: AssessmentIcon,         roles: ["admin","super_admin"],                        group: "Snapshot Reports", system: "stock" },
   { path: "/admin/negative-pos",        code: "nav.negative_pos",         label: "Negative POS",       icon: ReportProblemIcon,      roles: ["admin","super_admin"],                        group: "Snapshot Reports", system: "stock" },
-  { path: "/admin/reports/stock-variance", code: "nav.stock_variance",    label: "Stock Variance",     icon: FactCheckIcon,          roles: ["admin","super_admin"],                        group: "Snapshot Reports", system: "stock" },
-  { path: "/admin/reports/counted-items",  code: "nav.counted_items_report", label: "Counted vs Uncounted", icon: ChecklistIcon,      roles: ["admin","super_admin","manager"],              group: "Snapshot Reports", system: "stock" },
-  { path: "/shrinkage",                 code: "nav.shrinkage",            label: "Shrinkage",          icon: TrendingDownIcon,       roles: ["manager","admin","super_admin"],              group: "Snapshot Reports", system: "stock" },
-  { path: "/items/history",             code: "nav.item_pos_history",     label: "Item History",       icon: QueryStatsIcon,         roles: ["manager","admin","super_admin"],              group: "Snapshot Reports", system: "stock" },
-  { path: "/reports/counter-performance",  code: "nav.counter_performance",  label: "Counter Performance",  icon: LeaderboardIcon,    roles: ["manager","admin","super_admin"],              group: "Snapshot Reports", system: "stock" },
+  { path: "/admin/reports/stock-variance", code: "nav.stock_variance",    label: "Stock Variance",     icon: FactCheckIcon,          roles: ["admin","super_admin"],                        group: "Operate", system: "ops" },
+  { path: "/admin/reports/counted-items",  code: "nav.counted_items_report", label: "Counted vs Uncounted", icon: ChecklistIcon,      roles: ["admin","super_admin","manager"],              group: "Operate", system: "ops" },
+  { path: "/reports/counter-performance",  code: "nav.counter_performance",  label: "Counter Performance",  icon: LeaderboardIcon,    roles: ["manager","admin","super_admin"],              group: "Operate", system: "ops" },
 
   // ------------------------- ORGANIZATION (org app) -------------------------
   // Cross-outlet masters & planning. Shown only when the user picks the
@@ -89,8 +87,7 @@ export const routes = [
   { path: "/admin/demand",                code: "nav.demand_dashboard", label: "Demand Dashboard", icon: QueryStatsIcon,       roles: ["manager","admin","super_admin"],         group: "Planning", system: "org" },
   { path: "/admin/purchase-plans",        code: "nav.purchase_plans",   label: "Purchase Plans",   icon: ListAltIcon,          roles: ["admin","super_admin"],                    group: "Planning", system: "org" },
 
-  // Stock Age stays in the Stock app — it's an outlet-level analytical view, not a planning tool.
-  { path: "/admin/stock-age",             code: "nav.stock_age",        label: "Stock Age",        icon: HourglassEmptyIcon,   roles: ["manager","admin","super_admin"],         group: "Snapshot Reports", system: "stock" },
+  { path: "/admin/stock-age",             code: "nav.stock_age",        label: "Stock Age",        icon: HourglassEmptyIcon,   roles: ["manager","admin","super_admin"],         group: "Operate", system: "ops" },
 
   // ------------------------- CONFIGURE -------------------------
   { path: "/product-master",              code: "nav.product_master",   label: "Product Master",   icon: EditNoteIcon,         roles: ["manager","admin","super_admin"],         group: "Configure", system: "stock" },

@@ -43,13 +43,11 @@ PERMISSIONS = [
     ("nav.count_review",          "Count Review",            "Navigation · Review", "ops"),
     ("nav.variance_reconciliation", "Variance Reconciliation", "Navigation · Review", "ops"),
 
-    ("nav.shrinkage",             "Shrinkage",               "Navigation · Reports", "stock"),
-    ("nav.item_pos_history",      "Item History",            "Navigation · Reports", "stock"),
     ("nav.daily_upload_report",   "Daily Upload Report",     "Navigation · Reports", "stock"),
     ("nav.negative_pos",          "Negative POS",            "Navigation · Reports", "stock"),
-    ("nav.stock_variance",        "Stock Variance Report",   "Navigation · Reports", "stock"),
-    ("nav.counted_items_report",  "Counted vs Uncounted",    "Navigation · Reports", "stock"),
-    ("nav.counter_performance",   "Counter Performance",     "Navigation · Reports", "stock"),
+    ("nav.stock_variance",        "Stock Variance Report",   "Navigation · Review", "ops"),
+    ("nav.counted_items_report",  "Counted vs Uncounted",    "Navigation · Review", "ops"),
+    ("nav.counter_performance",   "Counter Performance",     "Navigation · Review", "ops"),
 
     ("nav.catalog",               "Product Catalog",         "Navigation · Catalog", "stock"),
     ("nav.product_master",        "Product Master",          "Navigation · Catalog", "stock"),
@@ -58,7 +56,7 @@ PERMISSIONS = [
     ("nav.master_mapping",        "Master Mapping",          "Navigation · Organization", "org"),
     ("nav.demand_dashboard",      "Demand Dashboard",        "Navigation · Organization", "org"),
     ("nav.purchase_plans",        "Purchase Plans",          "Navigation · Organization", "org"),
-    ("nav.stock_age",             "Stock Age",               "Navigation · Organization", "stock"),
+    ("nav.stock_age",             "Stock Age",               "Navigation · Review", "ops"),
 
     # Cross-product admin pages — visible regardless of which system the user has.
     ("nav.outlets",               "Outlets",                 "Navigation · Administration", "both"),
@@ -165,7 +163,6 @@ ROLE_DEFAULTS = {
         "nav.pending", "nav.uploaded_sheets", "nav.upload_approvals",
         "nav.count_sessions",
         "nav.count_review", "nav.variance_reconciliation",
-        "nav.shrinkage", "nav.item_pos_history",
         "nav.daily_upload_report", "nav.negative_pos", "nav.stock_variance",
         "nav.counted_items_report", "nav.counter_performance",
         "nav.catalog", "nav.product_master", "nav.barcode_master",
@@ -206,7 +203,7 @@ ROLE_DEFAULTS = {
         "nav.pending", "nav.uploaded_sheets",
         "nav.count_sessions",
         "nav.count_review", "nav.variance_reconciliation",
-        "nav.shrinkage", "nav.item_pos_history", "nav.counter_performance",
+        "nav.counter_performance",
         "nav.counted_items_report",
         "nav.catalog", "nav.product_master", "nav.barcode_master",
         "nav.categories",

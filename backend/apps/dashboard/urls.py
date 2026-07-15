@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import (
-    count_progress, variances, alerts, submit_count, count_items, shrinkage,
+    count_progress, variances, alerts, submit_count, count_items,
     admin_summary, daily_counts, daily_upload_report, daily_upload_new_items,
     stock_variance_report, counted_items_report, mobile_devices_report,
     approve_count, reject_count, bulk_approve_counts,
@@ -18,7 +18,6 @@ urlpatterns = [
     path("counts/<int:count_id>/reject/", reject_count, name="reject-count"),
     path("counts/bulk-approve/", bulk_approve_counts, name="bulk-approve-counts"),
     path("count-items/", count_items, name="count-items"),
-    path("shrinkage/", shrinkage, name="shrinkage"),
     path("admin-summary/", admin_summary, name="admin-summary"),
     path("daily-counts/", daily_counts, name="daily-counts"),
     path("daily-upload-report/", daily_upload_report, name="daily-upload-report"),

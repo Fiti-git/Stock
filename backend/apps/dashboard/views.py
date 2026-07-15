@@ -353,29 +353,6 @@ def count_items(request):
     })
 
 
-@api_view(["GET"])
-@permission_classes([IsManager])
-def shrinkage(request):
-    """Shrinkage analytics over time."""
-    from .analytics import compute_shrinkage
-
-    outlet = _resolve_outlet(request)
-    if not outlet:
-        return Response({"detail": "No outlet."}, status=400)
-
-    today = date.today()
-    period = request.query_params.get("period", "weekly")
-    if period not in ("weekly", "monthly"):
-        period = "weekly"
-
-    from_date = _parse_date(request.query_params.get("from", ""), default=today - timedelta(weeks=4))
-    to_date = _parse_date(request.query_params.get("to", ""), default=today)
-
-    category = request.query_params.get("category") or None
-
-    periods, summary = compute_shrinkage(outlet, from_date, to_date, period, category)
-    return Response({"periods": periods, "summary": summary})
-
 
 @api_view(["GET"])
 @permission_classes([IsManager])
