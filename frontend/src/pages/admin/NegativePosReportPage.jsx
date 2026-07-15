@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
 import {
-  Box, Stack, TextField, MenuItem, Button, Card, CardContent, Typography,
+  Box, Stack, TextField, Button, Card, CardContent, Typography,
   Grid, Alert, Chip,
 } from "@mui/material";
 import ReportProblemIcon from "@mui/icons-material/ReportProblem";
@@ -9,7 +8,7 @@ import DownloadIcon from "@mui/icons-material/Download";
 import Layout from "../../components/Layout";
 import { PageHeader, DataTable } from "../../components/ui";
 import { getNegativePosReport } from "../../api/items";
-import { getOutlets } from "../../api/outlets";
+import { useOutlet } from "../../contexts/OutletContext";
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const fmt = (n, d = 2) => n == null ? "—" : Number(n).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -30,25 +29,21 @@ function downloadCSV(date, outlets) {
 }
 
 export default function NegativePosReportPage() {
-  const [searchParams] = useSearchParams();
+  const { outletId } = useOutlet();
   const [date, setDate] = useState(todayStr());
-  const [selectedOutletId, setSelectedOutletId] = useState(searchParams.get("outlet") ?? "");
-  const [outletList, setOutletList] = useState([]);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const outletRefs = useRef({});
 
-  useEffect(() => { getOutlets().then(({ data }) => setOutletList(Array.isArray(data) ? data : [])).catch(() => {}); }, []);
-
   useEffect(() => {
     if (!date) return;
     setLoading(true); setError(null); setData(null);
-    getNegativePosReport(date, selectedOutletId || null)
+    getNegativePosReport(date, outletId || null)
       .then((r) => setData(r.data))
       .catch(() => setError("Failed to load report."))
       .finally(() => setLoading(false));
-  }, [date, selectedOutletId]);
+  }, [date, outletId]);
 
   const reportOutlets = data?.outlets ?? [];
   const totalItems = reportOutlets.reduce((s, o) => s + o.items.length, 0);
@@ -80,10 +75,6 @@ export default function NegativePosReportPage() {
 
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mb: 2 }} alignItems={{ sm: "center" }}>
         <TextField size="small" type="date" label="Date" InputLabelProps={{ shrink: true }} value={date} onChange={(e) => setDate(e.target.value)} />
-        <TextField size="small" select label="Outlet" value={selectedOutletId} onChange={(e) => setSelectedOutletId(e.target.value)} sx={{ minWidth: 200 }}>
-          <MenuItem value="">All Outlets</MenuItem>
-          {outletList.map((o) => <MenuItem key={o.id} value={o.id}>{o.outlet_name}</MenuItem>)}
-        </TextField>
         {data && totalItems > 0 && (
           <Typography variant="caption" color="text.secondary" sx={{ ml: "auto" }}>
             {totalItems} item{totalItems !== 1 ? "s" : ""} across {reportOutlets.length} outlet{reportOutlets.length !== 1 ? "s" : ""}

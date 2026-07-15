@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Stack, TextField, MenuItem, InputAdornment, Typography, Chip, Box, Paper,
+  Stack, TextField, InputAdornment, Typography, Chip, Box, Paper,
   Divider, Grid,
 } from "@mui/material";
 import PhoneAndroidIcon from "@mui/icons-material/PhoneAndroid";
 import SearchIcon from "@mui/icons-material/Search";
 import Layout from "../../components/Layout";
 import { PageHeader, DataTable } from "../../components/ui";
-import { getOutlets } from "../../api/outlets";
+import { useOutlet } from "../../contexts/OutletContext";
 import { getMobileDevices } from "../../api/dashboard";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -39,16 +39,11 @@ function shortUuid(u) {
 }
 
 export default function MobileDevicesPage() {
+  const { outletId } = useOutlet();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [outlets, setOutlets] = useState([]);
-  const [outletId, setOutletId] = useState("");
   const [query, setQuery] = useState("");
   const searchTimer = useRef(null);
-
-  useEffect(() => {
-    getOutlets().then(({ data }) => setOutlets(Array.isArray(data) ? data : []));
-  }, []);
 
   const fetch = (q, o) => {
     setLoading(true);
@@ -171,20 +166,6 @@ export default function MobileDevicesPage() {
         title="Mobile Devices"
         subtitle="Every mobile-app install that has interacted with the system"
         icon={<PhoneAndroidIcon />}
-        actions={
-          <Stack direction="row" spacing={1.5} alignItems="center">
-            <TextField
-              size="small" select label="Outlet" value={outletId}
-              onChange={(e) => setOutletId(e.target.value)}
-              sx={{ minWidth: 180 }}
-            >
-              <MenuItem value="">All outlets</MenuItem>
-              {outlets.map((o) => (
-                <MenuItem key={o.id} value={o.id}>{o.outlet_name}</MenuItem>
-              ))}
-            </TextField>
-          </Stack>
-        }
       />
 
       <Grid container spacing={2} sx={{ mb: 2 }}>

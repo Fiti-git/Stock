@@ -13,7 +13,7 @@ import { useNotify } from "../../providers/NotificationProvider";
 import {
   getStockAge, getStockAgeSummary, stockAgeExportUrl, recomputeStockAge,
 } from "../../api/stockAge";
-import { getOutlets } from "../../api/outlets";
+import { useOutlet } from "../../contexts/OutletContext";
 import { getCategoryOptions } from "../../api/categories";
 import api from "../../api/client";
 
@@ -27,17 +27,16 @@ const BUCKETS = [
 
 export default function StockAgePage() {
   const notify = useNotify();
+  const { outletId } = useOutlet();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 50 });
   const [rowCount, setRowCount] = useState(0);
   const [q, setQ] = useState("");
   const [qApplied, setQApplied] = useState("");
-  const [outletId, setOutletId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [bucket, setBucket] = useState("");
   const [summary, setSummary] = useState(null);
-  const [outlets, setOutlets] = useState([]);
   const [categories, setCategories] = useState([]);
   const [recomputing, setRecomputing] = useState(false);
 
@@ -85,8 +84,7 @@ export default function StockAgePage() {
   useEffect(() => {
     (async () => {
       try {
-        const [os, cs] = await Promise.all([getOutlets(), getCategoryOptions()]);
-        setOutlets(Array.isArray(os.data) ? os.data : os.data.outlets || []);
+        const cs = await getCategoryOptions();
         setCategories(cs.data.categories || []);
       } catch { /* ignore */ }
     })();
@@ -243,13 +241,6 @@ export default function StockAgePage() {
           size="small" placeholder="Search item code or name…"
           value={q} onChange={(e) => setQ(e.target.value)} sx={{ width: 280 }}
         />
-        <TextField
-          select size="small" sx={{ minWidth: 180 }} label="Outlet"
-          value={outletId} onChange={(e) => setOutletId(e.target.value)}
-        >
-          <MenuItem value="">All outlets</MenuItem>
-          {outlets.map((o) => <MenuItem key={o.id} value={o.id}>{o.outlet_name}</MenuItem>)}
-        </TextField>
         <TextField
           select size="small" sx={{ minWidth: 180 }} label="Category"
           value={categoryId} onChange={(e) => setCategoryId(e.target.value)}

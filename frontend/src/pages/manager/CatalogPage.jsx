@@ -25,7 +25,6 @@ import { getCatalog, getItemPriceHistory } from "../../api/catalog";
 import {
   updateItem, listItemBarcodes, addItemBarcode, deleteItemBarcode, setPrimaryBarcode,
 } from "../../api/items";
-import { getOutlets } from "../../api/outlets";
 
 function PriceHistoryDialog({ open, onClose, itemId, itemName }) {
   const [data, setData] = useState(null);
@@ -304,7 +303,7 @@ function BarcodeDrawer({ open, onClose, item, onChanged }) {
 
 export default function CatalogPage() {
   const { user } = useAuth();
-  const { selectedOutlet, setSelectedOutlet } = useOutlet();
+  const { selectedOutlet } = useOutlet();
   const navigate = useNavigate();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
@@ -320,12 +319,7 @@ export default function CatalogPage() {
   const [historyTarget, setHistoryTarget] = useState(null);
   const [editTarget, setEditTarget] = useState(null);
   const [barcodeTarget, setBarcodeTarget] = useState(null);
-  const [outlets, setOutlets] = useState([]);
   const debounceRef = useRef(null);
-
-  useEffect(() => {
-    if (isAdmin) getOutlets().then(({ data }) => setOutlets(Array.isArray(data) ? data : []));
-  }, [isAdmin]);
 
   const load = (q, cat, pg, outletId) => {
     setLoading(true); setError("");
@@ -471,11 +465,6 @@ export default function CatalogPage() {
     },
   ];
 
-  const onOutletPick = (id) => {
-    const o = outlets.find((x) => x.id === id);
-    setSelectedOutlet(o ? { id: o.id, outlet_name: o.outlet_name } : null);
-  };
-
   return (
     <Layout>
       <PageHeader
@@ -484,15 +473,6 @@ export default function CatalogPage() {
           ? `${totalCount.toLocaleString()} items — edit details, manage barcodes, view history`
           : "Browse products, prices, POS quantities, stock age, and barcodes"}
         icon={<Inventory2Icon />}
-        actions={
-          isAdmin && outlets.length > 0 ? (
-            <TextField size="small" select label="Outlet" value={selectedOutlet?.id || ""}
-              onChange={(e) => onOutletPick(e.target.value)} sx={{ minWidth: 200 }}>
-              <MenuItem value=""><em>All outlets</em></MenuItem>
-              {outlets.map((o) => <MenuItem key={o.id} value={o.id}>{o.outlet_name}</MenuItem>)}
-            </TextField>
-          ) : null
-        }
       />
 
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mb: 2, alignItems: { sm: "center" } }}>

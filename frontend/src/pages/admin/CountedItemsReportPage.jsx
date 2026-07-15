@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Stack, TextField, MenuItem, Typography, Tabs, Tab, Box, Alert, Chip,
+  Stack, TextField, Typography, Tabs, Tab, Box, Alert, Chip,
 } from "@mui/material";
 import ChecklistIcon from "@mui/icons-material/Checklist";
 import Layout from "../../components/Layout";
 import { PageHeader, DataTable } from "../../components/ui";
-import { getOutlets } from "../../api/outlets";
+import { useOutlet } from "../../contexts/OutletContext";
 import { getCountedItemsReport } from "../../api/dashboard";
 
 const fmtMoney = (v) => v == null ? "—" : Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -27,18 +27,13 @@ function daysBetween(fromISO, toRef) {
 }
 
 export default function CountedItemsReportPage() {
-  const [outlets, setOutlets] = useState([]);
-  const [outletId, setOutletId] = useState("");
+  const { outletId } = useOutlet();
   const [fromDate, setFromDate] = useState(isoDaysAgo(7));
   const [toDate, setToDate] = useState(isoToday());
   const [tab, setTab] = useState(0);
   const [data, setData] = useState({ counted_items: [], uncounted_items: [] });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-
-  useEffect(() => {
-    getOutlets().then(({ data }) => setOutlets(Array.isArray(data) ? data : []));
-  }, []);
 
   useEffect(() => {
     if (!outletId) { setData({ counted_items: [], uncounted_items: [] }); return; }
@@ -112,21 +107,11 @@ export default function CountedItemsReportPage() {
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
             />
-            <TextField
-              size="small" select label="Outlet" value={outletId}
-              onChange={(e) => setOutletId(e.target.value)}
-              sx={{ minWidth: 200 }}
-            >
-              <MenuItem value="">Select outlet…</MenuItem>
-              {outlets.map((o) => (
-                <MenuItem key={o.id} value={o.id}>{o.outlet_name}</MenuItem>
-              ))}
-            </TextField>
           </Stack>
         }
       />
 
-      {!outletId && <Alert severity="info" sx={{ mb: 2 }}>Select an outlet to view coverage.</Alert>}
+      {!outletId && <Alert severity="info" sx={{ mb: 2 }}>Pick an outlet from the header switcher to view coverage.</Alert>}
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
       <Box sx={{ borderBottom: 1, borderColor: "divider", mb: 2 }}>

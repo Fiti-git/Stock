@@ -15,15 +15,15 @@ import {
   getUnmappedItems, getMappingStats, suggestMasters,
   createItemLink, bulkCreateItemLinks, createMasterProduct,
 } from "../../api/orgCatalog";
-import { getOutlets } from "../../api/outlets";
+import { useOutlet } from "../../contexts/OutletContext";
 
 const PAGE_SIZE = 25;
 const HIGH_CONFIDENCE = 0.9;
 
 export default function MasterMappingPage() {
   const notify = useNotify();
+  const { outletId } = useOutlet();
   const [stats, setStats] = useState(null);
-  const [outlets, setOutlets] = useState([]);
 
   const [items, setItems] = useState([]);
   const [loadingItems, setLoadingItems] = useState(true);
@@ -31,7 +31,6 @@ export default function MasterMappingPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [q, setQ] = useState("");
-  const [outletId, setOutletId] = useState("");
 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [activeItem, setActiveItem] = useState(null);
@@ -75,14 +74,6 @@ export default function MasterMappingPage() {
 
   useEffect(() => { loadStats(); }, [loadStats]);
   useEffect(() => { loadItems(); }, [loadItems]);
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data } = await getOutlets();
-        setOutlets(Array.isArray(data) ? data : data.outlets || []);
-      } catch { /* ignore */ }
-    })();
-  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => { setPage(1); }, 250);
@@ -261,17 +252,6 @@ export default function MasterMappingPage() {
                 onChange={(e) => setQ(e.target.value)}
                 fullWidth
               />
-              <TextField
-                select size="small" sx={{ minWidth: 160 }}
-                value={outletId}
-                onChange={(e) => setOutletId(e.target.value)}
-                label="Outlet"
-              >
-                <MenuItem value="">All outlets</MenuItem>
-                {outlets.map((o) => (
-                  <MenuItem key={o.id} value={o.id}>{o.outlet_name}</MenuItem>
-                ))}
-              </TextField>
             </Stack>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
               <Checkbox

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Stack, TextField, MenuItem, Typography, Paper, Dialog, DialogTitle,
+  Stack, TextField, Typography, Paper, Dialog, DialogTitle,
   DialogContent, DialogActions, Button, IconButton, Box, CircularProgress,
   Alert, Chip,
 } from "@mui/material";
@@ -9,7 +9,7 @@ import FiberNewIcon from "@mui/icons-material/FiberNew";
 import CloseIcon from "@mui/icons-material/Close";
 import Layout from "../../components/Layout";
 import { PageHeader, DataTable, EmptyState } from "../../components/ui";
-import { getOutlets } from "../../api/outlets";
+import { useOutlet } from "../../contexts/OutletContext";
 import { getDailyUploadReport, getDailyUploadNewItems } from "../../api/dashboard";
 
 const fmtMoney = (v) => v == null ? "—" : Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -93,17 +93,12 @@ function NewItemsDialog({ outletId, outletName, date, onClose }) {
 }
 
 export default function DailyUploadReportPage() {
-  const [outlets, setOutlets] = useState([]);
-  const [outletId, setOutletId] = useState("");
+  const { outletId, selectedOutlet } = useOutlet();
   const [fromDate, setFromDate] = useState(isoDaysAgo(7));
   const [toDate, setToDate] = useState(isoToday());
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [newItemsCtx, setNewItemsCtx] = useState(null);
-
-  useEffect(() => {
-    getOutlets().then(({ data }) => setOutlets(Array.isArray(data) ? data : []));
-  }, []);
 
   const fetchReport = () => {
     setLoading(true);
@@ -118,8 +113,7 @@ export default function DailyUploadReportPage() {
 
   useEffect(() => { fetchReport(); /* eslint-disable-next-line */ }, [fromDate, toDate, outletId]);
 
-  const selectedOutlet = outlets.find((o) => String(o.id) === String(outletId));
-  const selectedOutletName = selectedOutlet?.outlet_name || "";
+  const selectedOutletName = selectedOutlet?.name || "";
 
   const displayRows = useMemo(() => {
     if (!outletId) return rows;
@@ -243,16 +237,6 @@ export default function DailyUploadReportPage() {
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
             />
-            <TextField
-              size="small" select label="Outlet" value={outletId}
-              onChange={(e) => setOutletId(e.target.value)}
-              sx={{ minWidth: 180 }}
-            >
-              <MenuItem value="">All outlets</MenuItem>
-              {outlets.map((o) => (
-                <MenuItem key={o.id} value={o.id}>{o.outlet_name}</MenuItem>
-              ))}
-            </TextField>
           </Stack>
         }
       />

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Stack, TextField, MenuItem, Typography, Paper, Chip, Dialog, DialogTitle,
+  Stack, TextField, Typography, Paper, Chip, Dialog, DialogTitle,
   DialogContent, DialogActions, Button, IconButton, Box, Alert,
 } from "@mui/material";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
@@ -8,7 +8,7 @@ import PlaceIcon from "@mui/icons-material/Place";
 import CloseIcon from "@mui/icons-material/Close";
 import Layout from "../../components/Layout";
 import { PageHeader, DataTable, EmptyState } from "../../components/ui";
-import { getOutlets } from "../../api/outlets";
+import { useOutlet } from "../../contexts/OutletContext";
 import { getStockVarianceReport } from "../../api/dashboard";
 
 const fmtQty = (v) => v == null ? "—" : Number(v).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 3 });
@@ -45,18 +45,13 @@ function LocationsDialog({ row, onClose }) {
 }
 
 export default function StockVarianceReportPage() {
-  const [outlets, setOutlets] = useState([]);
-  const [outletId, setOutletId] = useState("");
+  const { outletId } = useOutlet();
   const [date, setDate] = useState(isoToday());
   const [rows, setRows] = useState([]);
   const [totals, setTotals] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [locRow, setLocRow] = useState(null);
-
-  useEffect(() => {
-    getOutlets().then(({ data }) => setOutlets(Array.isArray(data) ? data : []));
-  }, []);
 
   useEffect(() => {
     if (!outletId) { setRows([]); setTotals(null); return; }
@@ -114,30 +109,19 @@ export default function StockVarianceReportPage() {
         subtitle="POS snapshot (ending balance) vs. manual count — qty and value variance"
         icon={<FactCheckIcon />}
         actions={
-          <Stack direction="row" spacing={1.5} alignItems="center">
-            <TextField
-              size="small" type="date" label="Date"
-              InputLabelProps={{ shrink: true }}
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-            <TextField
-              size="small" select label="Outlet" value={outletId}
-              onChange={(e) => setOutletId(e.target.value)}
-              sx={{ minWidth: 200 }}
-            >
-              <MenuItem value="">Select outlet…</MenuItem>
-              {outlets.map((o) => (
-                <MenuItem key={o.id} value={o.id}>{o.outlet_name}</MenuItem>
-              ))}
-            </TextField>
-          </Stack>
+          <TextField
+            size="small" type="date" label="Date"
+            InputLabelProps={{ shrink: true }}
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
         }
       />
 
       {!outletId && (
-        <Alert severity="info" sx={{ mb: 2 }}>Select an outlet to view the variance report.</Alert>
+        <Alert severity="info" sx={{ mb: 2 }}>Pick an outlet from the header switcher to view the report.</Alert>
       )}
+
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
       {totals && (

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Stack, TextField, MenuItem, Button, Tabs, Tab, Alert, Typography, Box, Chip,
+  Stack, TextField, Button, Tabs, Tab, Alert, Typography, Box, Chip,
   Paper, Table, TableHead, TableBody, TableRow, TableCell, Checkbox,
   TablePagination, CircularProgress, Tooltip,
 } from "@mui/material";
@@ -10,7 +10,7 @@ import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import Layout from "../../components/Layout";
 import { PageHeader, ConfirmDialog } from "../../components/ui";
 import { useNotify } from "../../providers/NotificationProvider";
-import { getOutlets } from "../../api/outlets";
+import { useOutlet } from "../../contexts/OutletContext";
 import { listOrphans, purgeOrphans, purgeAllOrphans } from "../../api/uploads";
 
 function isoDaysAgo(n) {
@@ -125,8 +125,7 @@ function SelectableTable({
 
 export default function OrphanCleanupPage() {
   const notify = useNotify();
-  const [outlets, setOutlets] = useState([]);
-  const [outletId, setOutletId] = useState("");
+  const { outletId, selectedOutlet } = useOutlet();
   const [fromDate, setFromDate] = useState(isoDaysAgo(30));
   const [toDate, setToDate] = useState(isoDaysAgo(0));
   const [tab, setTab] = useState(0);
@@ -144,10 +143,6 @@ export default function OrphanCleanupPage() {
   const [deleting, setDeleting] = useState(false);
   const [purgeAllOpen, setPurgeAllOpen] = useState(false);
   const [purgingAll, setPurgingAll] = useState(false);
-
-  useEffect(() => {
-    getOutlets().then(({ data }) => setOutlets(Array.isArray(data) ? data : []));
-  }, []);
 
   const fetchOrphans = useCallback(() => {
     setLoading(true);
@@ -278,16 +273,6 @@ export default function OrphanCleanupPage() {
 
       <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2, flexWrap: "wrap" }} useFlexGap>
         <TextField
-          size="small" select label="Outlet" value={outletId}
-          onChange={(e) => setOutletId(e.target.value)}
-          sx={{ minWidth: 200 }}
-        >
-          <MenuItem value="">All outlets</MenuItem>
-          {outlets.map((o) => (
-            <MenuItem key={o.id} value={o.id}>{o.outlet_name}</MenuItem>
-          ))}
-        </TextField>
-        <TextField
           size="small" type="date" label="From"
           InputLabelProps={{ shrink: true }}
           value={fromDate} onChange={(e) => setFromDate(e.target.value)}
@@ -388,7 +373,7 @@ export default function OrphanCleanupPage() {
               This will permanently delete every orphan for the selected filter:
             </Typography>
             <Box component="ul" sx={{ m: 0, pl: 3, "& li": { py: 0.25 } }}>
-              <li>Outlet: <b>{outlets.find((o) => o.id === Number(outletId))?.outlet_name || outletId}</b></li>
+              <li>Outlet: <b>{selectedOutlet?.name || outletId}</b></li>
               <li>Date range: <b>{fromDate || "—"}</b> to <b>{toDate || "—"}</b></li>
               <li><b>{items.length}</b> item{items.length === 1 ? "" : "s"} (none with barcodes)</li>
               <li><b>{pending.length}</b> pending row{pending.length === 1 ? "" : "s"}</li>
