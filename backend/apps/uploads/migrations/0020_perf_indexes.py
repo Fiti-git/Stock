@@ -19,9 +19,13 @@ auto-create supporting indexes on the child side — you have to add them
 explicitly. This migration does that plus the extra composite indexes
 that match the hot query patterns.
 
-All indexes use CREATE INDEX CONCURRENTLY (no ACCESS EXCLUSIVE lock during
-build) and IF NOT EXISTS (idempotent). Requires atomic = False because
-CONCURRENTLY can't run inside a transaction.
+Each index goes in its own RunSQL operation because CREATE INDEX
+CONCURRENTLY must be issued outside any transaction — even Django's
+implicit per-operation transaction that wraps a multi-statement RunSQL.
+`atomic = False` on the Migration class combined with one operation per
+statement gives every CONCURRENTLY its own connection state.
+
+Idempotent: IF NOT EXISTS on every CREATE, IF EXISTS on every DROP.
 
 Estimated build time on prod (per index): 5-30 seconds. Total: 1-3 min.
 Zero user-facing impact during the build.
@@ -31,63 +35,21 @@ from django.db import migrations
 
 
 INDEXES_TO_ADD = [
-    # (name, table, definition_body)
-    # items — the biggest offender by far
-    (
-        "items_outlet_code_idx",
-        "items",
-        "(outlet_id, item_code)",
-    ),
-    # stock_counts — root cause of the variance dashboard CPU spike
-    (
-        "stock_counts_outlet_item_date_idx",
-        "stock_counts",
-        "(outlet_id, item_id, count_date DESC)",
-    ),
-    # item_barcodes — outlet-scoped barcode lookup (mobile scan, catalog search)
-    (
-        "item_barcodes_outlet_barcode_idx",
-        "item_barcodes",
-        "(outlet_id, barcode)",
-    ),
-    # item_barcodes — per-item list (Catalog drawer, item detail)
-    (
-        "item_barcodes_item_idx",
-        "item_barcodes",
-        "(item_id)",
-    ),
-    # pending_items — pending review queue filter
-    (
-        "pending_items_outlet_status_idx",
-        "pending_items",
-        "(first_seen_outlet_id, status)",
-    ),
-    # pending_items — upload dedup check ("is there already an open request for this code?")
-    (
-        "pending_items_code_outlet_type_idx",
-        "pending_items",
-        "(item_code, first_seen_outlet_id, change_type)",
-    ),
+    # (name, table, columns_body)
+    ("items_outlet_code_idx",              "items",         "(outlet_id, item_code)"),
+    ("stock_counts_outlet_item_date_idx",  "stock_counts",  "(outlet_id, item_id, count_date DESC)"),
+    ("item_barcodes_outlet_barcode_idx",   "item_barcodes", "(outlet_id, barcode)"),
+    ("item_barcodes_item_idx",             "item_barcodes", "(item_id)"),
+    ("pending_items_outlet_status_idx",    "pending_items", "(first_seen_outlet_id, status)"),
+    ("pending_items_code_outlet_type_idx", "pending_items", "(item_code, first_seen_outlet_id, change_type)"),
 ]
 
 
-def _forward_sql():
-    parts = []
-    for name, table, cols in INDEXES_TO_ADD:
-        # Note: no IF NOT EXISTS wrapper on a DO block — CONCURRENTLY must be a
-        # top-level statement. IF NOT EXISTS on the CREATE itself handles idempotency.
-        parts.append(
-            f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {name} ON public.{table} {cols};"
-        )
-    return "\n".join(parts)
-
-
-def _reverse_sql():
-    parts = []
-    for name, _table, _cols in INDEXES_TO_ADD:
-        # DROP INDEX CONCURRENTLY IF EXISTS — also cannot run in a transaction.
-        parts.append(f"DROP INDEX CONCURRENTLY IF EXISTS public.{name};")
-    return "\n".join(parts)
+def _one_op(name, table, cols):
+    return migrations.RunSQL(
+        sql=f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {name} ON public.{table} {cols};",
+        reverse_sql=f"DROP INDEX CONCURRENTLY IF EXISTS public.{name};",
+    )
 
 
 class Migration(migrations.Migration):
@@ -98,9 +60,4 @@ class Migration(migrations.Migration):
         ("uploads", "0019_backfill_missing_fks"),
     ]
 
-    operations = [
-        migrations.RunSQL(
-            sql=_forward_sql(),
-            reverse_sql=_reverse_sql(),
-        ),
-    ]
+    operations = [_one_op(name, table, cols) for name, table, cols in INDEXES_TO_ADD]
