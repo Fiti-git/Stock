@@ -46,6 +46,14 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.dashboard.tasks.auto_close_stale_count_sessions",
         "schedule": 15 * 60,
     },
+    "rebuild-pos-monthly-rollups-nightly": {
+        # Rebuild pos_snapshots_monthly for current + previous month every
+        # night. Reports covering >60 days read that rollup instead of
+        # seq-scanning raw daily snapshots. Idempotent — a rebuild during
+        # active hours only re-upserts existing rows, no locking pain.
+        "task": "apps.uploads.tasks.rebuild_monthly_rollups",
+        "schedule": 24 * 60 * 60,  # every 24h
+    },
 }
 
 MIDDLEWARE = [

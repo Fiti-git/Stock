@@ -1,6 +1,87 @@
 from django.db import models
 
 
+class PosSnapshotMonthly(models.Model):
+    """
+    Monthly rollup of ``pos_snapshots`` at the (outlet, item, year_month) grain.
+
+    Purpose: reports spanning >60 days read this table instead of scanning
+    thousands of daily rows per item. One row per outlet-item-month keeps
+    long-range queries fast forever, regardless of how many daily uploads
+    accumulate below.
+
+    Rebuild strategy: a nightly Celery task re-aggregates the last 2 months
+    (current + previous) via an idempotent upsert. Older months are frozen
+    and don't need rebuilding unless raw data changes historically — which
+    would be triggered explicitly by the app.
+
+    "End-of-month" fields track the last known daily snapshot within the
+    month (usually the actual month-end, but the last uploaded day if the
+    month is incomplete). Aggregate fields (min/max/avg) span every day
+    that has raw data recorded for the month.
+    """
+
+    outlet = models.ForeignKey(
+        "outlets.Outlet",
+        on_delete=models.CASCADE,
+        related_name="pos_monthly_snapshots",
+    )
+    item = models.ForeignKey(
+        "items.Item",
+        on_delete=models.CASCADE,
+        related_name="pos_monthly_snapshots",
+    )
+    # Always the first day of the month, e.g. 2026-07-01, for clean date math.
+    year_month = models.DateField()
+
+    # --- Coverage metadata ---
+    snapshot_days_recorded = models.IntegerField(default=0)
+    month_end_date = models.DateField(null=True, blank=True)
+
+    # --- End-of-month snapshot (from the last recorded day of the month) ---
+    end_pos_quantity = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
+    end_cost_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    end_selling_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+
+    # --- Aggregates across all recorded days in the month ---
+    avg_pos_quantity = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
+    min_pos_quantity = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
+    max_pos_quantity = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
+
+    # --- Count activity in the month ---
+    total_counted_qty = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
+    count_sessions_count = models.IntegerField(default=0)
+
+    # --- Variance activity in the month ---
+    total_variance_qty = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
+    total_variance_value = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True)
+
+    # --- Bookkeeping ---
+    first_upload_at = models.DateTimeField(null=True, blank=True)
+    last_upload_at = models.DateTimeField(null=True, blank=True)
+    rebuilt_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "pos_snapshots_monthly"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["outlet", "item", "year_month"],
+                name="pos_monthly_outlet_item_month_uniq",
+            ),
+        ]
+        indexes = [
+            # Reports scanning "all items in outlet X across N months"
+            models.Index(fields=["outlet", "year_month"]),
+            # Reports scanning "item X across all outlets over time"
+            models.Index(fields=["item", "year_month"]),
+            # Time-range scans across the org
+            models.Index(fields=["year_month"]),
+        ]
+
+    def __str__(self):
+        return f"{self.outlet_id}/{self.item_id} @ {self.year_month:%Y-%m}"
+
+
 class PosSnapshot(models.Model):
     outlet = models.ForeignKey(
         "outlets.Outlet",

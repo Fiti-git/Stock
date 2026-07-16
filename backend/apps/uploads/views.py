@@ -1134,6 +1134,20 @@ def _process_upload(parsed, outlet, user, snapshot_date, overwrite, filename, ex
                 approval_status=UploadedSheet.ApprovalStatus.AUTO,
             )
 
+    # Refresh the monthly rollup for this snapshot's month, out-of-band.
+    # Fire-and-forget via Celery so the HTTP response isn't blocked. If Celery
+    # isn't reachable (dev without workers), fall back to a synchronous rebuild
+    # — an extra ~1s on the upload beats letting the aggregate go stale.
+    try:
+        from .tasks import rebuild_monthly_rollups as _rebuild_task
+        _rebuild_task.delay(months_back=1)
+    except Exception:
+        try:
+            from .rollups import rebuild_month, month_floor as _mf
+            rebuild_month(_mf(snapshot_date))
+        except Exception:
+            logger.exception("monthly rollup refresh failed for %s", snapshot_date)
+
     return Response(
         {
             "detail": "Upload successful.",
