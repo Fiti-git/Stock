@@ -8,6 +8,7 @@ from .views import (
     list_variance_records, resolve_variance, bulk_resolve_variance,
     count_coverage_report, counter_performance, coverage_by_day,
     uncounted_items, counts_grouped,
+    manager_summary, sales_and_shrinkage_trend, category_performance,
 )
 
 urlpatterns = [
@@ -31,6 +32,9 @@ urlpatterns = [
     path("mobile-devices/", mobile_devices_report, name="mobile-devices"),
     path("uncounted/", uncounted_items, name="uncounted-items"),
     path("counts-grouped/", counts_grouped, name="counts-grouped"),
+    path("manager-summary/", manager_summary, name="manager-summary"),
+    path("sales-shrinkage-trend/", sales_and_shrinkage_trend, name="sales-shrinkage-trend"),
+    path("category-performance/", category_performance, name="category-performance"),
 
     path("count-sessions/", list_count_sessions, name="count-sessions"),
     path("count-sessions/<int:session_id>/", count_session_detail, name="count-session-detail"),

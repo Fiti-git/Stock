@@ -75,6 +75,27 @@ export const resolveVarianceRecord = (recordId, { status, note, adjustment_qty }
 export const bulkResolveVariance = (ids, { status, note } = {}) =>
   api.post(`/dashboard/variance-records/bulk-resolve/`, { ids, status, note });
 
+export const getManagerSummary = ({ outletId } = {}) =>
+  api.get("/dashboard/manager-summary/", { params: outletId ? { outlet: outletId } : {} });
+
+export const getSalesShrinkageTrend = ({ outletId, from, to } = {}) =>
+  api.get("/dashboard/sales-shrinkage-trend/", {
+    params: {
+      ...(outletId ? { outlet: outletId } : {}),
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+    },
+  });
+
+export const getCategoryPerformance = ({ outletId, from, to } = {}) =>
+  api.get("/dashboard/category-performance/", {
+    params: {
+      ...(outletId ? { outlet: outletId } : {}),
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+    },
+  });
+
 export const getCountsGrouped = ({ outletId, date, page = 1, pageSize = 25, q = "" } = {}) =>
   api.get("/dashboard/counts-grouped/", {
     params: {

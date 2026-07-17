@@ -2127,3 +2127,275 @@ def coverage_by_day(request):
         "total_items": total_items,
         "days": days,
     })
+
+
+# =============================================================================
+# Manager Dashboard v2 — three aggregate endpoints powering the redesigned page.
+# All three respect the outlet the caller has scope for (manager: own outlet,
+# admin: ?outlet= override) and a common time range (?from=&to=, default 14d).
+# =============================================================================
+def _dash_range(request, default_days=14):
+    to_date = _parse_date(request.query_params.get("to", "")) or date.today()
+    from_date = _parse_date(request.query_params.get("from", "")) or to_date - timedelta(days=default_days - 1)
+    if from_date > to_date:
+        from_date, to_date = to_date, from_date
+    return from_date, to_date
+
+
+@api_view(["GET"])
+@permission_classes([IsManager])
+def manager_summary(request):
+    """
+    One aggregate call that powers the KPI strip + alerts panel on the
+    Manager Dashboard. Includes today's snapshot AND four alert counts.
+    Every field degrades gracefully when the upstream data isn't
+    uploaded (returns 0 or null, not an error).
+    """
+    from apps.uploads.models import SalesLine, SalesReturnLine
+    outlet = _resolve_outlet(request)
+    if not outlet:
+        return Response({"detail": "No outlet."}, status=400)
+
+    today = date.today()
+
+    # --- Today's sales aggregates (SalesLine sum, minus returns if any) ---
+    sales_agg = SalesLine.objects.filter(outlet=outlet, txn_date=today).aggregate(
+        gross_sales=Sum("amount"),
+        items_sold=Sum("qty"),
+    )
+    returns_val = SalesReturnLine.objects.filter(outlet=outlet, txn_date=today).aggregate(
+        v=Sum("gross_value"),
+    )["v"] or Decimal("0")
+
+    gross_sales = sales_agg["gross_sales"] or Decimal("0")
+    # SalesLine has no cost column so we approximate via matching PosSnapshot
+    # cost_price for the invoice items. For MVP the GP calc is best-effort:
+    # if we can't join, we hide the GP card. Cheap approximation via SUM.
+    # Instead of expensive per-item join, use the outlet's average GP margin
+    # from today's POS snapshot if available.
+    snap_agg = PosSnapshot.objects.filter(outlet=outlet, snapshot_date=today).aggregate(
+        cost_sum=Sum(ExpressionWrapper(
+            F("cost_price") * F("pos_quantity"),
+            output_field=DecimalField(max_digits=20, decimal_places=3),
+        )),
+        sell_sum=Sum(ExpressionWrapper(
+            F("selling_price") * F("pos_quantity"),
+            output_field=DecimalField(max_digits=20, decimal_places=3),
+        )),
+    )
+    net_sales = gross_sales + returns_val  # returns stored negative
+    gp_pct = None
+    if snap_agg["sell_sum"] and snap_agg["cost_sum"] is not None and Decimal(snap_agg["sell_sum"]) > 0:
+        # Approx GP margin from today's snapshot mix
+        gp_pct = float((Decimal(snap_agg["sell_sum"]) - Decimal(snap_agg["cost_sum"])) / Decimal(snap_agg["sell_sum"]) * 100)
+
+    # --- Count coverage today ---
+    total_items = PosSnapshot.objects.filter(outlet=outlet, snapshot_date=today).count()
+    counted = (
+        StockCount.objects.filter(outlet=outlet, count_date=today)
+        .exclude(approval_status=StockCount.ApprovalStatus.REJECTED)
+        .values("item_id").distinct().count()
+    )
+    coverage_pct = round(counted / total_items * 100, 1) if total_items else 0
+
+    # --- Variance today (Rs value, only counted items) ---
+    variance_today = VarianceRecord.objects.filter(
+        outlet=outlet, count_date=today, counted_qty__gt=0,
+    ).aggregate(v=Sum("variance_value"))["v"] or Decimal("0")
+
+    # --- Uploads done today ---
+    from apps.uploads.models import (
+        DamageUploadBatch, OfficeUploadBatch, VerificationUploadBatch,
+        GrnUploadBatch, RtsUploadBatch, SalesUploadBatch, SalesReturnUploadBatch,
+    )
+    uploads_today = {
+        "pos": total_items > 0,
+        "damage": DamageUploadBatch.objects.filter(outlet=outlet, uploaded_at__date=today).exists(),
+        "office": OfficeUploadBatch.objects.filter(outlet=outlet, uploaded_at__date=today).exists(),
+        "verification": VerificationUploadBatch.objects.filter(outlet=outlet, uploaded_at__date=today).exists(),
+        "grn": GrnUploadBatch.objects.filter(outlet=outlet, uploaded_at__date=today).exists(),
+        "rts": RtsUploadBatch.objects.filter(outlet=outlet, uploaded_at__date=today).exists(),
+        "sales": SalesUploadBatch.objects.filter(outlet=outlet, uploaded_at__date=today).exists(),
+        "sales_returns": SalesReturnUploadBatch.objects.filter(outlet=outlet, uploaded_at__date=today).exists(),
+    }
+
+    # --- Alerts ---
+    cutoff = today - timedelta(days=7)
+    # Items whose latest count is > 7 days old (or never counted), among active items
+    recent_counts = (
+        StockCount.objects.filter(outlet=outlet)
+        .exclude(approval_status=StockCount.ApprovalStatus.REJECTED)
+        .values("item_id").annotate(last_c=Max("count_date"))
+    )
+    recent_map = {r["item_id"]: r["last_c"] for r in recent_counts}
+    active_item_ids = set(
+        Item.objects.filter(outlet=outlet, status=Item.Status.ACTIVE).values_list("id", flat=True)
+    )
+    uncounted_7d = sum(1 for iid in active_item_ids if not recent_map.get(iid) or recent_map[iid] < cutoff)
+
+    HIGH_VAL = Decimal("5000")
+    high_value_variances = VarianceRecord.objects.filter(
+        outlet=outlet, counted_qty__gt=0, status=VarianceRecord.Status.PENDING,
+    ).exclude(variance_value__gt=-HIGH_VAL, variance_value__lt=HIGH_VAL).count()
+
+    pending_reviews = PendingItem.objects.filter(
+        first_seen_outlet=outlet, status=PendingItem.Status.PENDING,
+    ).count()
+
+    stale_sessions = CountSession.objects.filter(
+        outlet=outlet, status=CountSession.Status.OPEN,
+        started_at__lt=timezone.now() - timedelta(hours=24),
+    ).count()
+
+    return Response({
+        "outlet_id": outlet.id,
+        "outlet_name": outlet.outlet_name,
+        "today": str(today),
+        "kpi": {
+            "sales_today": float(net_sales),
+            "gp_pct_today": gp_pct,
+            "coverage_pct_today": coverage_pct,
+            "variance_today": float(variance_today),
+            "uploads_today": uploads_today,
+        },
+        "alerts": {
+            "uncounted_over_7d": uncounted_7d,
+            "high_value_variances": high_value_variances,
+            "pending_reviews": pending_reviews,
+            "stale_sessions": stale_sessions,
+        },
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsManager])
+def sales_and_shrinkage_trend(request):
+    """
+    Two daily series across a date range for the outlet:
+      - sales:     SUM(SalesLine.amount + SalesReturnLine.gross_value) per day
+      - shrinkage: SUM(VarianceRecord.variance_value) per day (only_counted)
+    Emits a row per day so the chart has no gaps. Rows missing data show 0.
+    """
+    from apps.uploads.models import SalesLine, SalesReturnLine
+    outlet = _resolve_outlet(request)
+    if not outlet:
+        return Response({"detail": "No outlet."}, status=400)
+
+    from_date, to_date = _dash_range(request, default_days=14)
+
+    sales_map = {
+        r["txn_date"]: float(r["amount"] or 0)
+        for r in SalesLine.objects
+            .filter(outlet=outlet, txn_date__range=(from_date, to_date))
+            .values("txn_date").annotate(amount=Sum("amount"))
+    }
+    returns_map = {
+        r["txn_date"]: float(r["v"] or 0)
+        for r in SalesReturnLine.objects
+            .filter(outlet=outlet, txn_date__range=(from_date, to_date))
+            .values("txn_date").annotate(v=Sum("gross_value"))
+    }
+    shrink_map = {
+        r["count_date"]: float(r["v"] or 0)
+        for r in VarianceRecord.objects
+            .filter(outlet=outlet, count_date__range=(from_date, to_date), counted_qty__gt=0)
+            .values("count_date").annotate(v=Sum("variance_value"))
+    }
+
+    days = []
+    cur = from_date
+    while cur <= to_date:
+        days.append({
+            "date": str(cur),
+            "sales": sales_map.get(cur, 0) + returns_map.get(cur, 0),
+            "shrinkage": shrink_map.get(cur, 0),
+        })
+        cur += timedelta(days=1)
+
+    return Response({
+        "outlet_id": outlet.id,
+        "from_date": str(from_date),
+        "to_date": str(to_date),
+        "days": days,
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsManager])
+def category_performance(request):
+    """
+    Per-category aggregates for the outlet over a date range. Sales and cost
+    come from SalesLine (joined to Item for category), variance from
+    VarianceRecord. Top-10 by sales value.
+    """
+    from apps.uploads.models import SalesLine
+    outlet = _resolve_outlet(request)
+    if not outlet:
+        return Response({"detail": "No outlet."}, status=400)
+
+    from_date, to_date = _dash_range(request, default_days=14)
+
+    # Sales per category
+    sales_rows = (
+        SalesLine.objects
+        .filter(outlet=outlet, txn_date__range=(from_date, to_date))
+        .values("item__category")
+        .annotate(
+            sales=Sum("amount"),
+            items=Sum("qty"),
+            lines=Count("id"),
+        )
+    )
+    sales_map = {r["item__category"] or "—": r for r in sales_rows}
+
+    # Approximate cost using PosSnapshot cost_price × qty sold. Match by item_id.
+    # For MVP: sum item.cost_price * qty from sales lines directly.
+    cost_rows = (
+        SalesLine.objects
+        .filter(outlet=outlet, txn_date__range=(from_date, to_date))
+        .values("item__category")
+        .annotate(
+            cost=Sum(ExpressionWrapper(
+                F("item__cost_price") * F("qty"),
+                output_field=DecimalField(max_digits=20, decimal_places=3),
+            )),
+        )
+    )
+    cost_map = {r["item__category"] or "—": r for r in cost_rows}
+
+    # Variance per category
+    variance_rows = (
+        VarianceRecord.objects
+        .filter(outlet=outlet, count_date__range=(from_date, to_date), counted_qty__gt=0)
+        .values("item__category")
+        .annotate(variance_value=Sum("variance_value"), variance_items=Count("id"))
+    )
+    variance_map = {r["item__category"] or "—": r for r in variance_rows}
+
+    # Merge all keys
+    all_cats = set(sales_map) | set(variance_map)
+    results = []
+    for cat in all_cats:
+        s = sales_map.get(cat, {})
+        c = cost_map.get(cat, {})
+        v = variance_map.get(cat, {})
+        sales_val = float(s.get("sales") or 0)
+        cost_val = float(c.get("cost") or 0)
+        gp_pct = round((sales_val - cost_val) / sales_val * 100, 1) if sales_val > 0 else None
+        results.append({
+            "category": cat,
+            "sales": sales_val,
+            "cost": cost_val,
+            "gp_pct": gp_pct,
+            "items_sold": float(s.get("items") or 0),
+            "variance_value": float(v.get("variance_value") or 0),
+            "variance_items": v.get("variance_items", 0),
+        })
+    results.sort(key=lambda r: r["sales"], reverse=True)
+
+    return Response({
+        "outlet_id": outlet.id,
+        "from_date": str(from_date),
+        "to_date": str(to_date),
+        "results": results[:10],
+    })
