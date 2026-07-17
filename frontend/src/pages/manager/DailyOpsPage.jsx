@@ -23,7 +23,8 @@ import { PageHeader } from "../../components/ui";
 import { useOutlet } from "../../contexts/OutletContext";
 import { getUploadHistory, getUploadDiff } from "../../api/uploads";
 import {
-  getCountProgress, getUncounted, getDailyCounts, getVariances, getMobileDevices,
+  getCountProgress, getUncounted, getDailyCounts, getMobileDevices,
+  listVarianceRecords,
 } from "../../api/dashboard";
 
 const isoToday = () => new Date().toISOString().slice(0, 10);
@@ -142,9 +143,9 @@ function CountedModal({ open, onClose, outletId, date }) {
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <Box>
-          <Typography variant="h4">Counted items</Typography>
+          <Typography variant="h4">Counted items · {date}</Typography>
           <Typography variant="caption" color="text.secondary">
-            {count.toLocaleString()} count entries for {date}
+            {count.toLocaleString()} count entr{count === 1 ? "y" : "ies"} entered on {date}
           </Typography>
         </Box>
         <IconButton onClick={onClose}><CloseIcon /></IconButton>
@@ -208,71 +209,102 @@ function CountedModal({ open, onClose, outletId, date }) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Variances modal — read-only preview; edits happen on Variance Reconciliation page
+// Variances modal — real variance_records, filtered by the working day so
+// what the user sees agrees with the header date. Full table w/ headers,
+// session date column, value column, and status chip.
 // ────────────────────────────────────────────────────────────────────────────
-function VariancesModal({ open, onClose, outletId }) {
+function VariancesModal({ open, onClose, outletId, date }) {
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [pageSize] = useState(25);
+  const [q, setQ] = useState("");
   const navigate = useNavigate();
 
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    getVariances(outletId, page + 1, pageSize)
+    listVarianceRecords({
+      ...(outletId ? { outlet: outletId } : {}),
+      date_from: date,
+      date_to: date,
+      page: page + 1,
+      page_size: pageSize,
+      ...(q ? { search: q } : {}),
+    })
       .then(({ data }) => {
-        // getVariances returns an array today; be tolerant of paginated shape too
-        const results = Array.isArray(data) ? data : (data.results || []);
-        setRows(results);
-        setCount(Array.isArray(data) ? results.length : (data.count || results.length));
+        setRows(data.results || []);
+        setCount(data.count || 0);
       })
       .catch(() => { setRows([]); setCount(0); })
       .finally(() => setLoading(false));
-  }, [open, outletId, page, pageSize]);
+  }, [open, outletId, date, page, pageSize, q]);
+
+  useEffect(() => { if (open) setPage(0); }, [q, date, open]);
+
+  const statusColor = (s) => ({
+    pending: "warning", investigating: "info",
+    explained: "success", adjusted: "success",
+    written_off: "default", closed: "default",
+  }[s] || "default");
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <Box>
-          <Typography variant="h4">Variances</Typography>
+          <Typography variant="h4">Variances · {date}</Typography>
           <Typography variant="caption" color="text.secondary">
-            {count.toLocaleString()} differences (POS vs counted)
+            {count.toLocaleString()} record{count === 1 ? "" : "s"} for count sessions dated {date}
           </Typography>
         </Box>
         <IconButton onClick={onClose}><CloseIcon /></IconButton>
       </DialogTitle>
       <DialogContent dividers>
+        <TextField
+          fullWidth size="small" placeholder="Search item code or name…"
+          value={q} onChange={(e) => setQ(e.target.value)} sx={{ mb: 2 }}
+          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+        />
         <TableContainer sx={{ maxHeight: 480 }}>
           <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>
                 <TableCell>Code</TableCell>
                 <TableCell>Item</TableCell>
+                <TableCell>Session date</TableCell>
                 <TableCell align="right">POS qty</TableCell>
-                <TableCell align="right">Counted</TableCell>
-                <TableCell align="right">Variance</TableCell>
+                <TableCell align="right">Counted qty</TableCell>
+                <TableCell align="right">Variance qty</TableCell>
+                <TableCell align="right">Variance value</TableCell>
+                <TableCell>Status</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {loading && (
-                <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4 }}><CircularProgress size={22} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}><CircularProgress size={22} /></TableCell></TableRow>
               )}
               {!loading && rows.length === 0 && (
-                <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4, color: "text.secondary" }}>No variances yet</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4, color: "text.secondary" }}>
+                  No variances for count sessions dated {date}.
+                </TableCell></TableRow>
               )}
               {!loading && rows.map((r) => {
-                const v = r.variance;
-                const color = v == null ? "default" : v === 0 ? "default" : v > 0 ? "success" : "error";
+                const v = Number(r.variance_qty ?? 0);
+                const color = v === 0 ? "default" : v > 0 ? "success" : "error";
                 return (
-                  <TableRow key={r.item_id} hover>
+                  <TableRow key={r.id} hover>
                     <TableCell sx={{ fontFamily: "monospace" }}>{r.item_code}</TableCell>
                     <TableCell>{r.item_name}</TableCell>
+                    <TableCell>{r.count_date}</TableCell>
                     <TableCell align="right">{fmtNum(r.pos_qty, 3)}</TableCell>
-                    <TableCell align="right">{fmtNum(r.actual_qty, 3)}</TableCell>
+                    <TableCell align="right">{fmtNum(r.counted_qty, 3)}</TableCell>
                     <TableCell align="right">
-                      <Chip size="small" variant="outlined" color={color} label={fmtNum(v, 3)} />
+                      <Chip size="small" variant="outlined" color={color} label={fmtNum(r.variance_qty, 3)} />
+                    </TableCell>
+                    <TableCell align="right">{fmtNum(r.variance_value, 2)}</TableCell>
+                    <TableCell>
+                      <Chip size="small" variant="outlined" color={statusColor(r.status)} label={r.status} />
                     </TableCell>
                   </TableRow>
                 );
@@ -364,14 +396,24 @@ export default function DailyOpsPage() {
       getCountProgress(outletId).catch(() => ({ data: null })),
       getUploadHistory(outletId).catch(() => ({ data: { logs: [] } })),
       getMobileDevices({ outletId }).catch(() => ({ data: { results: [] } })),
-      getVariances(outletId, 1, 500).catch(() => ({ data: [] })),
+      // Variances scoped to the working day (sessions whose count_date == date).
+      // Use a large page_size so the net-value sum in the card is accurate for
+      // the day; the modal re-fetches with real pagination.
+      listVarianceRecords({
+        ...(outletId ? { outlet: outletId } : {}),
+        date_from: date,
+        date_to: date,
+        page: 1,
+        page_size: 500,
+      }).catch(() => ({ data: { results: [], count: 0 } })),
     ]).then(([progRes, upRes, devRes, varRes]) => {
       setProgress(progRes.data);
       setUploadHistory(upRes.data && upRes.data.logs !== undefined ? upRes.data : { logs: upRes.data || [] });
       setDevices(devRes.data?.results || []);
-      const vRows = Array.isArray(varRes.data) ? varRes.data : (varRes.data?.results || []);
+      const vRows = varRes.data?.results || [];
+      const total = varRes.data?.count ?? vRows.length;
       const netValue = vRows.reduce((s, r) => s + (Number(r.variance_value) || 0), 0);
-      setVariancesPreview({ count: vRows.length, netValue });
+      setVariancesPreview({ count: total, netValue });
     }).finally(() => setLoading(false));
   }, [outletId, date]);
 
@@ -530,22 +572,30 @@ export default function DailyOpsPage() {
                   <Chip size="small" variant="outlined" color="warning" label="Preliminary" />
                 )}
               </Stack>
-              <Typography variant="h3">
-                {fmtNum(variancesPreview.count)}
-                <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
-                  differences
-                </Typography>
-              </Typography>
-              <Typography variant="body2" color={variancesPreview.netValue < 0 ? "error.main" : "text.secondary"}>
-                Net value: {fmtNum(variancesPreview.netValue, 2)}
-              </Typography>
-              {progress?.session_status === "open" && (
-                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
-                  Numbers finalize when the count session closes.
+              {variancesPreview.count > 0 ? (
+                <>
+                  <Typography variant="h3">
+                    {fmtNum(variancesPreview.count)}
+                    <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                      differences for {date}
+                    </Typography>
+                  </Typography>
+                  <Typography variant="body2" color={variancesPreview.netValue < 0 ? "error.main" : "text.secondary"}>
+                    Net value: {fmtNum(variancesPreview.netValue, 2)}
+                  </Typography>
+                  {progress?.session_status === "open" && (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+                      Session still OPEN — these numbers may change until it closes.
+                    </Typography>
+                  )}
+                </>
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+                  No variances for count sessions dated {date}.
                 </Typography>
               )}
               <Button size="small" variant="outlined" onClick={() => setVarOpen(true)} sx={{ mt: 1.5 }}>
-                See all variances
+                See variances for {date}
               </Button>
             </CardContent>
           </Card>
@@ -582,7 +632,7 @@ export default function DailyOpsPage() {
 
       <UncountedModal open={uncOpen} onClose={() => setUncOpen(false)} outletId={outletId} date={date} />
       <CountedModal open={cntOpen} onClose={() => setCntOpen(false)} outletId={outletId} date={date} />
-      <VariancesModal open={varOpen} onClose={() => setVarOpen(false)} outletId={outletId} />
+      <VariancesModal open={varOpen} onClose={() => setVarOpen(false)} outletId={outletId} date={date} />
       <DiffModal open={!!diffId} onClose={() => setDiffId(null)} logId={diffId} />
     </Layout>
   );
