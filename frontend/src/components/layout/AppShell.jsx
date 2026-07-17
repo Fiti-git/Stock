@@ -8,7 +8,19 @@ export default function AppShell({ children }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  // Sidebar starts collapsed to the icon rail by default so managers land on
+  // a compact layout with maximum room for the page content. User can still
+  // expand it via the hamburger, and localStorage remembers their choice
+  // across sessions.
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      const saved = localStorage.getItem("sidebar_collapsed_v1");
+      return saved === null ? true : saved === "1";
+    } catch { return true; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("sidebar_collapsed_v1", collapsed ? "1" : "0"); } catch { /* ignore */ }
+  }, [collapsed]);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {

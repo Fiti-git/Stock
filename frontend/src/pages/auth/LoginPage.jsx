@@ -30,8 +30,11 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      await login(form.username, form.password);
-      navigate("/select-app");
+      const loggedIn = await login(form.username, form.password);
+      // Managers skip the launcher and land straight on the Stock dashboard.
+      // Every other role gets the multi-app launcher (they realistically
+      // switch between Stock / Ops / Org / Admin).
+      navigate(loggedIn?.role === "manager" ? "/dashboard" : "/select-app");
     } catch (err) {
       setError(err.response?.data?.detail || "Login failed. Check your username and password.");
     } finally {

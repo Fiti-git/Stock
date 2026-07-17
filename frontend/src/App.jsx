@@ -97,6 +97,11 @@ function HomeRedirect() {
   const { user, loading } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
+  // Managers land directly on the Stock Dashboard — the launcher is only
+  // useful when a user has more than one "system" tile to choose from,
+  // and managers realistically only use Stock. Everyone else keeps the
+  // launcher so they can pick between Stock / Ops / Org / Admin.
+  if (user.role === "manager") return <Navigate to="/dashboard" replace />;
   return <Navigate to="/select-app" replace />;
 }
 
