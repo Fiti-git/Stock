@@ -32,7 +32,6 @@ PERMISSIONS = [
     ("nav.count",                 "Stock Count",             "Navigation · Operations", "stock"),
     ("nav.daily_ops",             "Daily Ops",               "Navigation · Operations", "stock"),
     ("nav.upload",                "Upload XLS",              "Navigation · Operations", "stock"),
-    ("nav.upload_history",        "Upload History",          "Navigation · Operations", "stock"),
 
     ("nav.admin_dashboard",       "Admin Dashboard",         "Navigation · Dashboards", "stock"),
     ("nav.manager_dashboard",     "Manager Dashboard",       "Navigation · Dashboards", "stock"),
@@ -157,7 +156,7 @@ ROLE_DEFAULTS = {
 
     "admin": [
         # Sidebar — everything except the super-admin-only page
-        "nav.count", "nav.upload", "nav.upload_history",
+        "nav.count", "nav.upload",
         "nav.admin_dashboard",
         "nav.pending", "nav.uploaded_sheets", "nav.upload_approvals",
         "nav.count_sessions",
@@ -196,7 +195,7 @@ ROLE_DEFAULTS = {
     ],
 
     "manager": [
-        "nav.count", "nav.upload", "nav.upload_history",
+        "nav.count", "nav.upload",
         "nav.manager_dashboard",
         # nav.overview removed — managers only see their own outlet, so a
         # cross-outlet status board is noise for them. Admins still get it.
@@ -227,7 +226,7 @@ ROLE_DEFAULTS = {
     ],
 
     "store_user": [
-        "nav.count", "nav.upload", "nav.upload_history",
+        "nav.count", "nav.upload",
         "nav.uploaded_sheets",
         "nav.db_management",
         "nav.transactions_hub",
