@@ -26,6 +26,7 @@ import LeaderboardIcon from "@mui/icons-material/Leaderboard";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import CategoryIcon from "@mui/icons-material/Category";
 import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
+import TodayIcon from "@mui/icons-material/Today";
 
 /**
  * Single source of truth for routes. Consumed by Sidebar, Breadcrumbs, CommandPalette.
@@ -46,6 +47,7 @@ import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
  */
 export const routes = [
   // ------------------------- OPERATE -------------------------
+  { path: "/daily-ops",                 code: "nav.daily_ops",            label: "Daily Ops",          icon: TodayIcon,              roles: ["manager","admin","super_admin"],                       group: "Operate", system: "stock" },
   { path: "/count",                     code: "nav.count",                label: "Stock Count",        icon: QrCodeScannerIcon,      roles: ["store_user","staff","manager","admin","super_admin"], group: "Operate", system: "stock", showInNav: false },
   { path: "/upload",                    code: "nav.upload",               label: "Upload XLS",         icon: UploadFileIcon,         roles: ["store_user","manager","admin","super_admin"],         group: "Operate", system: "stock", showInNav: false },
   { path: "/transactions",              code: "nav.transactions_hub",     label: "Transactions",       icon: ReceiptLongIcon,        roles: ["store_user","staff","manager","admin","super_admin"], group: "Operate", system: "stock" },

@@ -682,6 +682,103 @@ def daily_counts(request):
 
 @api_view(["GET"])
 @permission_classes([IsManager])
+def uncounted_items(request):
+    """
+    Items that have NOT been counted yet in the open count session for
+    (outlet, date). Powers the "See uncounted" modal on the Daily Ops page.
+
+    Query params:
+      outlet=<id>      admin override (else user.outlet)
+      date=YYYY-MM-DD  session date (default: today)
+      page, page_size  standard pagination
+      q                search item_code / item_name
+      daily_only=1     restrict to items flagged is_daily_count
+
+    Response mirrors the catalog row shape so the frontend can reuse
+    existing table components. `count` is total matching rows; `results`
+    is one page.
+    """
+    outlet = _resolve_outlet(request)
+    if not outlet:
+        return Response({"detail": "No outlet."}, status=400)
+
+    target_date = _parse_date(request.query_params.get("date", "")) or date.today()
+
+    # Items already counted for this (outlet, date). We include SUBMITTED and
+    # APPROVED — REJECTED counts don't count as "counted" so the item stays
+    # in the uncounted list until it's re-counted successfully.
+    counted_item_ids = (
+        StockCount.objects
+        .filter(outlet=outlet, count_date=target_date)
+        .exclude(approval_status=StockCount.ApprovalStatus.REJECTED)
+        .values_list("item_id", flat=True)
+        .distinct()
+    )
+
+    qs = (
+        Item.objects
+        .filter(outlet=outlet, status=Item.Status.ACTIVE)
+        .exclude(id__in=counted_item_ids)
+        .order_by("item_code")
+    )
+
+    q = request.query_params.get("q", "").strip()
+    if q:
+        qs = qs.filter(Q(item_code__icontains=q) | Q(item_name__icontains=q))
+
+    if request.query_params.get("daily_only") in ("1", "true", "True"):
+        qs = qs.filter(is_daily_count=True)
+
+    # Latest POS snapshot per item for the reference date (best-effort).
+    latest_snap = {
+        snap.item_id: snap
+        for snap in PosSnapshot.objects
+            .filter(outlet=outlet, item_id__in=qs.values("id"), snapshot_date=target_date)
+    }
+
+    try:
+        page = max(1, int(request.query_params.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = min(max(int(request.query_params.get("page_size", 25)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 25
+
+    total = qs.count()
+    offset = (page - 1) * page_size
+    rows = list(qs[offset:offset + page_size])
+
+    results = []
+    for it in rows:
+        snap = latest_snap.get(it.id)
+        results.append({
+            "item_id": it.id,
+            "item_code": it.item_code,
+            "item_name": it.item_name,
+            "category": it.category,
+            "rack_number": it.rack_number,
+            "shelf": it.shelf,
+            "is_daily_count": it.is_daily_count,
+            "is_nbci": it.is_nbci,
+            "pos_qty": float(snap.pos_quantity) if snap else None,
+            "cost_price": float(snap.cost_price) if snap and snap.cost_price is not None else None,
+            "selling_price": float(snap.selling_price) if snap and snap.selling_price is not None else None,
+            "snapshot_date": str(snap.snapshot_date) if snap else None,
+        })
+
+    return Response({
+        "count": total,
+        "page": page,
+        "page_size": page_size,
+        "outlet_id": outlet.id,
+        "date": str(target_date),
+        "results": results,
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsManager])
 def counter_performance(request):
     """Per-user count performance metrics aggregated from StockCount."""
     outlet = _resolve_outlet(request)

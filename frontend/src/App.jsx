@@ -17,6 +17,7 @@ const HistoryPage = lazy(() => import("./pages/store-user/HistoryPage"));
 const StockCountPage = lazy(() => import("./pages/store-user/StockCountPage"));
 const ItemDetailPage = lazy(() => import("./pages/store-user/ItemDetailPage"));
 const DashboardPage = lazy(() => import("./pages/manager/DashboardPage"));
+const DailyOpsPage = lazy(() => import("./pages/manager/DailyOpsPage"));
 const PendingItemsPage = lazy(() => import("./pages/manager/PendingItemsPage"));
 const UploadedSheetsPage = lazy(() => import("./pages/manager/UploadedSheetsPage"));
 const CatalogPage = lazy(() => import("./pages/manager/CatalogPage"));
@@ -168,6 +169,7 @@ export default function App() {
                     <Route path="/transactions/sales_returns/history" element={<Navigate to="/uploaded-sheets?pipeline=sales_returns" replace />} />
 
                     <Route path="/dashboard" element={<PermissionRoute code="nav.manager_dashboard"><DashboardPage /></PermissionRoute>} />
+                    <Route path="/daily-ops" element={<PermissionRoute code="nav.daily_ops"><DailyOpsPage /></PermissionRoute>} />
                     <Route path="/dashboard/pending" element={<PermissionRoute code="nav.pending"><PendingItemsPage /></PermissionRoute>} />
                     <Route path="/uploaded-sheets" element={<PermissionRoute code="nav.uploaded_sheets"><UploadedSheetsPage /></PermissionRoute>} />
                     <Route path="/uploaded-sheets/:id" element={<PermissionRoute code="nav.uploaded_sheets"><SheetDetailPage /></PermissionRoute>} />

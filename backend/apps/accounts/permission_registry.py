@@ -30,6 +30,7 @@ permissions are still the only source of truth for what they can see/do.
 PERMISSIONS = [
     # --- Navigation (sidebar + page access) ---
     ("nav.count",                 "Stock Count",             "Navigation · Operations", "stock"),
+    ("nav.daily_ops",             "Daily Ops",               "Navigation · Operations", "stock"),
     ("nav.upload",                "Upload XLS",              "Navigation · Operations", "stock"),
     ("nav.upload_history",        "Upload History",          "Navigation · Operations", "stock"),
 
@@ -168,6 +169,7 @@ ROLE_DEFAULTS = {
         "nav.audit_log", "nav.mobile_devices", "nav.login_events",
         "nav.orphan_cleanup", "nav.db_management",
         "nav.transactions_hub",
+        "nav.daily_ops",
         "nav.damage_upload",
         "nav.office_upload",
         "nav.verification_upload",
@@ -210,6 +212,7 @@ ROLE_DEFAULTS = {
         "nav.stock_age",
         "nav.db_management",
         "nav.transactions_hub",
+        "nav.daily_ops",
         "nav.damage_upload",
         "nav.office_upload",
         "nav.verification_upload",

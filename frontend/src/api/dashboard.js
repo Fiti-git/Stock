@@ -75,6 +75,18 @@ export const resolveVarianceRecord = (recordId, { status, note, adjustment_qty }
 export const bulkResolveVariance = (ids, { status, note } = {}) =>
   api.post(`/dashboard/variance-records/bulk-resolve/`, { ids, status, note });
 
+export const getUncounted = ({ outletId, date, page = 1, pageSize = 25, q = "", dailyOnly = false } = {}) =>
+  api.get("/dashboard/uncounted/", {
+    params: {
+      ...(outletId ? { outlet: outletId } : {}),
+      ...(date ? { date } : {}),
+      page,
+      page_size: pageSize,
+      ...(q ? { q } : {}),
+      ...(dailyOnly ? { daily_only: 1 } : {}),
+    },
+  });
+
 export const getMobileDevices = ({ q = "", outletId = null } = {}) =>
   api.get("/dashboard/mobile-devices/", {
     params: {

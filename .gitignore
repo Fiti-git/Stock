@@ -1,3 +1,6 @@
+# Graphify (local knowledge-graph outputs — regenerate on demand)
+graphify-out/
+
 # Python
 __pycache__/
 *.py[cod]
