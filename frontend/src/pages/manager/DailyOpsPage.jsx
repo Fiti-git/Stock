@@ -338,7 +338,11 @@ function DiffModal({ open, onClose, logId }) {
 // Main page
 // ────────────────────────────────────────────────────────────────────────────
 export default function DailyOpsPage() {
+  // outletId is only set for admins (as an explicit override on API calls);
+  // for managers it's null and the backend falls back to the user's pinned
+  // outlet. Use selectedOutlet?.id for gating so both roles work.
   const { outletId, selectedOutlet } = useOutlet();
+  const currentOutletId = selectedOutlet?.id ?? null;
   const [date, setDate] = useState(isoToday());
   const [progress, setProgress] = useState(null);
   const [uploadHistory, setUploadHistory] = useState({ logs: [] });
@@ -351,7 +355,7 @@ export default function DailyOpsPage() {
   const [varOpen, setVarOpen] = useState(false);
   const [diffId, setDiffId] = useState(null);
 
-  const canLoad = !!outletId;
+  const canLoad = !!currentOutletId;
 
   useEffect(() => {
     if (!canLoad) { setLoading(false); return; }
