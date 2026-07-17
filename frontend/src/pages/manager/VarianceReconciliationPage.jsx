@@ -71,6 +71,10 @@ export default function VarianceReconciliationPage() {
     try {
       const params = {
         page, page_size: PAGE_SIZE,
+        // Only show variances for items that were actually physically counted.
+        // Zero-counted rows are just "we haven't counted this yet" noise —
+        // handled by the Uncounted view on Daily Ops instead.
+        only_counted: 1,
         ...(outletId ? { outlet: outletId } : {}),
         ...(sessionFilter ? { session: sessionFilter } : {}),
         ...(dateFrom ? { date_from: dateFrom } : {}),

@@ -75,6 +75,24 @@ export const resolveVarianceRecord = (recordId, { status, note, adjustment_qty }
 export const bulkResolveVariance = (ids, { status, note } = {}) =>
   api.post(`/dashboard/variance-records/bulk-resolve/`, { ids, status, note });
 
+export const getCountsGrouped = ({ outletId, date, page = 1, pageSize = 25, q = "" } = {}) =>
+  api.get("/dashboard/counts-grouped/", {
+    params: {
+      ...(outletId ? { outlet: outletId } : {}),
+      ...(date ? { date } : {}),
+      page, page_size: pageSize,
+      ...(q ? { q } : {}),
+    },
+  });
+
+export const getCountProgress2 = ({ outletId, date } = {}) =>
+  api.get("/dashboard/count-progress/", {
+    params: {
+      ...(outletId ? { outlet: outletId } : {}),
+      ...(date ? { date } : {}),
+    },
+  });
+
 export const getUncounted = ({ outletId, date, page = 1, pageSize = 25, q = "", dailyOnly = false } = {}) =>
   api.get("/dashboard/uncounted/", {
     params: {

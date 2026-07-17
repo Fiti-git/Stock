@@ -59,23 +59,37 @@ def _parse_date(raw, default=None):
 @api_view(["GET"])
 @permission_classes([IsManager])
 def count_progress(request):
-    """Today's count progress for the manager's outlet."""
-    outlet = _resolve_outlet(request)
-    today = date.today()
+    """Count progress for the manager's outlet, for the given date (defaults today).
 
-    total_counted = StockCount.objects.filter(outlet=outlet, count_date=today).values("item_id").distinct().count()
-    total_items = PosSnapshot.objects.filter(outlet=outlet, snapshot_date=today).count()
+    `?date=YYYY-MM-DD` overrides the target date. Also reports whether a
+    count session for that date is currently OPEN — used by the Daily Ops
+    page to show the session-state badge.
+    """
+    outlet = _resolve_outlet(request)
+    target_date = _parse_date(request.query_params.get("date", "")) or date.today()
+
+    total_counted = (
+        StockCount.objects
+        .filter(outlet=outlet, count_date=target_date)
+        .exclude(approval_status=StockCount.ApprovalStatus.REJECTED)
+        .values("item_id").distinct().count()
+    )
+    total_items = PosSnapshot.objects.filter(outlet=outlet, snapshot_date=target_date).count()
     pending_barcodes = PendingItem.objects.filter(
         first_seen_outlet=outlet, status=PendingItem.Status.PENDING
     ).count()
 
+    session = CountSession.objects.filter(outlet=outlet, count_date=target_date).order_by("-id").first()
+
     return Response(
         {
-            "today": str(today),
+            "today": str(target_date),
             "counted": total_counted,
             "total_items": total_items,
             "pending_barcodes": pending_barcodes,
             "has_upload_today": total_items > 0,
+            "session_status": session.status if session else None,
+            "session_id": session.id if session else None,
         }
     )
 
@@ -676,6 +690,137 @@ def daily_counts(request):
         "total_pages": max(1, (total + page_size - 1) // page_size),
         "date_from": str(date_from),
         "date_to": str(date_to),
+        "results": results,
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsManager])
+def counts_grouped(request):
+    """
+    StockCount rows for (outlet, date) grouped by item, with a per-location
+    breakdown embedded per row. Same item counted in Rack 3 (5 units) and
+    Rack 7 (3 units) collapses to ONE row (total 8, 2 locations).
+
+    Powers the Daily Ops "See counted" modal, which is item-first, not
+    entry-first. When the same item is counted by multiple counters we
+    show "Multiple" in the counted_by column and reveal the per-counter
+    breakdown in the expand panel.
+
+    Query params:
+      outlet=<id>            admin override
+      date=YYYY-MM-DD        default today
+      q                      search item code / name
+      page, page_size        standard pagination on the grouped rows
+    """
+    outlet = _resolve_outlet(request)
+    if not outlet:
+        return Response({"detail": "No outlet."}, status=400)
+
+    target_date = _parse_date(request.query_params.get("date", "")) or date.today()
+
+    # Pull every non-rejected count for the (outlet, date). We'll group in
+    # Python because we need a nested per-location payload per item.
+    counts_qs = (
+        StockCount.objects
+        .filter(outlet=outlet, count_date=target_date)
+        .exclude(approval_status=StockCount.ApprovalStatus.REJECTED)
+        .select_related("item", "counted_by")
+        .order_by("item__item_code", "counted_at")
+    )
+
+    q = request.query_params.get("q", "").strip()
+    if q:
+        counts_qs = counts_qs.filter(
+            Q(item__item_code__icontains=q) | Q(item__item_name__icontains=q)
+        )
+
+    # Group by item_id
+    grouped = {}
+    for sc in counts_qs:
+        row = grouped.setdefault(sc.item_id, {
+            "item_id": sc.item_id,
+            "item_code": sc.item.item_code,
+            "item_name": sc.item.item_name,
+            "category": sc.item.category,
+            "total_qty": Decimal("0"),
+            "locations_count": 0,
+            "counters": set(),
+            "last_counted_at": None,
+            "any_submitted": False,
+            "any_approved": False,
+            "any_pending": False,
+            "entries": [],
+        })
+        row["total_qty"] += Decimal(sc.actual_qty or 0)
+        row["locations_count"] += 1
+        counter = sc.counted_by.username if sc.counted_by else None
+        if counter:
+            row["counters"].add(counter)
+        if row["last_counted_at"] is None or (sc.counted_at and sc.counted_at > row["last_counted_at"]):
+            row["last_counted_at"] = sc.counted_at
+        status = sc.approval_status
+        if status == StockCount.ApprovalStatus.SUBMITTED:
+            row["any_submitted"] = True
+        elif status == StockCount.ApprovalStatus.APPROVED:
+            row["any_approved"] = True
+        else:
+            row["any_pending"] = True
+        row["entries"].append({
+            "stock_count_id": sc.id,
+            "location_tag": sc.location_tag or "",
+            "qty": float(sc.actual_qty or 0),
+            "counted_by": counter,
+            "counted_at": sc.counted_at.isoformat() if sc.counted_at else None,
+            "approval_status": status,
+        })
+
+    rows = list(grouped.values())
+    # Newest activity first — matches operator expectation "what did I just count"
+    rows.sort(key=lambda r: r["last_counted_at"] or "", reverse=True)
+
+    try:
+        page = max(1, int(request.query_params.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = min(max(int(request.query_params.get("page_size", 25)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 25
+
+    total = len(rows)
+    offset = (page - 1) * page_size
+    page_rows = rows[offset:offset + page_size]
+
+    results = []
+    for r in page_rows:
+        counters = sorted(r["counters"])
+        summary_status = (
+            "approved" if r["any_approved"] and not r["any_submitted"] and not r["any_pending"]
+            else "submitted" if r["any_submitted"]
+            else "mixed" if len(counters) > 1 or r["any_approved"] and r["any_pending"]
+            else "pending"
+        )
+        results.append({
+            "item_id": r["item_id"],
+            "item_code": r["item_code"],
+            "item_name": r["item_name"],
+            "category": r["category"],
+            "total_qty": float(r["total_qty"]),
+            "locations_count": r["locations_count"],
+            "counters": counters,
+            "counters_summary": "Multiple" if len(counters) > 1 else (counters[0] if counters else "—"),
+            "status_summary": summary_status,
+            "last_counted_at": r["last_counted_at"].isoformat() if r["last_counted_at"] else None,
+            "entries": r["entries"],
+        })
+
+    return Response({
+        "count": total,
+        "page": page,
+        "page_size": page_size,
+        "outlet_id": outlet.id,
+        "date": str(target_date),
         "results": results,
     })
 
@@ -1728,6 +1873,14 @@ def list_variance_records(request):
     session_id = request.query_params.get("session")
     if session_id:
         qs = qs.filter(session_id=session_id)
+
+    # only_counted=1 hides rows where counted_qty is 0 or NULL. These are
+    # "we haven't counted this item yet" false variances — they clutter the
+    # reconciliation view and swamp the truly-counted differences. Every
+    # UI surfacing variances (Daily Ops, Variance Reconciliation) should
+    # opt into this filter.
+    if request.query_params.get("only_counted") in ("1", "true", "True"):
+        qs = qs.filter(counted_qty__gt=0)
 
     statuses = request.query_params.getlist("status")
     if statuses:

@@ -23,9 +23,11 @@ import { PageHeader } from "../../components/ui";
 import { useOutlet } from "../../contexts/OutletContext";
 import { getUploadHistory, getUploadDiff } from "../../api/uploads";
 import {
-  getCountProgress, getUncounted, getDailyCounts, getMobileDevices,
-  listVarianceRecords,
+  getUncounted, getMobileDevices, listVarianceRecords,
+  getCountsGrouped, getCountProgress2,
 } from "../../api/dashboard";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 
 const isoToday = () => new Date().toISOString().slice(0, 10);
 const fmtNum = (v, digits = 0) => v == null ? "—" : Number(v).toLocaleString(undefined, { maximumFractionDigits: digits });
@@ -120,6 +122,76 @@ function UncountedModal({ open, onClose, outletId, date }) {
 // ────────────────────────────────────────────────────────────────────────────
 // Counted items modal — reuses getDailyCounts (already paginated)
 // ────────────────────────────────────────────────────────────────────────────
+function CountedRow({ r }) {
+  const [open, setOpen] = useState(false);
+  const hasMultiple = r.locations_count > 1;
+  const statusColor = ({
+    approved: "success", submitted: "info", pending: "warning",
+    rejected: "error", mixed: "info",
+  }[r.status_summary] || "default");
+  return (
+    <>
+      <TableRow hover sx={{ "& > *": { borderBottom: hasMultiple && open ? "unset" : undefined } }}>
+        <TableCell padding="checkbox">
+          {hasMultiple && (
+            <IconButton size="small" onClick={() => setOpen(!open)}>
+              {open ? <KeyboardArrowUpIcon fontSize="small" /> : <KeyboardArrowDownIcon fontSize="small" />}
+            </IconButton>
+          )}
+        </TableCell>
+        <TableCell sx={{ fontFamily: "monospace" }}>{r.item_code}</TableCell>
+        <TableCell>{r.item_name}</TableCell>
+        <TableCell>
+          {hasMultiple
+            ? <Chip size="small" variant="outlined" label={`${r.locations_count} locations`} />
+            : (r.entries[0]?.location_tag || "—")}
+        </TableCell>
+        <TableCell align="right"><b>{fmtNum(r.total_qty, 3)}</b></TableCell>
+        <TableCell>
+          <Chip size="small" variant="outlined" label={r.status_summary} color={statusColor} />
+        </TableCell>
+        <TableCell>{r.counters_summary}</TableCell>
+        <TableCell>{fmtTime(r.last_counted_at)}</TableCell>
+      </TableRow>
+      {hasMultiple && (
+        <TableRow>
+          <TableCell colSpan={8} sx={{ py: 0, borderBottom: open ? undefined : "unset" }}>
+            <Box sx={{ display: open ? "block" : "none", pl: 6, py: 1, bgcolor: "action.hover" }}>
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: "block" }}>
+                Per-location breakdown
+              </Typography>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Location</TableCell>
+                    <TableCell align="right">Qty</TableCell>
+                    <TableCell>Counted by</TableCell>
+                    <TableCell>At</TableCell>
+                    <TableCell>Status</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {r.entries.map((e) => (
+                    <TableRow key={e.stock_count_id}>
+                      <TableCell>{e.location_tag || "—"}</TableCell>
+                      <TableCell align="right">{fmtNum(e.qty, 3)}</TableCell>
+                      <TableCell>{e.counted_by || "—"}</TableCell>
+                      <TableCell>{fmtTime(e.counted_at)}</TableCell>
+                      <TableCell>
+                        <Chip size="small" variant="outlined" label={e.approval_status} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Box>
+          </TableCell>
+        </TableRow>
+      )}
+    </>
+  );
+}
+
 function CountedModal({ open, onClose, outletId, date }) {
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
@@ -131,7 +203,7 @@ function CountedModal({ open, onClose, outletId, date }) {
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    getDailyCounts({ outletId, dateFrom: date, dateTo: date, search: q, page: page + 1, pageSize })
+    getCountsGrouped({ outletId, date, page: page + 1, pageSize, q })
       .then(({ data }) => { setRows(data.results || []); setCount(data.count || 0); })
       .catch(() => { setRows([]); setCount(0); })
       .finally(() => setLoading(false));
@@ -145,14 +217,14 @@ function CountedModal({ open, onClose, outletId, date }) {
         <Box>
           <Typography variant="h4">Counted items · {date}</Typography>
           <Typography variant="caption" color="text.secondary">
-            {count.toLocaleString()} count entr{count === 1 ? "y" : "ies"} entered on {date}
+            {count.toLocaleString()} unique item{count === 1 ? "" : "s"} counted on {date}
           </Typography>
         </Box>
         <IconButton onClick={onClose}><CloseIcon /></IconButton>
       </DialogTitle>
       <DialogContent dividers>
         <TextField
-          fullWidth size="small" placeholder="Search item…"
+          fullWidth size="small" placeholder="Search item code or name…"
           value={q} onChange={(e) => setQ(e.target.value)} sx={{ mb: 2 }}
           InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
         />
@@ -160,39 +232,24 @@ function CountedModal({ open, onClose, outletId, date }) {
           <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>
+                <TableCell padding="checkbox" />
                 <TableCell>Code</TableCell>
                 <TableCell>Item</TableCell>
                 <TableCell>Location</TableCell>
-                <TableCell align="right">Counted qty</TableCell>
+                <TableCell align="right">Total counted</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Counted by</TableCell>
-                <TableCell>At</TableCell>
+                <TableCell>Last at</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {loading && (
-                <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><CircularProgress size={22} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}><CircularProgress size={22} /></TableCell></TableRow>
               )}
               {!loading && rows.length === 0 && (
-                <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4, color: "text.secondary" }}>Nothing counted yet</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4, color: "text.secondary" }}>Nothing counted yet</TableCell></TableRow>
               )}
-              {!loading && rows.map((r) => (
-                <TableRow key={r.id} hover>
-                  <TableCell sx={{ fontFamily: "monospace" }}>{r.item_code}</TableCell>
-                  <TableCell>{r.item_name}</TableCell>
-                  <TableCell>{r.location_tag || "—"}</TableCell>
-                  <TableCell align="right">{fmtNum(r.actual_qty, 3)}</TableCell>
-                  <TableCell>
-                    <Chip
-                      size="small" variant="outlined"
-                      label={r.approval_status}
-                      color={r.approval_status === "approved" ? "success" : r.approval_status === "submitted" ? "info" : r.approval_status === "rejected" ? "error" : "default"}
-                    />
-                  </TableCell>
-                  <TableCell>{r.counted_by_username || "—"}</TableCell>
-                  <TableCell>{fmtTime(r.counted_at)}</TableCell>
-                </TableRow>
-              ))}
+              {!loading && rows.map((r) => <CountedRow key={r.item_id} r={r} />)}
             </TableBody>
           </Table>
         </TableContainer>
@@ -226,6 +283,7 @@ function VariancesModal({ open, onClose, outletId, date }) {
     if (!open) return;
     setLoading(true);
     listVarianceRecords({
+      only_counted: 1,
       ...(outletId ? { outlet: outletId } : {}),
       date_from: date,
       date_to: date,
@@ -381,7 +439,6 @@ export default function DailyOpsPage() {
   const [devices, setDevices] = useState([]);
   const [variancesPreview, setVariancesPreview] = useState({ count: 0, netValue: 0 });
   const [loading, setLoading] = useState(true);
-  const [showUploads, setShowUploads] = useState(false);
   const [uncOpen, setUncOpen] = useState(false);
   const [cntOpen, setCntOpen] = useState(false);
   const [varOpen, setVarOpen] = useState(false);
@@ -393,23 +450,42 @@ export default function DailyOpsPage() {
     if (!canLoad) { setLoading(false); return; }
     setLoading(true);
     Promise.all([
-      getCountProgress(outletId).catch(() => ({ data: null })),
+      // Now date-aware — historical days show correct progress
+      getCountProgress2({ outletId, date }).catch(() => ({ data: null })),
       getUploadHistory(outletId).catch(() => ({ data: { logs: [] } })),
-      getMobileDevices({ outletId }).catch(() => ({ data: { results: [] } })),
-      // Variances scoped to the working day (sessions whose count_date == date).
-      // Use a large page_size so the net-value sum in the card is accurate for
-      // the day; the modal re-fetches with real pagination.
+      // Grouped counts double as the source of truth for who counted what
+      // today. Small page (per-item, not per-entry) so the summary counts
+      // are accurate, and we can also derive counters + item totals from it.
+      getCountsGrouped({ outletId, date, page: 1, pageSize: 500 })
+        .catch(() => ({ data: { results: [], count: 0 } })),
+      // Variances scoped to the working day AND to items actually counted.
+      // Uncounted-item variances (counted_qty=0) are hidden — those are just
+      // "we haven't counted this yet" noise, handled by the Uncounted view.
       listVarianceRecords({
+        only_counted: 1,
         ...(outletId ? { outlet: outletId } : {}),
         date_from: date,
         date_to: date,
         page: 1,
         page_size: 500,
       }).catch(() => ({ data: { results: [], count: 0 } })),
-    ]).then(([progRes, upRes, devRes, varRes]) => {
+    ]).then(([progRes, upRes, cntRes, varRes]) => {
       setProgress(progRes.data);
       setUploadHistory(upRes.data && upRes.data.logs !== undefined ? upRes.data : { logs: upRes.data || [] });
-      setDevices(devRes.data?.results || []);
+
+      // Build counter summary from grouped counts: which users counted, and
+      // how many items each. This replaces the MobileDevice audit — that
+      // was a lifetime list, not "who worked today".
+      const cntRows = cntRes.data?.results || [];
+      const byCounter = new Map();
+      for (const row of cntRows) {
+        for (const c of row.counters || []) {
+          byCounter.set(c, (byCounter.get(c) || 0) + 1);
+        }
+      }
+      setDevices(Array.from(byCounter, ([username, items]) => ({ username, items }))
+        .sort((a, b) => b.items - a.items));
+
       const vRows = varRes.data?.results || [];
       const total = varRes.data?.count ?? vRows.length;
       const netValue = vRows.reduce((s, r) => s + (Number(r.variance_value) || 0), 0);
@@ -462,64 +538,63 @@ export default function DailyOpsPage() {
       {loading && <LinearProgress sx={{ mb: 2 }} />}
 
       <Grid container spacing={2}>
-        {/* ───────────── Zone 1: POS UPLOAD ───────────── */}
-        <Grid item xs={12} md={6}>
-          <Card variant="outlined">
-            <CardContent>
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
-                <UploadFileIcon color="primary" />
-                <Typography variant="h5">POS Upload</Typography>
-                {latestUpload ? (
-                  <Chip size="small" color="success" variant="outlined" icon={<CheckCircleIcon />} label="Uploaded" />
-                ) : (
+        {/* ───────────── Zone 1: POS UPLOAD (one card per upload) ───────────── */}
+        {uploadsToday.length === 0 ? (
+          <Grid item xs={12} md={6}>
+            <Card variant="outlined">
+              <CardContent>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+                  <UploadFileIcon color="primary" />
+                  <Typography variant="h5">POS Upload</Typography>
                   <Chip size="small" color="warning" variant="outlined" icon={<WarningAmberIcon />} label="Not uploaded" />
-                )}
-              </Stack>
-
-              {latestUpload ? (
-                <>
-                  <Typography variant="body2" color="text.secondary">
-                    Latest: <b>{fmtTime(latestUpload.uploaded_at)}</b> by {latestUpload.uploaded_by_username || "—"}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {fmtNum(latestUpload.total_rows)} rows · {fmtNum(latestUpload.matched_rows)} matched · {fmtNum(latestUpload.new_items_count)} new
-                  </Typography>
-                  <Divider sx={{ my: 1.5 }} />
-                  <Button size="small" onClick={() => setShowUploads(!showUploads)}>
-                    {uploadsToday.length} upload{uploadsToday.length === 1 ? "" : "s"} today {showUploads ? "▲" : "▼"}
-                  </Button>
-                  {showUploads && (
-                    <Stack spacing={0.5} sx={{ mt: 1 }}>
-                      {uploadsToday.map((log, i) => {
-                        const isActive = i === 0;
-                        return (
-                          <Stack key={log.id} direction="row" alignItems="center" spacing={1}
-                                 sx={{ px: 1, py: 0.5, bgcolor: isActive ? "action.selected" : "transparent", borderRadius: 1 }}>
-                            <Typography variant="caption" sx={{ minWidth: 60 }}>{fmtTime(log.uploaded_at)}</Typography>
-                            <Typography variant="caption" sx={{ minWidth: 90 }}>{log.uploaded_by_username || "—"}</Typography>
-                            <Typography variant="caption" sx={{ flex: 1 }}>{fmtNum(log.total_rows)} rows</Typography>
-                            {isActive && <Chip size="small" label="ACTIVE" color="primary" variant="outlined" />}
-                            {!isActive && (
-                              <Tooltip title="View diff vs currently active upload">
-                                <IconButton size="small" onClick={() => setDiffId(log.id)}>
-                                  <CompareArrowsIcon fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                            )}
-                          </Stack>
-                        );
-                      })}
-                    </Stack>
-                  )}
-                </>
-              ) : (
+                </Stack>
                 <Typography variant="body2" color="text.secondary">
                   No POS upload recorded for {date}. Head to Transactions to upload.
                 </Typography>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
+        ) : (
+          uploadsToday.map((log, i) => {
+            const isActive = i === 0;
+            return (
+              <Grid item xs={12} md={6} key={log.id}>
+                <Card variant="outlined" sx={isActive ? { borderColor: "success.main", borderWidth: 2 } : undefined}>
+                  <CardContent>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+                      <UploadFileIcon color="primary" />
+                      <Typography variant="h5">
+                        POS Upload {uploadsToday.length > 1 ? `#${uploadsToday.length - i}` : ""}
+                      </Typography>
+                      {isActive ? (
+                        <Chip size="small" color="success" variant="outlined" icon={<CheckCircleIcon />} label="ACTIVE" />
+                      ) : (
+                        <Chip size="small" color="default" variant="outlined" label="Superseded" />
+                      )}
+                    </Stack>
+                    <Typography variant="body2" color="text.secondary">
+                      Uploaded at <b>{fmtTime(log.uploaded_at)}</b> by {log.uploaded_by_username || "—"}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {fmtNum(log.total_rows)} rows · {fmtNum(log.matched_rows)} matched · {fmtNum(log.new_items_count)} new · {fmtNum(log.changed_items_count)} changed
+                    </Typography>
+                    {!isActive && (
+                      <>
+                        <Divider sx={{ my: 1.5 }} />
+                        <Button
+                          size="small" startIcon={<CompareArrowsIcon />}
+                          onClick={() => setDiffId(log.id)}
+                        >
+                          View diff vs active
+                        </Button>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+            );
+          })
+        )}
 
         {/* ───────────── Zone 2: STOCK COUNT ───────────── */}
         <Grid item xs={12} md={6}>
@@ -539,14 +614,14 @@ export default function DailyOpsPage() {
               {progress ? (
                 <>
                   <Typography variant="h3" sx={{ my: 0.5 }}>
-                    {fmtNum(progress.items_counted)} / {fmtNum(progress.items_total)}
+                    {fmtNum(progress.counted)} / {fmtNum(progress.total_items)}
                     <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
                       counted
                     </Typography>
                   </Typography>
                   <LinearProgress
                     variant="determinate"
-                    value={progress.items_total > 0 ? Math.min(100, (progress.items_counted / progress.items_total) * 100) : 0}
+                    value={progress.total_items > 0 ? Math.min(100, (progress.counted / progress.total_items) * 100) : 0}
                     sx={{ height: 8, borderRadius: 4, mb: 1.5 }}
                   />
                   <Stack direction="row" spacing={1}>
@@ -610,19 +685,19 @@ export default function DailyOpsPage() {
                 <Typography variant="h5">Activity</Typography>
               </Stack>
               <Typography variant="body2" color="text.secondary">
-                Active devices today: <b>{devices.length}</b>
+                Counters today: <b>{devices.length}</b>
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Last POS upload: <b>{latestUpload ? fmtTime(latestUpload.uploaded_at) : "—"}</b>
               </Typography>
               <Stack spacing={0.25} sx={{ mt: 1 }}>
                 {devices.slice(0, 5).map((d) => (
-                  <Typography key={d.id} variant="caption" color="text.secondary">
-                    {d.last_user_username || "—"} · last seen {fmtDate(d.last_seen_at)}
+                  <Typography key={d.username} variant="caption" color="text.secondary">
+                    {d.username} · {d.items} item{d.items === 1 ? "" : "s"}
                   </Typography>
                 ))}
                 {devices.length === 0 && (
-                  <Typography variant="caption" color="text.secondary">No device activity yet.</Typography>
+                  <Typography variant="caption" color="text.secondary">Nobody counted on this date.</Typography>
                 )}
               </Stack>
             </CardContent>
