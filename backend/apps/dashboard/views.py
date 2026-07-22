@@ -792,6 +792,17 @@ def counts_grouped(request):
     offset = (page - 1) * page_size
     page_rows = rows[offset:offset + page_size]
 
+    # Bulk-fetch the active POS snapshot for every item on this page so we can
+    # enrich each row with pos_qty / cost / sell / variance. UNIQUE(outlet,
+    # item, snapshot_date) means at most one row per item — the current
+    # "active" upload wins because bulk_create UPSERTs on that constraint.
+    item_ids = [r["item_id"] for r in page_rows]
+    snap_map = {
+        snap.item_id: snap for snap in
+        PosSnapshot.objects
+        .filter(outlet=outlet, item_id__in=item_ids, snapshot_date=target_date)
+    }
+
     results = []
     for r in page_rows:
         counters = sorted(r["counters"])
@@ -801,6 +812,17 @@ def counts_grouped(request):
             else "mixed" if len(counters) > 1 or r["any_approved"] and r["any_pending"]
             else "pending"
         )
+
+        # Live variance: total_counted − pos_qty (positive = extra on shelf,
+        # negative = shrinkage). Value in cost-price terms so it matches
+        # finalize_count_session's variance_records book value.
+        snap = snap_map.get(r["item_id"])
+        pos_qty = Decimal(snap.pos_quantity) if snap else None
+        cost_price = Decimal(snap.cost_price) if snap and snap.cost_price is not None else None
+        sell_price = Decimal(snap.selling_price) if snap and snap.selling_price is not None else None
+        variance_qty = (r["total_qty"] - pos_qty) if pos_qty is not None else None
+        variance_value = (variance_qty * cost_price) if variance_qty is not None and cost_price is not None else None
+
         results.append({
             "item_id": r["item_id"],
             "item_code": r["item_code"],
@@ -813,6 +835,13 @@ def counts_grouped(request):
             "status_summary": summary_status,
             "last_counted_at": r["last_counted_at"].isoformat() if r["last_counted_at"] else None,
             "entries": r["entries"],
+
+            # New: live POS / variance context
+            "pos_qty": float(pos_qty) if pos_qty is not None else None,
+            "cost_price": float(cost_price) if cost_price is not None else None,
+            "sell_price": float(sell_price) if sell_price is not None else None,
+            "variance_qty": float(variance_qty) if variance_qty is not None else None,
+            "variance_value": float(variance_value) if variance_value is not None else None,
         })
 
     return Response({

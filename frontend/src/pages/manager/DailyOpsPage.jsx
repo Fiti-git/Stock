@@ -125,10 +125,14 @@ function UncountedModal({ open, onClose, outletId, date }) {
 function CountedRow({ r }) {
   const [open, setOpen] = useState(false);
   const hasMultiple = r.locations_count > 1;
-  const statusColor = ({
-    approved: "success", submitted: "info", pending: "warning",
-    rejected: "error", mixed: "info",
-  }[r.status_summary] || "default");
+
+  // Variance chip color — positive (extra on shelf) is neutral/success,
+  // negative (shrinkage) is error. Null when we can't compute (no POS snapshot).
+  const vq = r.variance_qty;
+  const varColor = vq == null ? "default" : vq === 0 ? "default" : vq > 0 ? "success" : "error";
+  const vv = r.variance_value;
+  const valueColor = vv == null ? "text.primary" : vv < 0 ? "error.main" : vv > 0 ? "success.main" : "text.primary";
+
   return (
     <>
       <TableRow hover sx={{ "& > *": { borderBottom: hasMultiple && open ? "unset" : undefined } }}>
@@ -146,16 +150,22 @@ function CountedRow({ r }) {
             ? <Chip size="small" variant="outlined" label={`${r.locations_count} locations`} />
             : (r.entries[0]?.location_tag || "—")}
         </TableCell>
+        <TableCell align="right">{r.pos_qty == null ? "—" : fmtNum(r.pos_qty, 3)}</TableCell>
+        <TableCell align="right">{r.sell_price == null ? "—" : fmtNum(r.sell_price, 2)}</TableCell>
         <TableCell align="right"><b>{fmtNum(r.total_qty, 3)}</b></TableCell>
-        <TableCell>
-          <Chip size="small" variant="outlined" label={r.status_summary} color={statusColor} />
+        <TableCell align="right">
+          {vq == null
+            ? <span style={{ color: "rgba(0,0,0,0.4)" }}>—</span>
+            : <Chip size="small" variant="outlined" color={varColor} label={fmtNum(vq, 3)} />}
         </TableCell>
-        <TableCell>{r.counters_summary}</TableCell>
+        <TableCell align="right" sx={{ color: valueColor, fontWeight: vv ? 600 : 400 }}>
+          {vv == null ? "—" : fmtNum(vv, 2)}
+        </TableCell>
         <TableCell>{fmtTime(r.last_counted_at)}</TableCell>
       </TableRow>
       {hasMultiple && (
         <TableRow>
-          <TableCell colSpan={8} sx={{ py: 0, borderBottom: open ? undefined : "unset" }}>
+          <TableCell colSpan={10} sx={{ py: 0, borderBottom: open ? undefined : "unset" }}>
             <Box sx={{ display: open ? "block" : "none", pl: 6, py: 1, bgcolor: "action.hover" }}>
               <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: "block" }}>
                 Per-location breakdown
@@ -236,18 +246,20 @@ function CountedModal({ open, onClose, outletId, date }) {
                 <TableCell>Code</TableCell>
                 <TableCell>Item</TableCell>
                 <TableCell>Location</TableCell>
-                <TableCell align="right">Total counted</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Counted by</TableCell>
+                <TableCell align="right">POS qty</TableCell>
+                <TableCell align="right">Sell</TableCell>
+                <TableCell align="right">Counted qty</TableCell>
+                <TableCell align="right">Variance qty</TableCell>
+                <TableCell align="right">Variance value</TableCell>
                 <TableCell>Last at</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {loading && (
-                <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}><CircularProgress size={22} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} align="center" sx={{ py: 4 }}><CircularProgress size={22} /></TableCell></TableRow>
               )}
               {!loading && rows.length === 0 && (
-                <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4, color: "text.secondary" }}>Nothing counted yet</TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} align="center" sx={{ py: 4, color: "text.secondary" }}>Nothing counted yet</TableCell></TableRow>
               )}
               {!loading && rows.map((r) => <CountedRow key={r.item_id} r={r} />)}
             </TableBody>
