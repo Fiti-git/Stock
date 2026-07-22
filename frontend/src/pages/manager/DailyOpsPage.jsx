@@ -21,13 +21,17 @@ import ArrowForwardIosIcon from "@mui/icons-material/ArrowForwardIos";
 import Layout from "../../components/Layout";
 import { PageHeader } from "../../components/ui";
 import { useOutlet } from "../../contexts/OutletContext";
+import { useNotify } from "../../providers/NotificationProvider";
 import { getUploadHistory, getUploadDiff } from "../../api/uploads";
 import {
   getUncounted, getMobileDevices, listVarianceRecords,
   getCountsGrouped, getCountProgress2,
+  closeCountSession, rejectCount,
 } from "../../api/dashboard";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
+import ReplayIcon from "@mui/icons-material/Replay";
+import LockIcon from "@mui/icons-material/Lock";
 
 const isoToday = () => new Date().toISOString().slice(0, 10);
 const fmtNum = (v, digits = 0) => v == null ? "—" : Number(v).toLocaleString(undefined, { maximumFractionDigits: digits });
@@ -94,8 +98,21 @@ function UncountedModal({ open, onClose, outletId, date }) {
                 <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4, color: "text.secondary" }}>Everything counted 🎉</TableCell></TableRow>
               )}
               {!loading && rows.map((r) => (
-                <TableRow key={r.item_id} hover>
-                  <TableCell sx={{ fontFamily: "monospace" }}>{r.item_code}</TableCell>
+                <TableRow key={r.item_id} hover sx={r.recount_requested ? { bgcolor: "warning.50" } : undefined}>
+                  <TableCell sx={{ fontFamily: "monospace" }}>
+                    <Stack direction="row" spacing={0.75} alignItems="center">
+                      <span>{r.item_code}</span>
+                      {r.recount_requested && (
+                        <Tooltip title={r.recount_reason || "Recount requested by manager"}>
+                          <Chip
+                            size="small" variant="outlined" color="warning"
+                            icon={<ReplayIcon fontSize="small" />}
+                            label="Recount"
+                          />
+                        </Tooltip>
+                      )}
+                    </Stack>
+                  </TableCell>
                   <TableCell>{r.item_name}</TableCell>
                   <TableCell>{r.category || "—"}</TableCell>
                   <TableCell>{[r.rack_number, r.shelf].filter(Boolean).join(" / ") || "—"}</TableCell>
@@ -122,7 +139,7 @@ function UncountedModal({ open, onClose, outletId, date }) {
 // ────────────────────────────────────────────────────────────────────────────
 // Counted items modal — reuses getDailyCounts (already paginated)
 // ────────────────────────────────────────────────────────────────────────────
-function CountedRow({ r }) {
+function CountedRow({ r, onRequestRecount }) {
   const [open, setOpen] = useState(false);
   const hasMultiple = r.locations_count > 1;
 
@@ -162,10 +179,17 @@ function CountedRow({ r }) {
           {vv == null ? "—" : fmtNum(vv, 2)}
         </TableCell>
         <TableCell>{fmtTime(r.last_counted_at)}</TableCell>
+        <TableCell padding="checkbox">
+          <Tooltip title="Request recount">
+            <IconButton size="small" onClick={() => onRequestRecount?.(r)} color="warning">
+              <ReplayIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </TableCell>
       </TableRow>
       {hasMultiple && (
         <TableRow>
-          <TableCell colSpan={10} sx={{ py: 0, borderBottom: open ? undefined : "unset" }}>
+          <TableCell colSpan={11} sx={{ py: 0, borderBottom: open ? undefined : "unset" }}>
             <Box sx={{ display: open ? "block" : "none", pl: 6, py: 1, bgcolor: "action.hover" }}>
               <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: "block" }}>
                 Per-location breakdown
@@ -202,13 +226,18 @@ function CountedRow({ r }) {
   );
 }
 
-function CountedModal({ open, onClose, outletId, date }) {
+function CountedModal({ open, onClose, outletId, date, onDataChanged }) {
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [pageSize] = useState(25);
   const [q, setQ] = useState("");
+  const [reloadTick, setReloadTick] = useState(0);
+  const [recountTarget, setRecountTarget] = useState(null);
+  const [recountReason, setRecountReason] = useState("");
+  const [recountSaving, setRecountSaving] = useState(false);
+  const notify = useNotify();
 
   useEffect(() => {
     if (!open) return;
@@ -217,9 +246,34 @@ function CountedModal({ open, onClose, outletId, date }) {
       .then(({ data }) => { setRows(data.results || []); setCount(data.count || 0); })
       .catch(() => { setRows([]); setCount(0); })
       .finally(() => setLoading(false));
-  }, [open, outletId, date, page, pageSize, q]);
+  }, [open, outletId, date, page, pageSize, q, reloadTick]);
 
   useEffect(() => { if (open) setPage(0); }, [q, open]);
+
+  const handleRecountConfirm = async () => {
+    if (!recountTarget) return;
+    setRecountSaving(true);
+    try {
+      // Reject every non-rejected count entry for this item on this date.
+      // The Uncounted list will pick the item back up because rejected
+      // counts don't disqualify an item from being uncounted.
+      const ids = (recountTarget.entries || [])
+        .filter((e) => e.approval_status !== "rejected")
+        .map((e) => e.stock_count_id);
+      const reason = (recountReason || "").trim() || "Recount requested by manager";
+      await Promise.all(ids.map((id) => rejectCount(id, reason)));
+      notify.success(`Recount requested — ${ids.length} count entr${ids.length === 1 ? "y" : "ies"} rejected.`);
+      setRecountTarget(null);
+      setRecountReason("");
+      setReloadTick((t) => t + 1);
+      onDataChanged?.();
+    } catch (err) {
+      notify.error(err?.response?.data?.detail || "Failed to request recount.");
+    } finally {
+      setRecountSaving(false);
+    }
+  };
+  const onRequestRecount = (r) => { setRecountReason(""); setRecountTarget(r); };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
@@ -252,16 +306,17 @@ function CountedModal({ open, onClose, outletId, date }) {
                 <TableCell align="right">Variance qty</TableCell>
                 <TableCell align="right">Variance value</TableCell>
                 <TableCell>Last at</TableCell>
+                <TableCell />
               </TableRow>
             </TableHead>
             <TableBody>
               {loading && (
-                <TableRow><TableCell colSpan={10} align="center" sx={{ py: 4 }}><CircularProgress size={22} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4 }}><CircularProgress size={22} /></TableCell></TableRow>
               )}
               {!loading && rows.length === 0 && (
-                <TableRow><TableCell colSpan={10} align="center" sx={{ py: 4, color: "text.secondary" }}>Nothing counted yet</TableCell></TableRow>
+                <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4, color: "text.secondary" }}>Nothing counted yet</TableCell></TableRow>
               )}
-              {!loading && rows.map((r) => <CountedRow key={r.item_id} r={r} />)}
+              {!loading && rows.map((r) => <CountedRow key={r.item_id} r={r} onRequestRecount={onRequestRecount} />)}
             </TableBody>
           </Table>
         </TableContainer>
@@ -273,6 +328,50 @@ function CountedModal({ open, onClose, outletId, date }) {
         />
       </DialogContent>
       <DialogActions><Button onClick={onClose}>Close</Button></DialogActions>
+
+      {/* Recount request confirmation — nested so it stacks over the modal */}
+      <Dialog
+        open={!!recountTarget}
+        onClose={() => !recountSaving && setRecountTarget(null)}
+        maxWidth="sm" fullWidth
+      >
+        <DialogTitle>Request recount</DialogTitle>
+        <DialogContent dividers>
+          {recountTarget && (
+            <>
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                All count entries for this item on <b>{date}</b> will be rejected. The item
+                goes back to the Uncounted list with a "Recount requested" flag so the
+                counter knows to prioritize it.
+              </Typography>
+              <Box sx={{ p: 1.5, bgcolor: "action.hover", borderRadius: 1, mb: 2 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                  ITEM
+                </Typography>
+                <Typography variant="body2">
+                  <b>{recountTarget.item_code}</b> · {recountTarget.item_name}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+                  {recountTarget.locations_count} location{recountTarget.locations_count === 1 ? "" : "s"} · total counted {fmtNum(recountTarget.total_qty, 3)}
+                </Typography>
+              </Box>
+              <TextField
+                fullWidth multiline rows={2}
+                size="small" label="Reason (optional)"
+                placeholder="Why should this be recounted?"
+                value={recountReason}
+                onChange={(e) => setRecountReason(e.target.value)}
+              />
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRecountTarget(null)} disabled={recountSaving}>Cancel</Button>
+          <Button onClick={handleRecountConfirm} variant="contained" color="warning" disabled={recountSaving}>
+            {recountSaving ? "Sending…" : "Request recount"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 }
@@ -455,6 +554,25 @@ export default function DailyOpsPage() {
   const [cntOpen, setCntOpen] = useState(false);
   const [varOpen, setVarOpen] = useState(false);
   const [diffId, setDiffId] = useState(null);
+  const [closeConfirm, setCloseConfirm] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const notify = useNotify();
+
+  const handleCloseSession = async () => {
+    if (!progress?.session_id) return;
+    setClosing(true);
+    try {
+      const { data } = await closeCountSession(progress.session_id);
+      notify.success(`Session closed. ${data?.variances_created ?? 0} variance record(s) generated.`);
+      setCloseConfirm(false);
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      notify.error(err?.response?.data?.detail || "Failed to close session.");
+    } finally {
+      setClosing(false);
+    }
+  };
 
   const canLoad = !!currentOutletId;
 
@@ -503,7 +621,7 @@ export default function DailyOpsPage() {
       const netValue = vRows.reduce((s, r) => s + (Number(r.variance_value) || 0), 0);
       setVariancesPreview({ count: total, netValue });
     }).finally(() => setLoading(false));
-  }, [outletId, date]);
+  }, [outletId, date, reloadKey]);
 
   const uploadsToday = useMemo(
     () => (uploadHistory.logs || []).filter((l) => l.snapshot_date === date),
@@ -636,9 +754,18 @@ export default function DailyOpsPage() {
                     value={progress.total_items > 0 ? Math.min(100, (progress.counted / progress.total_items) * 100) : 0}
                     sx={{ height: 8, borderRadius: 4, mb: 1.5 }}
                   />
-                  <Stack direction="row" spacing={1}>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                     <Button size="small" variant="outlined" onClick={() => setCntOpen(true)}>See counted</Button>
                     <Button size="small" variant="outlined" onClick={() => setUncOpen(true)}>See uncounted</Button>
+                    {progress?.session_status === "open" && progress?.session_id && (
+                      <Button
+                        size="small" variant="contained" color="warning"
+                        startIcon={<LockIcon fontSize="small" />}
+                        onClick={() => setCloseConfirm(true)}
+                      >
+                        Close session
+                      </Button>
+                    )}
                   </Stack>
                 </>
               ) : (
@@ -718,9 +845,37 @@ export default function DailyOpsPage() {
       </Grid>
 
       <UncountedModal open={uncOpen} onClose={() => setUncOpen(false)} outletId={outletId} date={date} />
-      <CountedModal open={cntOpen} onClose={() => setCntOpen(false)} outletId={outletId} date={date} />
+      <CountedModal
+        open={cntOpen} onClose={() => setCntOpen(false)}
+        outletId={outletId} date={date}
+        onDataChanged={() => setReloadKey((k) => k + 1)}
+      />
       <VariancesModal open={varOpen} onClose={() => setVarOpen(false)} outletId={outletId} date={date} />
       <DiffModal open={!!diffId} onClose={() => setDiffId(null)} logId={diffId} />
+
+      {/* Close-session confirmation */}
+      <Dialog open={closeConfirm} onClose={() => !closing && setCloseConfirm(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Close count session?</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            This will finalize the count session for {selectedOutlet?.name || "the outlet"} on <b>{date}</b>:
+          </Typography>
+          <Box component="ul" sx={{ m: 0, pl: 3, "& li": { py: 0.5 } }}>
+            <li>Any un-approved counts are auto-approved.</li>
+            <li>Variance records are generated for every item with a POS snapshot.</li>
+            <li>Items not counted stay uncounted in the record.</li>
+          </Box>
+          <Alert severity="warning" sx={{ mt: 2 }}>
+            You can reopen the session later only via admin support — sessions are meant to close once.
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCloseConfirm(false)} disabled={closing}>Cancel</Button>
+          <Button onClick={handleCloseSession} variant="contained" color="warning" disabled={closing}>
+            {closing ? "Closing…" : "Close session"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Layout>
   );
 }

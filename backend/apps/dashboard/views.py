@@ -910,6 +910,20 @@ def uncounted_items(request):
             .filter(outlet=outlet, item_id__in=qs.values("id"), snapshot_date=target_date)
     }
 
+    # Items that WERE counted today but got rejected — surfaced with a
+    # "Recount requested" chip on the frontend. We keep the most-recent
+    # rejection's reason + timestamp so the counter knows why.
+    rejected_today = {}
+    for sc in (
+        StockCount.objects
+        .filter(outlet=outlet, count_date=target_date,
+                approval_status=StockCount.ApprovalStatus.REJECTED)
+        .select_related("counted_by")
+        .order_by("item_id", "-counted_at")
+    ):
+        # Keep the newest rejection per item (first row wins due to ordering).
+        rejected_today.setdefault(sc.item_id, sc)
+
     try:
         page = max(1, int(request.query_params.get("page", 1)))
     except (TypeError, ValueError):
@@ -926,6 +940,7 @@ def uncounted_items(request):
     results = []
     for it in rows:
         snap = latest_snap.get(it.id)
+        rej = rejected_today.get(it.id)
         results.append({
             "item_id": it.id,
             "item_code": it.item_code,
@@ -939,6 +954,12 @@ def uncounted_items(request):
             "cost_price": float(snap.cost_price) if snap and snap.cost_price is not None else None,
             "selling_price": float(snap.selling_price) if snap and snap.selling_price is not None else None,
             "snapshot_date": str(snap.snapshot_date) if snap else None,
+
+            # Recount-request flag: item was counted today and manager
+            # sent it back. Frontend shows a chip so counter knows to prioritize.
+            "recount_requested": rej is not None,
+            "recount_reason": rej.rejection_reason if rej else None,
+            "recount_by_at": rej.counted_at.isoformat() if rej and rej.counted_at else None,
         })
 
     return Response({
