@@ -28,6 +28,7 @@ import {
   getCountsGrouped, getCountProgress2,
   closeCountSession, rejectCount,
   downloadCountsGroupedCsv, downloadUncountedCsv,
+  getItemCoverageRange, downloadItemCoverageCsv,
 } from "../../api/dashboard";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
@@ -704,6 +705,204 @@ function DiffModal({ open, onClose, logId }) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Coverage modal — per-item count-frequency across a date range.
+// Answers "which items are we ignoring vs counting religiously?"
+// ────────────────────────────────────────────────────────────────────────────
+const COVERAGE_RANGE_PRESETS = [
+  { key: "7d",  label: "Last 7 days" },
+  { key: "custom", label: "Custom" },
+];
+const COVERAGE_BUCKETS = [
+  { key: "all",        label: "All",        color: "default" },
+  { key: "never",      label: "Never",      color: "error"   },
+  { key: "once",       label: "Once",       color: "warning" },
+  { key: "occasional", label: "Occasional", color: "info"    },
+  { key: "frequent",   label: "Frequent",   color: "success" },
+];
+const isoDaysBack = (n) => {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+};
+
+function CoverageModal({ open, onClose, outletId }) {
+  const [rangeKey, setRangeKey] = useState("7d");
+  const [from, setFrom] = useState(isoDaysBack(6));
+  const [to, setTo] = useState(isoToday());
+  const [rows, setRows] = useState([]);
+  const [count, setCount] = useState(0);
+  const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(0);
+  const [pageSize] = useState(25);
+  const [q, setQ] = useState("");
+  const [bucket, setBucket] = useState("all");
+  const [sort, setSort] = useState({ by: "times_counted", dir: "asc" });
+  const [csvSaving, setCsvSaving] = useState(false);
+  const notify = useNotify();
+
+  // Whenever a preset changes, snap the from/to.
+  useEffect(() => {
+    if (rangeKey === "7d") { setFrom(isoDaysBack(6)); setTo(isoToday()); }
+    // "custom" leaves the current from/to alone; user edits directly
+  }, [rangeKey]);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    getItemCoverageRange({
+      outletId, from, to, q, bucket,
+      sortBy: sort.by, order: sort.dir,
+      page: page + 1, pageSize,
+    })
+      .then(({ data }) => {
+        setRows(data.results || []);
+        setCount(data.count || 0);
+        setSummary(data.summary || null);
+      })
+      .catch(() => { setRows([]); setCount(0); setSummary(null); })
+      .finally(() => setLoading(false));
+  }, [open, outletId, from, to, q, bucket, sort.by, sort.dir, page, pageSize]);
+
+  useEffect(() => { if (open) setPage(0); }, [q, bucket, sort.by, sort.dir, from, to, open]);
+
+  const handleDownloadCsv = async () => {
+    setCsvSaving(true);
+    try {
+      const { data } = await downloadItemCoverageCsv({
+        outletId, from, to, q, bucket,
+        sortBy: sort.by, order: sort.dir,
+      });
+      downloadBlob(data, `daily-ops-coverage-${from}-to-${to}.csv`);
+    } catch (err) {
+      notify.error("CSV export failed.");
+    } finally {
+      setCsvSaving(false);
+    }
+  };
+
+  const bucketColor = (b) => (COVERAGE_BUCKETS.find((x) => x.key === b) || {}).color || "default";
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+      <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Box>
+          <Typography variant="h4">Count coverage · {from} → {to}</Typography>
+          {summary && (
+            <Typography variant="caption" color="text.secondary">
+              {fmtNum(summary.total_items)} items · {fmtNum(summary.counted_at_least_once)} counted
+              ({summary.total_items > 0 ? Math.round(summary.counted_at_least_once / summary.total_items * 100) : 0}%) ·
+              {" "}{fmtNum(summary.never_counted)} never counted ·
+              {" "}frequent = counted ≥ {summary.frequent_threshold} day{summary.frequent_threshold === 1 ? "" : "s"}
+            </Typography>
+          )}
+        </Box>
+        <IconButton onClick={onClose}><CloseIcon /></IconButton>
+      </DialogTitle>
+      <DialogContent dividers>
+        {/* Range picker */}
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }} flexWrap="wrap" useFlexGap>
+          <TextField
+            size="small" select value={rangeKey}
+            onChange={(e) => setRangeKey(e.target.value)}
+            sx={{ minWidth: 150 }}
+          >
+            {COVERAGE_RANGE_PRESETS.map((r) => <MenuItem key={r.key} value={r.key}>{r.label}</MenuItem>)}
+          </TextField>
+          <TextField
+            size="small" type="date" label="From"
+            InputLabelProps={{ shrink: true }}
+            value={from}
+            onChange={(e) => { setRangeKey("custom"); setFrom(e.target.value); }}
+          />
+          <TextField
+            size="small" type="date" label="To"
+            InputLabelProps={{ shrink: true }}
+            value={to}
+            onChange={(e) => { setRangeKey("custom"); setTo(e.target.value); }}
+          />
+          <TextField
+            size="small" placeholder="Search item code or name…"
+            value={q} onChange={(e) => setQ(e.target.value)}
+            sx={{ flex: 1, minWidth: 200 }}
+            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+          />
+          <Button
+            size="small" variant="outlined" startIcon={<DownloadIcon />}
+            onClick={handleDownloadCsv} disabled={csvSaving}
+          >
+            {csvSaving ? "Preparing…" : "CSV"}
+          </Button>
+        </Stack>
+
+        {/* Bucket filter — single-select */}
+        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
+          <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>Coverage</Typography>
+          {COVERAGE_BUCKETS.map((b) => (
+            <Chip
+              key={b.key} size="small" label={b.label}
+              variant={bucket === b.key ? "filled" : "outlined"}
+              color={bucket === b.key ? b.color : "default"}
+              onClick={() => setBucket(b.key)}
+            />
+          ))}
+        </Stack>
+
+        <TableContainer sx={{ maxHeight: 480 }}>
+          <Table size="small" stickyHeader>
+            <TableHead>
+              <TableRow>
+                <SortableHeadCell field="item_code" label="Code" sort={sort} setSort={setSort} />
+                <SortableHeadCell field="item_name" label="Item" sort={sort} setSort={setSort} />
+                <SortableHeadCell field="category" label="Category" sort={sort} setSort={setSort} />
+                <SortableHeadCell field="times_counted" label="Times counted" sort={sort} setSort={setSort} align="right" />
+                <SortableHeadCell field="last_counted" label="Last counted" sort={sort} setSort={setSort} />
+                <SortableHeadCell field="total_qty" label="Total qty" sort={sort} setSort={setSort} align="right" />
+                <SortableHeadCell field="coverage_bucket" label="Coverage" sort={sort} setSort={setSort} />
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {loading && (
+                <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><CircularProgress size={22} /></TableCell></TableRow>
+              )}
+              {!loading && rows.length === 0 && (
+                <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4, color: "text.secondary" }}>
+                  No items match these filters
+                </TableCell></TableRow>
+              )}
+              {!loading && rows.map((r) => (
+                <TableRow key={r.item_id} hover>
+                  <TableCell sx={{ fontFamily: "monospace" }}>{r.item_code}</TableCell>
+                  <TableCell>{r.item_name}</TableCell>
+                  <TableCell>{r.category || "—"}</TableCell>
+                  <TableCell align="right">{fmtNum(r.times_counted)}</TableCell>
+                  <TableCell>{r.last_counted || "—"}</TableCell>
+                  <TableCell align="right">{fmtNum(r.total_qty, 3)}</TableCell>
+                  <TableCell>
+                    <Chip
+                      size="small" variant="outlined"
+                      color={bucketColor(r.coverage_bucket)}
+                      label={r.coverage_bucket}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+        <TablePagination
+          component="div"
+          count={count} page={page} rowsPerPage={pageSize}
+          onPageChange={(_, p) => setPage(p)}
+          rowsPerPageOptions={[]}
+        />
+      </DialogContent>
+      <DialogActions><Button onClick={onClose}>Close</Button></DialogActions>
+    </Dialog>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Main page
 // ────────────────────────────────────────────────────────────────────────────
 export default function DailyOpsPage() {
@@ -721,6 +920,8 @@ export default function DailyOpsPage() {
   const [uncOpen, setUncOpen] = useState(false);
   const [cntOpen, setCntOpen] = useState(false);
   const [varOpen, setVarOpen] = useState(false);
+  const [covOpen, setCovOpen] = useState(false);
+  const [coverageSummary, setCoverageSummary] = useState(null);
   const [diffId, setDiffId] = useState(null);
   const [closeConfirm, setCloseConfirm] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -790,6 +991,24 @@ export default function DailyOpsPage() {
       setVariancesPreview({ count: total, netValue });
     }).finally(() => setLoading(false));
   }, [outletId, date, reloadKey]);
+
+  // Coverage summary card — fixed 14-day range so the card is a stable
+  // rolling window. Modal has its own picker for on-demand exploration.
+  useEffect(() => {
+    if (!canLoad) return;
+    const from = (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 13);
+      return d.toISOString().slice(0, 10);
+    })();
+    const to = (new Date()).toISOString().slice(0, 10);
+    getItemCoverageRange({
+      outletId, from, to,
+      page: 1, pageSize: 1,   // we only need the summary block
+    })
+      .then(({ data }) => setCoverageSummary(data?.summary || null))
+      .catch(() => setCoverageSummary(null));
+  }, [outletId, canLoad, reloadKey]);
 
   const uploadsToday = useMemo(
     () => (uploadHistory.logs || []).filter((l) => l.snapshot_date === date),
@@ -1010,8 +1229,59 @@ export default function DailyOpsPage() {
             </CardContent>
           </Card>
         </Grid>
+
+        {/* ───────────── Zone 5: COVERAGE (last 14 days) ───────────── */}
+        <Grid item xs={12}>
+          <Card
+            variant="outlined"
+            sx={{
+              cursor: "pointer",
+              transition: "all 120ms ease",
+              "&:hover": { borderColor: "primary.main", boxShadow: 3 },
+            }}
+            onClick={() => setCovOpen(true)}
+          >
+            <CardContent>
+              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
+                <ChecklistIcon color="primary" />
+                <Typography variant="h5">Count coverage · last 14 days</Typography>
+                <Chip size="small" variant="outlined" label="Click to explore" sx={{ ml: "auto" }} />
+              </Stack>
+              {coverageSummary ? (
+                <Stack direction="row" spacing={4} flexWrap="wrap" useFlexGap>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>Total items</Typography>
+                    <Typography variant="h5">{fmtNum(coverageSummary.total_items)}</Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>Counted at least once</Typography>
+                    <Typography variant="h5" color="success.main">
+                      {fmtNum(coverageSummary.counted_at_least_once)}
+                      <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                        ({coverageSummary.total_items > 0
+                          ? Math.round(coverageSummary.counted_at_least_once / coverageSummary.total_items * 100)
+                          : 0}%)
+                      </Typography>
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>Counted every day</Typography>
+                    <Typography variant="h5">{fmtNum(coverageSummary.counted_every_day)}</Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>Never counted</Typography>
+                    <Typography variant="h5" color="error.main">{fmtNum(coverageSummary.never_counted)}</Typography>
+                  </Box>
+                </Stack>
+              ) : (
+                <Typography variant="body2" color="text.secondary">Loading coverage…</Typography>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
       </Grid>
 
+      <CoverageModal open={covOpen} onClose={() => setCovOpen(false)} outletId={outletId} />
       <UncountedModal open={uncOpen} onClose={() => setUncOpen(false)} outletId={outletId} date={date} />
       <CountedModal
         open={cntOpen} onClose={() => setCntOpen(false)}

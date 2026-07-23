@@ -140,6 +140,39 @@ export const getCountProgress2 = ({ outletId, date } = {}) =>
     },
   });
 
+export const getItemCoverageRange = ({
+  outletId, from, to, q, bucket, sortBy, order, page = 1, pageSize = 25,
+} = {}) =>
+  api.get("/dashboard/item-coverage-range/", {
+    params: {
+      ...(outletId ? { outlet: outletId } : {}),
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+      ...(q ? { q } : {}),
+      ...(bucket && bucket !== "all" ? { bucket } : {}),
+      ...(sortBy ? { sort_by: sortBy } : {}),
+      ...(order ? { order } : {}),
+      page, page_size: pageSize,
+    },
+  });
+
+export const downloadItemCoverageCsv = ({
+  outletId, from, to, q, bucket, sortBy, order,
+} = {}) =>
+  api.get("/dashboard/item-coverage-range/", {
+    params: {
+      export: "csv",
+      ...(outletId ? { outlet: outletId } : {}),
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+      ...(q ? { q } : {}),
+      ...(bucket && bucket !== "all" ? { bucket } : {}),
+      ...(sortBy ? { sort_by: sortBy } : {}),
+      ...(order ? { order } : {}),
+    },
+    responseType: "blob",
+  });
+
 export const getUncounted = ({
   outletId, date, page = 1, pageSize = 25, q = "",
   dailyOnly = false, recountOnly = false, sortBy, order,

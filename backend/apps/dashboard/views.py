@@ -952,6 +952,187 @@ def _csv_stream(header, iterator):
     return StreamingHttpResponse(rows(), content_type="text/csv")
 
 
+import math
+
+
+COVERAGE_SORT_KEYS = {
+    "item_code":       lambda r: (r["item_code"] or "").lower(),
+    "item_name":       lambda r: (r["item_name"] or "").lower(),
+    "category":        lambda r: (r["category"] or "").lower(),
+    "times_counted":   lambda r: r["times_counted"],
+    "last_counted":    lambda r: r["last_counted"] or "",
+    "total_qty":       lambda r: r["total_qty"],
+    "coverage_bucket": lambda r: {"never": 0, "once": 1, "occasional": 2, "frequent": 3}[r["coverage_bucket"]],
+}
+
+
+def _coverage_bucket(times_counted, frequent_threshold):
+    if times_counted == 0:
+        return "never"
+    if times_counted == 1:
+        return "once"
+    if times_counted < frequent_threshold:
+        return "occasional"
+    return "frequent"
+
+
+@api_view(["GET"])
+@permission_classes([IsManager])
+def item_coverage_range(request):
+    """
+    Per-item count coverage across a date range for one outlet. Answers
+    "which items are we ignoring and which are we counting religiously"
+    in a single call.
+
+    A "time counted" = a distinct count_date the item got at least one
+    non-rejected stock_count. Two counts on the same day for the same
+    item collapse to one.
+
+    Query params:
+      outlet=<id>            admin override
+      from=YYYY-MM-DD        range start (inclusive; default: today - 6d)
+      to=YYYY-MM-DD          range end (inclusive; default: today)
+      q                      search item code / item name
+      bucket                 all | never | once | occasional | frequent
+      sort_by, order         standard sort
+      page, page_size        pagination
+      export=csv             stream all matching rows as text/csv
+
+    Response includes a `summary` block so the Daily Ops card can render
+    without a second call:
+      {
+        "total_items":            total active items in outlet,
+        "counted_at_least_once":  distinct items with a count in range,
+        "counted_every_day":      items with times_counted == range_days,
+        "never_counted":          total_items - counted_at_least_once,
+        "range_days":             (to - from) + 1,
+        "frequent_threshold":     computed threshold used for the bucket,
+      }
+    """
+    outlet = _resolve_outlet(request)
+    if not outlet:
+        return Response({"detail": "No outlet."}, status=400)
+
+    to_date = _parse_date(request.query_params.get("to", "")) or date.today()
+    from_date = _parse_date(request.query_params.get("from", "")) or (to_date - timedelta(days=6))
+    if from_date > to_date:
+        from_date, to_date = to_date, from_date
+
+    range_days = (to_date - from_date).days + 1
+    # Threshold scales with the range but caps at 5 so long ranges don't
+    # accidentally set the bar too high for a "frequent" item.
+    frequent_threshold = max(2, min(5, math.ceil(range_days * 0.25)))
+
+    # Base pool: active items in the outlet, filterable by search.
+    items_qs = Item.objects.filter(outlet=outlet, status=Item.Status.ACTIVE)
+    q = request.query_params.get("q", "").strip()
+    if q:
+        items_qs = items_qs.filter(
+            Q(item_code__icontains=q) | Q(item_name__icontains=q)
+        )
+
+    # Aggregate stock_counts per item over the range.
+    from django.db.models import Count as _Count
+    agg = (
+        StockCount.objects
+        .filter(
+            outlet=outlet,
+            count_date__gte=from_date,
+            count_date__lte=to_date,
+        )
+        .exclude(approval_status=StockCount.ApprovalStatus.REJECTED)
+        .values("item_id")
+        .annotate(
+            times_counted=_Count("count_date", distinct=True),
+            last_counted=Max("count_date"),
+            total_qty=Sum("actual_qty"),
+        )
+    )
+    agg_map = {r["item_id"]: r for r in agg}
+
+    # Left-merge — every active item shows, even ones with zero counts.
+    all_items = list(items_qs.values("id", "item_code", "item_name", "category"))
+    rows = []
+    for it in all_items:
+        a = agg_map.get(it["id"])
+        times = a["times_counted"] if a else 0
+        rows.append({
+            "item_id": it["id"],
+            "item_code": it["item_code"],
+            "item_name": it["item_name"],
+            "category": it["category"] or "",
+            "times_counted": times,
+            "last_counted": str(a["last_counted"]) if a and a["last_counted"] else None,
+            "total_qty": float(a["total_qty"]) if a and a["total_qty"] is not None else 0.0,
+            "coverage_bucket": _coverage_bucket(times, frequent_threshold),
+        })
+
+    # Summary (computed BEFORE bucket filter so numbers reflect the outlet,
+    # not the filtered view).
+    total_items = len(rows)
+    counted_at_least_once = sum(1 for r in rows if r["times_counted"] > 0)
+    counted_every_day = sum(1 for r in rows if r["times_counted"] == range_days)
+    summary = {
+        "total_items": total_items,
+        "counted_at_least_once": counted_at_least_once,
+        "counted_every_day": counted_every_day,
+        "never_counted": total_items - counted_at_least_once,
+        "range_days": range_days,
+        "frequent_threshold": frequent_threshold,
+    }
+
+    bucket = (request.query_params.get("bucket") or "all").lower()
+    if bucket in ("never", "once", "occasional", "frequent"):
+        rows = [r for r in rows if r["coverage_bucket"] == bucket]
+
+    # Default sort: times_counted asc so under-counted items float to top.
+    sort_by = request.query_params.get("sort_by", "times_counted")
+    order = request.query_params.get("order", "asc")
+    rows = _sort_rows(rows, sort_by, order, COVERAGE_SORT_KEYS, "times_counted")
+
+    if request.query_params.get("export") == "csv":
+        header = ["Code", "Name", "Category", "Times counted", "Last counted",
+                  "Total counted qty", "Coverage"]
+
+        def iterator():
+            for r in rows:
+                yield [
+                    r["item_code"], r["item_name"], r["category"],
+                    r["times_counted"], r["last_counted"] or "",
+                    r["total_qty"], r["coverage_bucket"],
+                ]
+
+        resp = _csv_stream(header, iterator())
+        resp["Content-Disposition"] = (
+            f'attachment; filename="daily-ops-coverage-{from_date}-to-{to_date}.csv"'
+        )
+        return resp
+
+    try:
+        page = max(1, int(request.query_params.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = min(max(int(request.query_params.get("page_size", 25)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 25
+
+    total = len(rows)
+    offset = (page - 1) * page_size
+    results = rows[offset:offset + page_size]
+
+    return Response({
+        "count": total,
+        "page": page,
+        "page_size": page_size,
+        "outlet_id": outlet.id,
+        "from_date": str(from_date),
+        "to_date": str(to_date),
+        "summary": summary,
+        "results": results,
+    })
+
+
 @api_view(["GET"])
 @permission_classes([IsManager])
 def uncounted_items(request):
