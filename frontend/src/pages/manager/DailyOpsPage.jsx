@@ -27,11 +27,43 @@ import {
   getUncounted, getMobileDevices, listVarianceRecords,
   getCountsGrouped, getCountProgress2,
   closeCountSession, rejectCount,
+  downloadCountsGroupedCsv, downloadUncountedCsv,
 } from "../../api/dashboard";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import ReplayIcon from "@mui/icons-material/Replay";
 import LockIcon from "@mui/icons-material/Lock";
+import DownloadIcon from "@mui/icons-material/Download";
+import { TableSortLabel } from "@mui/material";
+
+const downloadBlob = (blob, filename) => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 500);
+};
+
+// Sticky-header cell that renders a TableSortLabel wired to a sort state.
+function SortableHeadCell({ field, label, sort, setSort, align }) {
+  const active = sort.by === field;
+  return (
+    <TableCell align={align} sortDirection={active ? sort.dir : false}>
+      <TableSortLabel
+        active={active}
+        direction={active ? sort.dir : "asc"}
+        onClick={() => {
+          if (active) {
+            setSort({ by: field, dir: sort.dir === "asc" ? "desc" : "asc" });
+          } else {
+            setSort({ by: field, dir: "asc" });
+          }
+        }}
+      >
+        {label}
+      </TableSortLabel>
+    </TableCell>
+  );
+}
 
 const isoToday = () => new Date().toISOString().slice(0, 10);
 const fmtNum = (v, digits = 0) => v == null ? "—" : Number(v).toLocaleString(undefined, { maximumFractionDigits: digits });
@@ -48,46 +80,97 @@ function UncountedModal({ open, onClose, outletId, date }) {
   const [page, setPage] = useState(0);
   const [pageSize] = useState(25);
   const [q, setQ] = useState("");
+  const [sort, setSort] = useState({ by: "pos_qty", dir: "desc" });
+  const [dailyOnly, setDailyOnly] = useState(false);
+  const [recountOnly, setRecountOnly] = useState(false);
+  const [csvSaving, setCsvSaving] = useState(false);
+  const notify = useNotify();
 
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    getUncounted({ outletId, date, page: page + 1, pageSize, q })
+    getUncounted({
+      outletId, date, page: page + 1, pageSize, q,
+      dailyOnly, recountOnly,
+      sortBy: sort.by, order: sort.dir,
+    })
       .then(({ data }) => { setRows(data.results || []); setCount(data.count || 0); })
       .catch(() => { setRows([]); setCount(0); })
       .finally(() => setLoading(false));
-  }, [open, outletId, date, page, pageSize, q]);
+  }, [open, outletId, date, page, pageSize, q, dailyOnly, recountOnly, sort.by, sort.dir]);
 
-  useEffect(() => { if (open) setPage(0); }, [q, open]);
+  useEffect(() => { if (open) setPage(0); }, [q, dailyOnly, recountOnly, sort.by, sort.dir, open]);
+
+  const handleDownloadCsv = async () => {
+    setCsvSaving(true);
+    try {
+      const { data } = await downloadUncountedCsv({
+        outletId, date, q, dailyOnly, recountOnly,
+        sortBy: sort.by, order: sort.dir,
+      });
+      downloadBlob(data, `daily-ops-uncounted-${date}.csv`);
+    } catch (err) {
+      notify.error("CSV export failed.");
+    } finally {
+      setCsvSaving(false);
+    }
+  };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <Box>
-          <Typography variant="h4">Uncounted items</Typography>
+          <Typography variant="h4">Uncounted items · {date}</Typography>
           <Typography variant="caption" color="text.secondary">
-            {count.toLocaleString()} items not yet counted for {date}
+            {count.toLocaleString()} item{count === 1 ? "" : "s"} not yet counted
           </Typography>
         </Box>
         <IconButton onClick={onClose}><CloseIcon /></IconButton>
       </DialogTitle>
       <DialogContent dividers>
-        <TextField
-          fullWidth size="small" placeholder="Search item code or name…"
-          value={q} onChange={(e) => setQ(e.target.value)} sx={{ mb: 2 }}
-          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
-        />
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }} flexWrap="wrap" useFlexGap>
+          <TextField
+            size="small" placeholder="Search item code or name…"
+            value={q} onChange={(e) => setQ(e.target.value)} sx={{ flex: 1, minWidth: 220 }}
+            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+          />
+          <Button
+            size="small" variant="outlined" startIcon={<DownloadIcon />}
+            onClick={handleDownloadCsv} disabled={csvSaving}
+          >
+            {csvSaving ? "Preparing…" : "CSV"}
+          </Button>
+        </Stack>
+        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
+          <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>Filters</Typography>
+          <Chip
+            size="small" label="Daily-count only"
+            variant={dailyOnly ? "filled" : "outlined"}
+            color={dailyOnly ? "primary" : "default"}
+            onClick={() => setDailyOnly((v) => !v)}
+          />
+          <Chip
+            size="small" label="Recount requested"
+            variant={recountOnly ? "filled" : "outlined"}
+            color={recountOnly ? "warning" : "default"}
+            icon={<ReplayIcon fontSize="small" />}
+            onClick={() => setRecountOnly((v) => !v)}
+          />
+          {(dailyOnly || recountOnly) && (
+            <Chip size="small" label="Clear" onClick={() => { setDailyOnly(false); setRecountOnly(false); }} />
+          )}
+        </Stack>
         <TableContainer sx={{ maxHeight: 480 }}>
           <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>
-                <TableCell>Code</TableCell>
-                <TableCell>Name</TableCell>
-                <TableCell>Category</TableCell>
+                <SortableHeadCell field="item_code" label="Code" sort={sort} setSort={setSort} />
+                <SortableHeadCell field="item_name" label="Name" sort={sort} setSort={setSort} />
+                <SortableHeadCell field="category" label="Category" sort={sort} setSort={setSort} />
                 <TableCell>Rack / Shelf</TableCell>
-                <TableCell align="right">POS Qty</TableCell>
-                <TableCell align="right">Cost</TableCell>
-                <TableCell align="right">Sell</TableCell>
+                <SortableHeadCell field="pos_qty" label="POS Qty" sort={sort} setSort={setSort} align="right" />
+                <SortableHeadCell field="cost_price" label="Cost" sort={sort} setSort={setSort} align="right" />
+                <SortableHeadCell field="selling_price" label="Sell" sort={sort} setSort={setSort} align="right" />
               </TableRow>
             </TableHead>
             <TableBody>
@@ -95,7 +178,9 @@ function UncountedModal({ open, onClose, outletId, date }) {
                 <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><CircularProgress size={22} /></TableCell></TableRow>
               )}
               {!loading && rows.length === 0 && (
-                <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4, color: "text.secondary" }}>Everything counted 🎉</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4, color: "text.secondary" }}>
+                  {q || dailyOnly || recountOnly ? "No items match these filters" : "Everything counted 🎉"}
+                </TableCell></TableRow>
               )}
               {!loading && rows.map((r) => (
                 <TableRow key={r.item_id} hover sx={r.recount_requested ? { bgcolor: "warning.50" } : undefined}>
@@ -226,6 +311,19 @@ function CountedRow({ r, onRequestRecount }) {
   );
 }
 
+const COUNTED_VAR_FILTERS = [
+  { key: "all",       label: "All" },
+  { key: "shrinkage", label: "Shrinkage" },
+  { key: "extra",     label: "Extra" },
+  { key: "zero",      label: "No variance" },
+];
+const COUNTED_STATUS_OPTIONS = [
+  { key: "approved",  label: "Approved" },
+  { key: "submitted", label: "Submitted" },
+  { key: "pending",   label: "Pending" },
+  { key: "mixed",     label: "Mixed" },
+];
+
 function CountedModal({ open, onClose, outletId, date, onDataChanged }) {
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
@@ -233,22 +331,59 @@ function CountedModal({ open, onClose, outletId, date, onDataChanged }) {
   const [page, setPage] = useState(0);
   const [pageSize] = useState(25);
   const [q, setQ] = useState("");
+  const [sort, setSort] = useState({ by: "abs_variance_value", dir: "desc" });
+  const [varFilter, setVarFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(new Set()); // multi-select
   const [reloadTick, setReloadTick] = useState(0);
   const [recountTarget, setRecountTarget] = useState(null);
   const [recountReason, setRecountReason] = useState("");
   const [recountSaving, setRecountSaving] = useState(false);
+  const [csvSaving, setCsvSaving] = useState(false);
   const notify = useNotify();
+
+  const statusFilterCsv = useMemo(
+    () => Array.from(statusFilter).join(","),
+    [statusFilter],
+  );
 
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    getCountsGrouped({ outletId, date, page: page + 1, pageSize, q })
+    getCountsGrouped({
+      outletId, date, page: page + 1, pageSize, q,
+      sortBy: sort.by, order: sort.dir,
+      varFilter, statusFilter: statusFilterCsv,
+    })
       .then(({ data }) => { setRows(data.results || []); setCount(data.count || 0); })
       .catch(() => { setRows([]); setCount(0); })
       .finally(() => setLoading(false));
-  }, [open, outletId, date, page, pageSize, q, reloadTick]);
+  }, [open, outletId, date, page, pageSize, q, sort.by, sort.dir, varFilter, statusFilterCsv, reloadTick]);
 
-  useEffect(() => { if (open) setPage(0); }, [q, open]);
+  useEffect(() => { if (open) setPage(0); }, [q, sort.by, sort.dir, varFilter, statusFilterCsv, open]);
+
+  const toggleStatus = (key) => {
+    setStatusFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  const handleDownloadCsv = async () => {
+    setCsvSaving(true);
+    try {
+      const { data } = await downloadCountsGroupedCsv({
+        outletId, date, q,
+        sortBy: sort.by, order: sort.dir,
+        varFilter, statusFilter: statusFilterCsv,
+      });
+      downloadBlob(data, `daily-ops-counted-${date}.csv`);
+    } catch (err) {
+      notify.error("CSV export failed.");
+    } finally {
+      setCsvSaving(false);
+    }
+  };
 
   const handleRecountConfirm = async () => {
     if (!recountTarget) return;
@@ -287,25 +422,58 @@ function CountedModal({ open, onClose, outletId, date, onDataChanged }) {
         <IconButton onClick={onClose}><CloseIcon /></IconButton>
       </DialogTitle>
       <DialogContent dividers>
-        <TextField
-          fullWidth size="small" placeholder="Search item code or name…"
-          value={q} onChange={(e) => setQ(e.target.value)} sx={{ mb: 2 }}
-          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
-        />
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }} flexWrap="wrap" useFlexGap>
+          <TextField
+            size="small" placeholder="Search item code or name…"
+            value={q} onChange={(e) => setQ(e.target.value)} sx={{ flex: 1, minWidth: 220 }}
+            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+          />
+          <Button
+            size="small" variant="outlined" startIcon={<DownloadIcon />}
+            onClick={handleDownloadCsv} disabled={csvSaving}
+          >
+            {csvSaving ? "Preparing…" : "CSV"}
+          </Button>
+        </Stack>
+        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1 }} flexWrap="wrap" useFlexGap>
+          <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>Variance</Typography>
+          {COUNTED_VAR_FILTERS.map((f) => (
+            <Chip
+              key={f.key} size="small" label={f.label}
+              variant={varFilter === f.key ? "filled" : "outlined"}
+              color={varFilter === f.key ? "primary" : "default"}
+              onClick={() => setVarFilter(f.key)}
+            />
+          ))}
+        </Stack>
+        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
+          <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>Status</Typography>
+          {COUNTED_STATUS_OPTIONS.map((s) => (
+            <Chip
+              key={s.key} size="small" label={s.label}
+              variant={statusFilter.has(s.key) ? "filled" : "outlined"}
+              color={statusFilter.has(s.key) ? "primary" : "default"}
+              onClick={() => toggleStatus(s.key)}
+            />
+          ))}
+          {statusFilter.size > 0 && (
+            <Chip size="small" label="Clear" onClick={() => setStatusFilter(new Set())} />
+          )}
+        </Stack>
         <TableContainer sx={{ maxHeight: 480 }}>
           <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>
                 <TableCell padding="checkbox" />
-                <TableCell>Code</TableCell>
-                <TableCell>Item</TableCell>
+                <SortableHeadCell field="item_code" label="Code" sort={sort} setSort={setSort} />
+                <SortableHeadCell field="item_name" label="Item" sort={sort} setSort={setSort} />
                 <TableCell>Location</TableCell>
-                <TableCell align="right">POS qty</TableCell>
-                <TableCell align="right">Sell</TableCell>
-                <TableCell align="right">Counted qty</TableCell>
-                <TableCell align="right">Variance qty</TableCell>
-                <TableCell align="right">Variance value</TableCell>
-                <TableCell>Last at</TableCell>
+                <SortableHeadCell field="pos_qty" label="POS qty" sort={sort} setSort={setSort} align="right" />
+                <SortableHeadCell field="sell_price" label="Sell" sort={sort} setSort={setSort} align="right" />
+                <SortableHeadCell field="total_qty" label="Counted qty" sort={sort} setSort={setSort} align="right" />
+                <SortableHeadCell field="variance_qty" label="Variance qty" sort={sort} setSort={setSort} align="right" />
+                <SortableHeadCell field="abs_variance_value" label="Variance value" sort={sort} setSort={setSort} align="right" />
+                <SortableHeadCell field="last_counted_at" label="Last at" sort={sort} setSort={setSort} />
                 <TableCell />
               </TableRow>
             </TableHead>
@@ -314,7 +482,7 @@ function CountedModal({ open, onClose, outletId, date, onDataChanged }) {
                 <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4 }}><CircularProgress size={22} /></TableCell></TableRow>
               )}
               {!loading && rows.length === 0 && (
-                <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4, color: "text.secondary" }}>Nothing counted yet</TableCell></TableRow>
+                <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4, color: "text.secondary" }}>Nothing matches these filters</TableCell></TableRow>
               )}
               {!loading && rows.map((r) => <CountedRow key={r.item_id} r={r} onRequestRecount={onRequestRecount} />)}
             </TableBody>

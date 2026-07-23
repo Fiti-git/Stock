@@ -776,35 +776,19 @@ def counts_grouped(request):
         })
 
     rows = list(grouped.values())
-    # Newest activity first — matches operator expectation "what did I just count"
-    rows.sort(key=lambda r: r["last_counted_at"] or "", reverse=True)
 
-    try:
-        page = max(1, int(request.query_params.get("page", 1)))
-    except (TypeError, ValueError):
-        page = 1
-    try:
-        page_size = min(max(int(request.query_params.get("page_size", 25)), 1), 200)
-    except (TypeError, ValueError):
-        page_size = 25
-
-    total = len(rows)
-    offset = (page - 1) * page_size
-    page_rows = rows[offset:offset + page_size]
-
-    # Bulk-fetch the active POS snapshot for every item on this page so we can
-    # enrich each row with pos_qty / cost / sell / variance. UNIQUE(outlet,
-    # item, snapshot_date) means at most one row per item — the current
-    # "active" upload wins because bulk_create UPSERTs on that constraint.
-    item_ids = [r["item_id"] for r in page_rows]
+    # Bulk-fetch active POS snapshot for every item once so we can enrich +
+    # sort by variance columns before paginating.
+    all_item_ids = [r["item_id"] for r in rows]
     snap_map = {
         snap.item_id: snap for snap in
         PosSnapshot.objects
-        .filter(outlet=outlet, item_id__in=item_ids, snapshot_date=target_date)
+        .filter(outlet=outlet, item_id__in=all_item_ids, snapshot_date=target_date)
     }
 
-    results = []
-    for r in page_rows:
+    # Enrich every row with pos/variance so sort keys work
+    enriched = []
+    for r in rows:
         counters = sorted(r["counters"])
         summary_status = (
             "approved" if r["any_approved"] and not r["any_submitted"] and not r["any_pending"]
@@ -812,18 +796,13 @@ def counts_grouped(request):
             else "mixed" if len(counters) > 1 or r["any_approved"] and r["any_pending"]
             else "pending"
         )
-
-        # Live variance: total_counted − pos_qty (positive = extra on shelf,
-        # negative = shrinkage). Value in cost-price terms so it matches
-        # finalize_count_session's variance_records book value.
         snap = snap_map.get(r["item_id"])
         pos_qty = Decimal(snap.pos_quantity) if snap else None
         cost_price = Decimal(snap.cost_price) if snap and snap.cost_price is not None else None
         sell_price = Decimal(snap.selling_price) if snap and snap.selling_price is not None else None
         variance_qty = (r["total_qty"] - pos_qty) if pos_qty is not None else None
         variance_value = (variance_qty * cost_price) if variance_qty is not None and cost_price is not None else None
-
-        results.append({
+        enriched.append({
             "item_id": r["item_id"],
             "item_code": r["item_code"],
             "item_name": r["item_name"],
@@ -835,14 +814,86 @@ def counts_grouped(request):
             "status_summary": summary_status,
             "last_counted_at": r["last_counted_at"].isoformat() if r["last_counted_at"] else None,
             "entries": r["entries"],
-
-            # New: live POS / variance context
             "pos_qty": float(pos_qty) if pos_qty is not None else None,
             "cost_price": float(cost_price) if cost_price is not None else None,
             "sell_price": float(sell_price) if sell_price is not None else None,
             "variance_qty": float(variance_qty) if variance_qty is not None else None,
             "variance_value": float(variance_value) if variance_value is not None else None,
         })
+
+    # Client-supplied variance filter: shrinkage / extra / zero / all
+    var_filter = request.query_params.get("var_filter", "all")
+    if var_filter == "shrinkage":
+        enriched = [r for r in enriched if r["variance_qty"] is not None and r["variance_qty"] < 0]
+    elif var_filter == "extra":
+        enriched = [r for r in enriched if r["variance_qty"] is not None and r["variance_qty"] > 0]
+    elif var_filter == "zero":
+        enriched = [r for r in enriched if r["variance_qty"] == 0]
+
+    # Client-supplied status filter (multi-select via CSV): approved,submitted,pending,mixed
+    status_filter = request.query_params.get("status_filter", "").strip()
+    if status_filter:
+        wanted = {s.strip() for s in status_filter.split(",") if s.strip()}
+        if wanted:
+            enriched = [r for r in enriched if r["status_summary"] in wanted]
+
+    # Sort (default: |variance_value| desc — biggest money problems first).
+    # Absolute-value sort keeps -Rs 30k above +Rs 500 in urgency terms.
+    sort_by = request.query_params.get("sort_by", "abs_variance_value")
+    order = request.query_params.get("order", "desc" if sort_by in ("abs_variance_value", "variance_value", "variance_qty", "total_qty", "pos_qty", "last_counted_at") else "asc")
+    counted_sort_map = {
+        "item_code":       lambda r: (r["item_code"] or "").lower(),
+        "item_name":       lambda r: (r["item_name"] or "").lower(),
+        "pos_qty":         lambda r: r["pos_qty"],
+        "sell_price":      lambda r: r["sell_price"],
+        "total_qty":       lambda r: r["total_qty"],
+        "variance_qty":    lambda r: r["variance_qty"],
+        "variance_value":  lambda r: r["variance_value"],
+        "abs_variance_value": lambda r: abs(r["variance_value"]) if r["variance_value"] is not None else None,
+        "last_counted_at": lambda r: r["last_counted_at"] or "",
+    }
+    enriched = _sort_rows(enriched, sort_by, order, counted_sort_map, "abs_variance_value")
+
+    # CSV mode
+    if request.query_params.get("format") == "csv":
+        header = ["Code", "Item", "Location(s)", "POS qty", "Sell price",
+                  "Total counted", "Variance qty", "Variance value",
+                  "Status", "Counted by", "Last counted at"]
+
+        def iterator():
+            for r in enriched:
+                location = (
+                    f"{r['locations_count']} locations"
+                    if r["locations_count"] > 1
+                    else (r["entries"][0]["location_tag"] if r["entries"] else "")
+                )
+                yield [
+                    r["item_code"], r["item_name"], location,
+                    "" if r["pos_qty"] is None else r["pos_qty"],
+                    "" if r["sell_price"] is None else r["sell_price"],
+                    r["total_qty"],
+                    "" if r["variance_qty"] is None else r["variance_qty"],
+                    "" if r["variance_value"] is None else r["variance_value"],
+                    r["status_summary"], r["counters_summary"],
+                    r["last_counted_at"] or "",
+                ]
+
+        resp = _csv_stream(header, iterator())
+        resp["Content-Disposition"] = f'attachment; filename="daily-ops-counted-{outlet.short_code or outlet.id}-{target_date}.csv"'
+        return resp
+
+    try:
+        page = max(1, int(request.query_params.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = min(max(int(request.query_params.get("page_size", 25)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 25
+
+    total = len(enriched)
+    offset = (page - 1) * page_size
+    results = enriched[offset:offset + page_size]
 
     return Response({
         "count": total,
@@ -854,6 +905,53 @@ def counts_grouped(request):
     })
 
 
+# Sort keys allowed on the uncounted endpoint. Maps to a callable that returns
+# the key for Python sort — None values sort last regardless of direction.
+UNCOUNTED_SORT_KEYS = {
+    "item_code":    lambda r: (r["item_code"] or "").lower(),
+    "item_name":    lambda r: (r["item_name"] or "").lower(),
+    "category":     lambda r: (r["category"] or "").lower(),
+    "pos_qty":      lambda r: r["pos_qty"],
+    "cost_price":   lambda r: r["cost_price"],
+    "selling_price":lambda r: r["selling_price"],
+}
+
+
+def _sort_rows(rows, sort_by, direction, sort_map, default_key):
+    """Stable sort with None-values-last semantics regardless of direction."""
+    key_fn = sort_map.get(sort_by, sort_map[default_key])
+    reverse = (direction or "asc").lower() == "desc"
+    # First bucket by has-value, then by natural order, so nulls always sink.
+    def wrap(r):
+        v = key_fn(r)
+        return (v is None, v if v is not None else "")
+    try:
+        return sorted(rows, key=wrap, reverse=reverse)
+    except TypeError:
+        # Mixed types (e.g. some rows have strings, others None) — fall back
+        # to string coercion. Rare but keeps the endpoint from 500ing.
+        return sorted(rows, key=lambda r: (key_fn(r) is None, str(key_fn(r) or "")), reverse=reverse)
+
+
+def _csv_stream(header, iterator):
+    """Return a StreamingHttpResponse that yields a CSV file row-by-row."""
+    import csv, io
+    from django.http import StreamingHttpResponse
+
+    class _Echo:
+        def write(self, value):
+            return value
+
+    writer = csv.writer(_Echo())
+
+    def rows():
+        yield writer.writerow(header)
+        for row in iterator:
+            yield writer.writerow(row)
+
+    return StreamingHttpResponse(rows(), content_type="text/csv")
+
+
 @api_view(["GET"])
 @permission_classes([IsManager])
 def uncounted_items(request):
@@ -862,11 +960,15 @@ def uncounted_items(request):
     (outlet, date). Powers the "See uncounted" modal on the Daily Ops page.
 
     Query params:
-      outlet=<id>      admin override (else user.outlet)
-      date=YYYY-MM-DD  session date (default: today)
-      page, page_size  standard pagination
-      q                search item_code / item_name
-      daily_only=1     restrict to items flagged is_daily_count
+      outlet=<id>            admin override (else user.outlet)
+      date=YYYY-MM-DD        session date (default: today)
+      page, page_size        standard pagination
+      q                      search item_code / item_name
+      daily_only=1           restrict to items flagged is_daily_count
+      recount_only=1         restrict to items previously rejected today
+      sort_by, order         sort by any of UNCOUNTED_SORT_KEYS, asc|desc
+      format=csv             stream all matching rows as text/csv (respects
+                             all above filters + sort, ignores pagination)
 
     Response mirrors the catalog row shape so the frontend can reuse
     existing table components. `count` is total matching rows; `results`
@@ -893,7 +995,6 @@ def uncounted_items(request):
         Item.objects
         .filter(outlet=outlet, status=Item.Status.ACTIVE)
         .exclude(id__in=counted_item_ids)
-        .order_by("item_code")
     )
 
     q = request.query_params.get("q", "").strip()
@@ -921,27 +1022,22 @@ def uncounted_items(request):
         .select_related("counted_by")
         .order_by("item_id", "-counted_at")
     ):
-        # Keep the newest rejection per item (first row wins due to ordering).
         rejected_today.setdefault(sc.item_id, sc)
 
-    try:
-        page = max(1, int(request.query_params.get("page", 1)))
-    except (TypeError, ValueError):
-        page = 1
-    try:
-        page_size = min(max(int(request.query_params.get("page_size", 25)), 1), 200)
-    except (TypeError, ValueError):
-        page_size = 25
+    recount_only = request.query_params.get("recount_only") in ("1", "true", "True")
+    if recount_only:
+        qs = qs.filter(id__in=list(rejected_today.keys()))
 
-    total = qs.count()
-    offset = (page - 1) * page_size
-    rows = list(qs[offset:offset + page_size])
+    # Materialize all matching items so we can sort by joined values.
+    # Bounded by outlet catalog size (~50k items worst case). Fast enough.
+    all_items = list(qs)
 
-    results = []
-    for it in rows:
+    # Build the enriched row list
+    all_rows = []
+    for it in all_items:
         snap = latest_snap.get(it.id)
         rej = rejected_today.get(it.id)
-        results.append({
+        all_rows.append({
             "item_id": it.id,
             "item_code": it.item_code,
             "item_name": it.item_name,
@@ -954,13 +1050,49 @@ def uncounted_items(request):
             "cost_price": float(snap.cost_price) if snap and snap.cost_price is not None else None,
             "selling_price": float(snap.selling_price) if snap and snap.selling_price is not None else None,
             "snapshot_date": str(snap.snapshot_date) if snap else None,
-
-            # Recount-request flag: item was counted today and manager
-            # sent it back. Frontend shows a chip so counter knows to prioritize.
             "recount_requested": rej is not None,
             "recount_reason": rej.rejection_reason if rej else None,
             "recount_by_at": rej.counted_at.isoformat() if rej and rej.counted_at else None,
         })
+
+    # Sort (default: POS qty desc — biggest uncounted first)
+    sort_by = request.query_params.get("sort_by", "pos_qty")
+    order = request.query_params.get("order", "desc" if sort_by == "pos_qty" else "asc")
+    all_rows = _sort_rows(all_rows, sort_by, order, UNCOUNTED_SORT_KEYS, "pos_qty")
+
+    # CSV mode — stream everything (respects current filter + sort), no pagination
+    if request.query_params.get("format") == "csv":
+        header = ["Code", "Name", "Category", "Rack", "Shelf",
+                  "POS Qty", "Cost", "Sell", "Recount requested", "Recount reason"]
+
+        def iterator():
+            for r in all_rows:
+                yield [
+                    r["item_code"], r["item_name"], r["category"] or "",
+                    r["rack_number"] or "", r["shelf"] or "",
+                    "" if r["pos_qty"] is None else r["pos_qty"],
+                    "" if r["cost_price"] is None else r["cost_price"],
+                    "" if r["selling_price"] is None else r["selling_price"],
+                    "yes" if r["recount_requested"] else "",
+                    r["recount_reason"] or "",
+                ]
+
+        resp = _csv_stream(header, iterator())
+        resp["Content-Disposition"] = f'attachment; filename="daily-ops-uncounted-{outlet.short_code or outlet.id}-{target_date}.csv"'
+        return resp
+
+    try:
+        page = max(1, int(request.query_params.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = min(max(int(request.query_params.get("page_size", 25)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 25
+
+    total = len(all_rows)
+    offset = (page - 1) * page_size
+    results = all_rows[offset:offset + page_size]
 
     return Response({
         "count": total,

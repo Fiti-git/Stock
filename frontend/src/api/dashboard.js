@@ -96,14 +96,40 @@ export const getCategoryPerformance = ({ outletId, from, to } = {}) =>
     },
   });
 
-export const getCountsGrouped = ({ outletId, date, page = 1, pageSize = 25, q = "" } = {}) =>
+export const getCountsGrouped = ({
+  outletId, date, page = 1, pageSize = 25, q = "",
+  sortBy, order, varFilter, statusFilter,
+} = {}) =>
   api.get("/dashboard/counts-grouped/", {
     params: {
       ...(outletId ? { outlet: outletId } : {}),
       ...(date ? { date } : {}),
       page, page_size: pageSize,
       ...(q ? { q } : {}),
+      ...(sortBy ? { sort_by: sortBy } : {}),
+      ...(order ? { order } : {}),
+      ...(varFilter && varFilter !== "all" ? { var_filter: varFilter } : {}),
+      ...(statusFilter ? { status_filter: statusFilter } : {}),
     },
+  });
+
+// CSV download for counted modal — axios blob so JWT auth stays intact.
+// Caller is responsible for turning the blob into a download.
+export const downloadCountsGroupedCsv = ({
+  outletId, date, q, sortBy, order, varFilter, statusFilter,
+} = {}) =>
+  api.get("/dashboard/counts-grouped/", {
+    params: {
+      format: "csv",
+      ...(outletId ? { outlet: outletId } : {}),
+      ...(date ? { date } : {}),
+      ...(q ? { q } : {}),
+      ...(sortBy ? { sort_by: sortBy } : {}),
+      ...(order ? { order } : {}),
+      ...(varFilter && varFilter !== "all" ? { var_filter: varFilter } : {}),
+      ...(statusFilter ? { status_filter: statusFilter } : {}),
+    },
+    responseType: "blob",
   });
 
 export const getCountProgress2 = ({ outletId, date } = {}) =>
@@ -114,7 +140,10 @@ export const getCountProgress2 = ({ outletId, date } = {}) =>
     },
   });
 
-export const getUncounted = ({ outletId, date, page = 1, pageSize = 25, q = "", dailyOnly = false } = {}) =>
+export const getUncounted = ({
+  outletId, date, page = 1, pageSize = 25, q = "",
+  dailyOnly = false, recountOnly = false, sortBy, order,
+} = {}) =>
   api.get("/dashboard/uncounted/", {
     params: {
       ...(outletId ? { outlet: outletId } : {}),
@@ -123,7 +152,27 @@ export const getUncounted = ({ outletId, date, page = 1, pageSize = 25, q = "", 
       page_size: pageSize,
       ...(q ? { q } : {}),
       ...(dailyOnly ? { daily_only: 1 } : {}),
+      ...(recountOnly ? { recount_only: 1 } : {}),
+      ...(sortBy ? { sort_by: sortBy } : {}),
+      ...(order ? { order } : {}),
     },
+  });
+
+export const downloadUncountedCsv = ({
+  outletId, date, q, dailyOnly, recountOnly, sortBy, order,
+} = {}) =>
+  api.get("/dashboard/uncounted/", {
+    params: {
+      format: "csv",
+      ...(outletId ? { outlet: outletId } : {}),
+      ...(date ? { date } : {}),
+      ...(q ? { q } : {}),
+      ...(dailyOnly ? { daily_only: 1 } : {}),
+      ...(recountOnly ? { recount_only: 1 } : {}),
+      ...(sortBy ? { sort_by: sortBy } : {}),
+      ...(order ? { order } : {}),
+    },
+    responseType: "blob",
   });
 
 export const getMobileDevices = ({ q = "", outletId = null } = {}) =>
