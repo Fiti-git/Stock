@@ -492,6 +492,12 @@ def catalog_list(request):
         except (ValueError, TypeError):
             pass
 
+    # Daily-count filter for the CatalogPage toggle. Must run at DB level so
+    # the toggle spans every daily-count item in the outlet, not just the
+    # current page (which was the pre-fix behaviour).
+    if request.query_params.get("daily_only") in ("1", "true", "True"):
+        qs = qs.filter(is_daily_count=True)
+
     # Annotate with latest snapshot prices + qty via subquery (single SQL query, no N+1)
     latest_snap = PosSnapshot.objects.filter(item=OuterRef("pk")).order_by("-snapshot_date")
     qs = qs.select_related("outlet").annotate(

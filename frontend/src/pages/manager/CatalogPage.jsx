@@ -321,12 +321,16 @@ export default function CatalogPage() {
   const [barcodeTarget, setBarcodeTarget] = useState(null);
   const debounceRef = useRef(null);
 
-  const load = (q, cat, pg, outletId) => {
+  const load = (q, cat, pg, outletId, daily) => {
     setLoading(true); setError("");
     const params = { page: pg };
     if (q) params.q = q;
     if (cat) params.category = cat;
     if (outletId) params.outlet = outletId;
+    // Daily-count filter must go to the backend — filtering the current
+    // page client-side made the toggle look broken on outlets with
+    // thousands of items (matched items past page 1 stayed invisible).
+    if (daily) params.daily_only = 1;
     getCatalog(params).then(({ data }) => {
       setItems(data.results);
       setTotalCount(data.count);
@@ -336,13 +340,13 @@ export default function CatalogPage() {
 
   useEffect(() => {
     clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => { setPage(1); load(search, category, 1, selectedOutlet?.id); }, 300);
+    debounceRef.current = setTimeout(() => { setPage(1); load(search, category, 1, selectedOutlet?.id, dailyOnly); }, 300);
     return () => clearTimeout(debounceRef.current);
-  }, [search, category, selectedOutlet?.id]); // eslint-disable-line
+  }, [search, category, selectedOutlet?.id, dailyOnly]); // eslint-disable-line
 
-  useEffect(() => { load(search, category, page, selectedOutlet?.id); }, [page]); // eslint-disable-line
+  useEffect(() => { load(search, category, page, selectedOutlet?.id, dailyOnly); }, [page]); // eslint-disable-line
 
-  const filteredItems = dailyOnly ? items.filter((i) => i.is_daily_count) : items;
+  const filteredItems = items;
 
   const applyUpdate = (updated) => {
     setItems((prev) => prev.map((i) => i.id === updated.id
