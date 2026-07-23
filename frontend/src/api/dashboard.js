@@ -120,7 +120,7 @@ export const downloadCountsGroupedCsv = ({
 } = {}) =>
   api.get("/dashboard/counts-grouped/", {
     params: {
-      format: "csv",
+      export: "csv",
       ...(outletId ? { outlet: outletId } : {}),
       ...(date ? { date } : {}),
       ...(q ? { q } : {}),
@@ -163,7 +163,7 @@ export const downloadUncountedCsv = ({
 } = {}) =>
   api.get("/dashboard/uncounted/", {
     params: {
-      format: "csv",
+      export: "csv",
       ...(outletId ? { outlet: outletId } : {}),
       ...(date ? { date } : {}),
       ...(q ? { q } : {}),

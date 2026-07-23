@@ -855,7 +855,7 @@ def counts_grouped(request):
     enriched = _sort_rows(enriched, sort_by, order, counted_sort_map, "abs_variance_value")
 
     # CSV mode
-    if request.query_params.get("format") == "csv":
+    if request.query_params.get("export") == "csv":
         header = ["Code", "Item", "Location(s)", "POS qty", "Sell price",
                   "Total counted", "Variance qty", "Variance value",
                   "Status", "Counted by", "Last counted at"]
@@ -967,8 +967,10 @@ def uncounted_items(request):
       daily_only=1           restrict to items flagged is_daily_count
       recount_only=1         restrict to items previously rejected today
       sort_by, order         sort by any of UNCOUNTED_SORT_KEYS, asc|desc
-      format=csv             stream all matching rows as text/csv (respects
-                             all above filters + sort, ignores pagination)
+      export=csv             stream all matching rows as text/csv (respects
+                             all above filters + sort, ignores pagination).
+                             Uses `export` not `format` to avoid clashing
+                             with DRF's content-negotiation query param.
 
     Response mirrors the catalog row shape so the frontend can reuse
     existing table components. `count` is total matching rows; `results`
@@ -1061,7 +1063,7 @@ def uncounted_items(request):
     all_rows = _sort_rows(all_rows, sort_by, order, UNCOUNTED_SORT_KEYS, "pos_qty")
 
     # CSV mode — stream everything (respects current filter + sort), no pagination
-    if request.query_params.get("format") == "csv":
+    if request.query_params.get("export") == "csv":
         header = ["Code", "Name", "Category", "Rack", "Shelf",
                   "POS Qty", "Cost", "Sell", "Recount requested", "Recount reason"]
 
