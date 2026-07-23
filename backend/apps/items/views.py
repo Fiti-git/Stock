@@ -641,6 +641,10 @@ def item_lookup(request):
         "cost_price": cost_price,
         "already_counted_today": len(today_counts) > 0,
         "today_counts": today_counts,
+        # Exposed for the mobile Daily-count flow — the client warns the
+        # user if a scanned barcode belongs to a non-daily-count item so
+        # they don't accidentally waste their DC session on random items.
+        "is_daily_count": bool(item.is_daily_count),
     })
 
 
