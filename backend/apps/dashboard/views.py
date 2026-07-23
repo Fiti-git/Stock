@@ -976,6 +976,247 @@ def _coverage_bucket(times_counted, frequent_threshold):
     return "frequent"
 
 
+DAILY_ITEM_SORT_KEYS = {
+    "item_code":     lambda r: (r["item_code"] or "").lower(),
+    "item_name":     lambda r: (r["item_name"] or "").lower(),
+    "category":      lambda r: (r["category"] or "").lower(),
+    "pos_qty":       lambda r: r["pos_qty"],
+    "counted_qty":   lambda r: r["counted_qty"],
+    "variance_qty":  lambda r: r["variance_qty"],
+    "variance_value":lambda r: r["variance_value"],
+    "counters_summary": lambda r: (r["counters_summary"] or "").lower(),
+    "last_counted_at":  lambda r: r["last_counted_at"] or "",
+    "status":           lambda r: {"not_counted": 0, "shrinkage": 1, "extra": 2, "match": 3}[r["status"]],
+    # Special composite key used as default: uncounted first, then by absolute
+    # variance value desc. Managers care most about "what's missing + what
+    # matters" — this puts both on the top of the list.
+    "urgency":       lambda r: (
+        0 if r["status"] == "not_counted" else 1,
+        -(abs(r["variance_value"]) if r["variance_value"] is not None else 0),
+    ),
+}
+
+
+@api_view(["GET"])
+@permission_classes([IsManager])
+def daily_count_items(request):
+    """
+    Every item flagged is_daily_count for the outlet, joined with today's
+    (or ?date=) counts + POS snapshot, so managers can see at a glance
+    which daily-count items got counted and how they compare to POS.
+
+    Query params:
+      outlet=<id>          admin override
+      date=YYYY-MM-DD      target date (default: today)
+      q                    search item code / name
+      bucket               all | not_counted | match | shrinkage | extra
+      sort_by, order       standard sort (default: urgency, desc)
+      page, page_size      pagination
+      export=csv           streaming CSV of the filtered/sorted view
+
+    Response includes a summary block with bucket_counts so the Daily
+    Ops card can render the split without a second call.
+    """
+    outlet = _resolve_outlet(request)
+    if not outlet:
+        return Response({"detail": "No outlet."}, status=400)
+
+    target_date = _parse_date(request.query_params.get("date", "")) or date.today()
+
+    # All daily-count items for the outlet (active only).
+    items_qs = (
+        Item.objects
+        .filter(outlet=outlet, status=Item.Status.ACTIVE, is_daily_count=True)
+    )
+    q = request.query_params.get("q", "").strip()
+    if q:
+        items_qs = items_qs.filter(
+            Q(item_code__icontains=q) | Q(item_name__icontains=q)
+        )
+
+    item_ids = list(items_qs.values_list("id", flat=True))
+
+    # Grouped counts for these items on the target date (item-level totals).
+    counts_by_item = {}
+    for sc in (
+        StockCount.objects
+        .filter(outlet=outlet, count_date=target_date, item_id__in=item_ids)
+        .exclude(approval_status=StockCount.ApprovalStatus.REJECTED)
+        .select_related("counted_by")
+    ):
+        row = counts_by_item.setdefault(sc.item_id, {
+            "total_qty": Decimal("0"),
+            "counters": set(),
+            "last_counted_at": None,
+            "any_submitted": False,
+            "any_approved": False,
+            "any_pending": False,
+            "locations_count": 0,
+        })
+        row["total_qty"] += Decimal(sc.actual_qty or 0)
+        row["locations_count"] += 1
+        u = sc.counted_by.username if sc.counted_by else None
+        if u:
+            row["counters"].add(u)
+        if row["last_counted_at"] is None or (sc.counted_at and sc.counted_at > row["last_counted_at"]):
+            row["last_counted_at"] = sc.counted_at
+        if sc.approval_status == StockCount.ApprovalStatus.SUBMITTED:
+            row["any_submitted"] = True
+        elif sc.approval_status == StockCount.ApprovalStatus.APPROVED:
+            row["any_approved"] = True
+        else:
+            row["any_pending"] = True
+
+    # POS snapshot for these items on the target date.
+    snap_by_item = {
+        snap.item_id: snap for snap in
+        PosSnapshot.objects
+        .filter(outlet=outlet, item_id__in=item_ids, snapshot_date=target_date)
+    }
+
+    # Materialize enriched rows for every daily-count item.
+    all_items = list(items_qs)
+    rows = []
+    for it in all_items:
+        c = counts_by_item.get(it.id)
+        snap = snap_by_item.get(it.id)
+        counted_qty = float(c["total_qty"]) if c else None
+        pos_qty = float(snap.pos_quantity) if snap else None
+        cost_price = float(snap.cost_price) if snap and snap.cost_price is not None else None
+        sell_price = float(snap.selling_price) if snap and snap.selling_price is not None else None
+
+        variance_qty = None
+        variance_value = None
+        if c is not None and pos_qty is not None:
+            variance_qty = counted_qty - pos_qty
+            if cost_price is not None:
+                variance_value = variance_qty * cost_price
+
+        if c is None:
+            status = "not_counted"
+        elif variance_qty is None or variance_qty == 0:
+            status = "match"
+        elif variance_qty < 0:
+            status = "shrinkage"
+        else:
+            status = "extra"
+
+        counters = sorted(c["counters"]) if c else []
+        counters_summary = (
+            "Multiple" if len(counters) > 1
+            else (counters[0] if counters else "—")
+        )
+        status_summary = None
+        if c:
+            status_summary = (
+                "approved" if c["any_approved"] and not c["any_submitted"] and not c["any_pending"]
+                else "submitted" if c["any_submitted"]
+                else "mixed" if len(counters) > 1 or c["any_approved"] and c["any_pending"]
+                else "pending"
+            )
+
+        rows.append({
+            "item_id": it.id,
+            "item_code": it.item_code,
+            "item_name": it.item_name,
+            "category": it.category or "",
+            "rack_number": it.rack_number or "",
+            "shelf": it.shelf or "",
+
+            "pos_qty": pos_qty,
+            "cost_price": cost_price,
+            "sell_price": sell_price,
+
+            "counted_qty": counted_qty,
+            "locations_count": (c["locations_count"] if c else 0),
+            "variance_qty": variance_qty,
+            "variance_value": variance_value,
+
+            "status": status,
+            "count_status": status_summary,
+            "counters": counters,
+            "counters_summary": counters_summary,
+            "last_counted_at": c["last_counted_at"].isoformat() if c and c["last_counted_at"] else None,
+        })
+
+    # Summary (computed BEFORE bucket filter so numbers reflect the outlet,
+    # not the filtered view). Includes per-bucket counts for the chip
+    # labels and a net variance value across counted items.
+    total_items = len(rows)
+    bucket_counts = {"not_counted": 0, "match": 0, "shrinkage": 0, "extra": 0}
+    net_variance_value = 0.0
+    for r in rows:
+        bucket_counts[r["status"]] += 1
+        if r["variance_value"] is not None:
+            net_variance_value += r["variance_value"]
+    counted = total_items - bucket_counts["not_counted"]
+    summary = {
+        "total_items": total_items,
+        "counted": counted,
+        "not_counted": bucket_counts["not_counted"],
+        "counted_pct": round(counted / total_items * 100, 1) if total_items else 0,
+        "net_variance_value": net_variance_value,
+        "bucket_counts": bucket_counts,
+        "date": str(target_date),
+    }
+
+    bucket = (request.query_params.get("bucket") or "all").lower()
+    if bucket in ("not_counted", "match", "shrinkage", "extra"):
+        rows = [r for r in rows if r["status"] == bucket]
+
+    sort_by = request.query_params.get("sort_by", "urgency")
+    order = request.query_params.get("order", "asc" if sort_by == "urgency" else "asc")
+    rows = _sort_rows(rows, sort_by, order, DAILY_ITEM_SORT_KEYS, "urgency")
+
+    if request.query_params.get("export") == "csv":
+        header = ["Code", "Name", "Category", "Rack", "Shelf",
+                  "POS qty", "Counted qty", "Variance qty", "Variance value",
+                  "Status", "Counted by", "Last counted at"]
+
+        def iterator():
+            for r in rows:
+                yield [
+                    r["item_code"], r["item_name"], r["category"],
+                    r["rack_number"], r["shelf"],
+                    "" if r["pos_qty"] is None else r["pos_qty"],
+                    "" if r["counted_qty"] is None else r["counted_qty"],
+                    "" if r["variance_qty"] is None else r["variance_qty"],
+                    "" if r["variance_value"] is None else r["variance_value"],
+                    r["status"],
+                    r["counters_summary"],
+                    r["last_counted_at"] or "",
+                ]
+
+        resp = _csv_stream(header, iterator())
+        resp["Content-Disposition"] = (
+            f'attachment; filename="daily-ops-daily-count-{target_date}.csv"'
+        )
+        return resp
+
+    try:
+        page = max(1, int(request.query_params.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = min(max(int(request.query_params.get("page_size", 25)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 25
+
+    total = len(rows)
+    offset = (page - 1) * page_size
+    results = rows[offset:offset + page_size]
+
+    return Response({
+        "count": total,
+        "page": page,
+        "page_size": page_size,
+        "outlet_id": outlet.id,
+        "date": str(target_date),
+        "summary": summary,
+        "results": results,
+    })
+
+
 @api_view(["GET"])
 @permission_classes([IsManager])
 def item_coverage_range(request):

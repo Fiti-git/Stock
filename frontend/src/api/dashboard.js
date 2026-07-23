@@ -140,6 +140,37 @@ export const getCountProgress2 = ({ outletId, date } = {}) =>
     },
   });
 
+export const getDailyCountItems = ({
+  outletId, date, q, bucket, sortBy, order, page = 1, pageSize = 25,
+} = {}) =>
+  api.get("/dashboard/daily-count-items/", {
+    params: {
+      ...(outletId ? { outlet: outletId } : {}),
+      ...(date ? { date } : {}),
+      ...(q ? { q } : {}),
+      ...(bucket && bucket !== "all" ? { bucket } : {}),
+      ...(sortBy ? { sort_by: sortBy } : {}),
+      ...(order ? { order } : {}),
+      page, page_size: pageSize,
+    },
+  });
+
+export const downloadDailyCountItemsCsv = ({
+  outletId, date, q, bucket, sortBy, order,
+} = {}) =>
+  api.get("/dashboard/daily-count-items/", {
+    params: {
+      export: "csv",
+      ...(outletId ? { outlet: outletId } : {}),
+      ...(date ? { date } : {}),
+      ...(q ? { q } : {}),
+      ...(bucket && bucket !== "all" ? { bucket } : {}),
+      ...(sortBy ? { sort_by: sortBy } : {}),
+      ...(order ? { order } : {}),
+    },
+    responseType: "blob",
+  });
+
 export const getItemCoverageRange = ({
   outletId, from, to, q, bucket, sortBy, order, page = 1, pageSize = 25,
 } = {}) =>

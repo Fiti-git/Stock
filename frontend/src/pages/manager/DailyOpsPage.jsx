@@ -29,7 +29,9 @@ import {
   closeCountSession, rejectCount,
   downloadCountsGroupedCsv, downloadUncountedCsv,
   getItemCoverageRange, downloadItemCoverageCsv,
+  getDailyCountItems, downloadDailyCountItemsCsv,
 } from "../../api/dashboard";
+import StarIcon from "@mui/icons-material/Star";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import ReplayIcon from "@mui/icons-material/Replay";
@@ -911,6 +913,204 @@ function CoverageModal({ open, onClose, outletId }) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Daily-count items modal — shows every is_daily_count item for the outlet
+// alongside today's count + variance status. Card summary lives on the
+// main Daily Ops page and drills into this modal.
+// ────────────────────────────────────────────────────────────────────────────
+const DAILY_ITEM_BUCKETS = [
+  { key: "all",         label: "All",         color: "default" },
+  { key: "not_counted", label: "Not counted", color: "error"   },
+  { key: "match",       label: "Match",       color: "success" },
+  { key: "shrinkage",   label: "Shrinkage",   color: "warning" },
+  { key: "extra",       label: "Extra",       color: "info"    },
+];
+
+function DailyCountModal({ open, onClose, outletId, date }) {
+  const [rows, setRows] = useState([]);
+  const [count, setCount] = useState(0);
+  const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(0);
+  const [pageSize] = useState(25);
+  const [q, setQ] = useState("");
+  const [bucket, setBucket] = useState("all");
+  const [sort, setSort] = useState({ by: "urgency", dir: "asc" });
+  const [csvSaving, setCsvSaving] = useState(false);
+  const notify = useNotify();
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    getDailyCountItems({
+      outletId, date, q, bucket,
+      sortBy: sort.by, order: sort.dir,
+      page: page + 1, pageSize,
+    })
+      .then(({ data }) => {
+        setRows(data.results || []);
+        setCount(data.count || 0);
+        setSummary(data.summary || null);
+      })
+      .catch(() => { setRows([]); setCount(0); setSummary(null); })
+      .finally(() => setLoading(false));
+  }, [open, outletId, date, q, bucket, sort.by, sort.dir, page, pageSize]);
+
+  useEffect(() => { if (open) setPage(0); }, [q, bucket, sort.by, sort.dir, open]);
+
+  const handleDownloadCsv = async () => {
+    setCsvSaving(true);
+    try {
+      const { data } = await downloadDailyCountItemsCsv({
+        outletId, date, q, bucket,
+        sortBy: sort.by, order: sort.dir,
+      });
+      downloadBlob(data, `daily-ops-daily-count-${date}.csv`);
+    } catch {
+      notify.error("CSV export failed.");
+    } finally {
+      setCsvSaving(false);
+    }
+  };
+
+  const bucketColor = (b) => (DAILY_ITEM_BUCKETS.find((x) => x.key === b) || {}).color || "default";
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+      <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Box>
+          <Typography variant="h4">Daily-count items · {date}</Typography>
+          {summary && (
+            <Typography variant="caption" color="text.secondary">
+              {fmtNum(summary.total_items)} items · {fmtNum(summary.counted)} counted ({summary.counted_pct}%) ·
+              {" "}{fmtNum(summary.not_counted)} not counted ·
+              {" "}net variance {fmtNum(summary.net_variance_value, 2)}
+            </Typography>
+          )}
+        </Box>
+        <IconButton onClick={onClose}><CloseIcon /></IconButton>
+      </DialogTitle>
+      <DialogContent dividers>
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }} flexWrap="wrap" useFlexGap>
+          <TextField
+            size="small" placeholder="Search item code or name…"
+            value={q} onChange={(e) => setQ(e.target.value)}
+            sx={{ flex: 1, minWidth: 220 }}
+            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+          />
+          <Button
+            size="small" variant="outlined" startIcon={<DownloadIcon />}
+            onClick={handleDownloadCsv} disabled={csvSaving}
+          >
+            {csvSaving ? "Preparing…" : "CSV"}
+          </Button>
+        </Stack>
+
+        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
+          <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>Status</Typography>
+          {DAILY_ITEM_BUCKETS.map((b) => {
+            const n = b.key === "all"
+              ? summary?.total_items
+              : summary?.bucket_counts?.[b.key];
+            const label = n == null ? b.label : `${b.label} (${fmtNum(n)})`;
+            return (
+              <Chip
+                key={b.key} size="small" label={label}
+                variant={bucket === b.key ? "filled" : "outlined"}
+                color={bucket === b.key ? b.color : "default"}
+                onClick={() => setBucket(b.key)}
+              />
+            );
+          })}
+        </Stack>
+
+        <TableContainer sx={{ maxHeight: 480 }}>
+          <Table size="small" stickyHeader>
+            <TableHead>
+              <TableRow>
+                <SortableHeadCell field="item_code" label="Code" sort={sort} setSort={setSort} />
+                <SortableHeadCell field="item_name" label="Item" sort={sort} setSort={setSort} />
+                <SortableHeadCell field="category" label="Category" sort={sort} setSort={setSort} />
+                <TableCell>Rack / Shelf</TableCell>
+                <SortableHeadCell field="pos_qty" label="POS qty" sort={sort} setSort={setSort} align="right" />
+                <SortableHeadCell field="counted_qty" label="Counted" sort={sort} setSort={setSort} align="right" />
+                <SortableHeadCell field="variance_qty" label="Variance qty" sort={sort} setSort={setSort} align="right" />
+                <SortableHeadCell field="variance_value" label="Variance value" sort={sort} setSort={setSort} align="right" />
+                <SortableHeadCell field="status" label="Status" sort={sort} setSort={setSort} />
+                <SortableHeadCell field="counters_summary" label="Counted by" sort={sort} setSort={setSort} />
+                <SortableHeadCell field="last_counted_at" label="Last at" sort={sort} setSort={setSort} />
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {loading && (
+                <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4 }}><CircularProgress size={22} /></TableCell></TableRow>
+              )}
+              {!loading && rows.length === 0 && (
+                <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4, color: "text.secondary" }}>
+                  No items match these filters
+                </TableCell></TableRow>
+              )}
+              {!loading && rows.map((r) => {
+                const bg =
+                  r.status === "not_counted" ? "error.50" :
+                  r.status === "shrinkage"   ? "warning.50" :
+                  undefined;
+                return (
+                  <TableRow key={r.item_id} hover sx={bg ? { bgcolor: bg } : undefined}>
+                    <TableCell sx={{ fontFamily: "monospace" }}>{r.item_code}</TableCell>
+                    <TableCell>{r.item_name}</TableCell>
+                    <TableCell>{r.category || "—"}</TableCell>
+                    <TableCell>{[r.rack_number, r.shelf].filter(Boolean).join(" / ") || "—"}</TableCell>
+                    <TableCell align="right">{r.pos_qty == null ? "—" : fmtNum(r.pos_qty, 3)}</TableCell>
+                    <TableCell align="right">
+                      {r.counted_qty == null
+                        ? <span style={{ color: "rgba(0,0,0,0.4)" }}>—</span>
+                        : <b>{fmtNum(r.counted_qty, 3)}</b>}
+                    </TableCell>
+                    <TableCell align="right">
+                      {r.variance_qty == null
+                        ? <span style={{ color: "rgba(0,0,0,0.4)" }}>—</span>
+                        : <Chip
+                            size="small" variant="outlined"
+                            color={r.variance_qty === 0 ? "default" : r.variance_qty > 0 ? "success" : "error"}
+                            label={fmtNum(r.variance_qty, 3)}
+                          />}
+                    </TableCell>
+                    <TableCell align="right" sx={{
+                      color: r.variance_value == null ? "text.primary" :
+                             r.variance_value < 0 ? "error.main" :
+                             r.variance_value > 0 ? "success.main" : "text.primary",
+                      fontWeight: r.variance_value ? 600 : 400,
+                    }}>
+                      {r.variance_value == null ? "—" : fmtNum(r.variance_value, 2)}
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        size="small" variant="outlined"
+                        color={bucketColor(r.status)}
+                        label={r.status.replace("_", " ")}
+                      />
+                    </TableCell>
+                    <TableCell>{r.counters_summary}</TableCell>
+                    <TableCell>{fmtTime(r.last_counted_at)}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+        <TablePagination
+          component="div"
+          count={count} page={page} rowsPerPage={pageSize}
+          onPageChange={(_, p) => setPage(p)}
+          rowsPerPageOptions={[]}
+        />
+      </DialogContent>
+      <DialogActions><Button onClick={onClose}>Close</Button></DialogActions>
+    </Dialog>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Main page
 // ────────────────────────────────────────────────────────────────────────────
 export default function DailyOpsPage() {
@@ -930,6 +1130,8 @@ export default function DailyOpsPage() {
   const [varOpen, setVarOpen] = useState(false);
   const [covOpen, setCovOpen] = useState(false);
   const [coverageSummary, setCoverageSummary] = useState(null);
+  const [dcOpen, setDcOpen] = useState(false);
+  const [dcSummary, setDcSummary] = useState(null);
   const [diffId, setDiffId] = useState(null);
   const [closeConfirm, setCloseConfirm] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -1017,6 +1219,18 @@ export default function DailyOpsPage() {
       .then(({ data }) => setCoverageSummary(data?.summary || null))
       .catch(() => setCoverageSummary(null));
   }, [outletId, canLoad, reloadKey]);
+
+  // Daily-count-items summary card — scoped to the current selected date
+  // so it updates when the manager clicks prev/next or picks a date.
+  useEffect(() => {
+    if (!canLoad) return;
+    getDailyCountItems({
+      outletId, date,
+      page: 1, pageSize: 1,   // summary block only
+    })
+      .then(({ data }) => setDcSummary(data?.summary || null))
+      .catch(() => setDcSummary(null));
+  }, [outletId, date, canLoad, reloadKey]);
 
   const uploadsToday = useMemo(
     () => (uploadHistory.logs || []).filter((l) => l.snapshot_date === date),
@@ -1287,9 +1501,66 @@ export default function DailyOpsPage() {
             </CardContent>
           </Card>
         </Grid>
+
+        {/* ───────────── Zone 6: DAILY-COUNT ITEMS (selected date) ───────────── */}
+        <Grid item xs={12}>
+          <Card
+            variant="outlined"
+            sx={{
+              cursor: "pointer",
+              transition: "all 120ms ease",
+              "&:hover": { borderColor: "primary.main", boxShadow: 3 },
+            }}
+            onClick={() => setDcOpen(true)}
+          >
+            <CardContent>
+              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
+                <StarIcon sx={{ color: "#f59e0b" }} />
+                <Typography variant="h5">Daily-count items · {date}</Typography>
+                <Chip size="small" variant="outlined" label="Click to explore" sx={{ ml: "auto" }} />
+              </Stack>
+              {dcSummary ? (
+                dcSummary.total_items === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    No items flagged as daily-count in this outlet. Turn on the "Daily count" toggle on items in Product Catalog to add them.
+                  </Typography>
+                ) : (
+                  <Stack direction="row" spacing={4} flexWrap="wrap" useFlexGap>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>Total daily-count items</Typography>
+                      <Typography variant="h5">{fmtNum(dcSummary.total_items)}</Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>Counted today</Typography>
+                      <Typography variant="h5" color="success.main">
+                        {fmtNum(dcSummary.counted)}
+                        <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                          ({dcSummary.counted_pct}%)
+                        </Typography>
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>Not counted</Typography>
+                      <Typography variant="h5" color="error.main">{fmtNum(dcSummary.not_counted)}</Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>Net variance value</Typography>
+                      <Typography variant="h5" color={dcSummary.net_variance_value < 0 ? "error.main" : "text.primary"}>
+                        {fmtNum(dcSummary.net_variance_value, 2)}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                )
+              ) : (
+                <Typography variant="body2" color="text.secondary">Loading daily-count items…</Typography>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
       </Grid>
 
       <CoverageModal open={covOpen} onClose={() => setCovOpen(false)} outletId={outletId} />
+      <DailyCountModal open={dcOpen} onClose={() => setDcOpen(false)} outletId={outletId} date={date} />
       <UncountedModal open={uncOpen} onClose={() => setUncOpen(false)} outletId={outletId} date={date} />
       <CountedModal
         open={cntOpen} onClose={() => setCntOpen(false)}
