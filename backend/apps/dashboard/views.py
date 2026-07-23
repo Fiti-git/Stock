@@ -1068,10 +1068,14 @@ def item_coverage_range(request):
         })
 
     # Summary (computed BEFORE bucket filter so numbers reflect the outlet,
-    # not the filtered view).
+    # not the filtered view). Per-bucket counts also live here so the
+    # frontend can show "Never (6,307)" etc on the filter chips.
     total_items = len(rows)
     counted_at_least_once = sum(1 for r in rows if r["times_counted"] > 0)
     counted_every_day = sum(1 for r in rows if r["times_counted"] == range_days)
+    bucket_counts = {"never": 0, "once": 0, "occasional": 0, "frequent": 0}
+    for r in rows:
+        bucket_counts[r["coverage_bucket"]] += 1
     summary = {
         "total_items": total_items,
         "counted_at_least_once": counted_at_least_once,
@@ -1079,6 +1083,7 @@ def item_coverage_range(request):
         "never_counted": total_items - counted_at_least_once,
         "range_days": range_days,
         "frequent_threshold": frequent_threshold,
+        "bucket_counts": bucket_counts,
     }
 
     bucket = (request.query_params.get("bucket") or "all").lower()

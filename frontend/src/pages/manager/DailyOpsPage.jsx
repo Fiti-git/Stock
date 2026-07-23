@@ -835,17 +835,25 @@ function CoverageModal({ open, onClose, outletId }) {
           </Button>
         </Stack>
 
-        {/* Bucket filter — single-select */}
+        {/* Bucket filter — single-select. Counts on each chip come from the
+            summary payload so managers see the split without applying the
+            filter first (e.g. "Never (6,307)"). */}
         <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
           <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>Coverage</Typography>
-          {COVERAGE_BUCKETS.map((b) => (
-            <Chip
-              key={b.key} size="small" label={b.label}
-              variant={bucket === b.key ? "filled" : "outlined"}
-              color={bucket === b.key ? b.color : "default"}
-              onClick={() => setBucket(b.key)}
-            />
-          ))}
+          {COVERAGE_BUCKETS.map((b) => {
+            const n = b.key === "all"
+              ? summary?.total_items
+              : summary?.bucket_counts?.[b.key];
+            const label = n == null ? b.label : `${b.label} (${fmtNum(n)})`;
+            return (
+              <Chip
+                key={b.key} size="small" label={label}
+                variant={bucket === b.key ? "filled" : "outlined"}
+                color={bucket === b.key ? b.color : "default"}
+                onClick={() => setBucket(b.key)}
+              />
+            );
+          })}
         </Stack>
 
         <TableContainer sx={{ maxHeight: 480 }}>
