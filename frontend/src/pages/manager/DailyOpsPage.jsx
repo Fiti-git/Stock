@@ -835,6 +835,15 @@ function CoverageModal({ open, onClose, outletId }) {
           >
             {csvSaving ? "Preparing…" : "CSV"}
           </Button>
+          <Button
+            size="small" variant="contained"
+            component="a"
+            href={`/admin/count-history-detail?from=${from}&to=${to}${outletId ? `&outlet=${outletId}` : ""}`}
+            target="_blank"
+            rel="noopener"
+          >
+            View detail →
+          </Button>
         </Stack>
 
         {/* Bucket filter — single-select. Counts on each chip come from the

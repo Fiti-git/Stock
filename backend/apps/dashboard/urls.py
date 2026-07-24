@@ -9,7 +9,7 @@ from .views import (
     count_coverage_report, counter_performance, coverage_by_day,
     uncounted_items, counts_grouped,
     manager_summary, sales_and_shrinkage_trend, category_performance,
-    item_coverage_range, daily_count_items,
+    item_coverage_range, daily_count_items, count_history_detail,
 )
 
 urlpatterns = [
@@ -37,6 +37,7 @@ urlpatterns = [
     path("sales-shrinkage-trend/", sales_and_shrinkage_trend, name="sales-shrinkage-trend"),
     path("category-performance/", category_performance, name="category-performance"),
     path("item-coverage-range/", item_coverage_range, name="item-coverage-range"),
+    path("count-history-detail/", count_history_detail, name="count-history-detail"),
     path("daily-count-items/", daily_count_items, name="daily-count-items"),
 
     path("count-sessions/", list_count_sessions, name="count-sessions"),

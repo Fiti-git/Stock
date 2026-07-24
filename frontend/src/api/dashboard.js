@@ -204,6 +204,41 @@ export const downloadItemCoverageCsv = ({
     responseType: "blob",
   });
 
+export const getCountHistoryDetail = ({
+  outletId, from, to, q, user, onlyVariance, sortBy, order, page = 1, pageSize = 50,
+} = {}) =>
+  api.get("/dashboard/count-history-detail/", {
+    params: {
+      ...(outletId ? { outlet: outletId } : {}),
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+      ...(q ? { q } : {}),
+      ...(user ? { user } : {}),
+      ...(onlyVariance ? { only_variance: 1 } : {}),
+      ...(sortBy ? { sort_by: sortBy } : {}),
+      ...(order ? { order } : {}),
+      page, page_size: pageSize,
+    },
+  });
+
+export const downloadCountHistoryDetailCsv = ({
+  outletId, from, to, q, user, onlyVariance, sortBy, order,
+} = {}) =>
+  api.get("/dashboard/count-history-detail/", {
+    params: {
+      export: "csv",
+      ...(outletId ? { outlet: outletId } : {}),
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+      ...(q ? { q } : {}),
+      ...(user ? { user } : {}),
+      ...(onlyVariance ? { only_variance: 1 } : {}),
+      ...(sortBy ? { sort_by: sortBy } : {}),
+      ...(order ? { order } : {}),
+    },
+    responseType: "blob",
+  });
+
 export const getUncounted = ({
   outletId, date, page = 1, pageSize = 25, q = "",
   dailyOnly = false, recountOnly = false, sortBy, order,

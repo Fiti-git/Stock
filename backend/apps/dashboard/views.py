@@ -1379,6 +1379,188 @@ def item_coverage_range(request):
     })
 
 
+COUNT_HISTORY_SORT_KEYS = {
+    "count_date":       lambda r: r["count_date"] or "",
+    "item_code":        lambda r: r["item_code"] or "",
+    "item_name":        lambda r: (r["item_name"] or "").lower(),
+    "counted_qty":      lambda r: r["counted_qty"],
+    "mypos_qty":        lambda r: r["mypos_qty"],
+    "variance":         lambda r: r["variance"],
+    "loss_value":       lambda r: r["loss_value"],
+    "counted_by_name":  lambda r: (r["counted_by_name"] or "").lower(),
+}
+
+
+@api_view(["GET"])
+@permission_classes([IsManager])
+def count_history_detail(request):
+    """
+    Per-count-event drill-down for the Count Coverage report. Unlike
+    item_coverage_range (one row per item), this returns one row per
+    StockCount record so 10 counts of the same item show as 10 rows.
+
+    Joins in:
+      - counter username (StockCount.counted_by)
+      - MyPOS qty on the same (outlet, item, count_date) from PosSnapshot
+      - variance = counted_qty − mypos_qty
+      - loss_value = variance × current cost_price (signed; negative = loss)
+
+    Rejected counts are excluded (matches item_coverage_range).
+
+    Query params:
+      outlet=<id>            admin override
+      from=YYYY-MM-DD        range start (inclusive; default: today - 6d)
+      to=YYYY-MM-DD          range end (inclusive; default: today)
+      q                      search item_code / item_name
+      user=<id|username>     filter by counter (id preferred, falls back to username)
+      only_variance=1        only rows where variance != 0
+      sort_by, order         see COUNT_HISTORY_SORT_KEYS
+      page, page_size        standard pagination
+      export=csv             stream all matching rows as CSV
+    """
+    outlet = _resolve_outlet(request)
+    if not outlet:
+        return Response({"detail": "No outlet."}, status=400)
+
+    to_date = _parse_date(request.query_params.get("to", "")) or date.today()
+    from_date = _parse_date(request.query_params.get("from", "")) or (to_date - timedelta(days=6))
+    if from_date > to_date:
+        from_date, to_date = to_date, from_date
+
+    counts_qs = (
+        StockCount.objects
+        .filter(outlet=outlet, count_date__gte=from_date, count_date__lte=to_date)
+        .exclude(approval_status=StockCount.ApprovalStatus.REJECTED)
+        .select_related("item", "counted_by")
+    )
+
+    q = (request.query_params.get("q") or "").strip()
+    if q:
+        counts_qs = counts_qs.filter(
+            Q(item__item_code__icontains=q) | Q(item__item_name__icontains=q)
+        )
+
+    user_param = (request.query_params.get("user") or "").strip()
+    if user_param:
+        if user_param.isdigit():
+            counts_qs = counts_qs.filter(counted_by_id=int(user_param))
+        else:
+            counts_qs = counts_qs.filter(counted_by__username=user_param)
+
+    # Bulk-fetch PosSnapshot rows for all (item, date) pairs in one query.
+    count_list = list(counts_qs.only(
+        "id", "count_date", "actual_qty", "item_id", "counted_by_id"
+    ))
+    item_ids = {c.item_id for c in count_list}
+    dates = {c.count_date for c in count_list}
+    pos_map = {}
+    if item_ids and dates:
+        pos_rows = PosSnapshot.objects.filter(
+            outlet=outlet, item_id__in=item_ids, snapshot_date__in=dates,
+        ).values("item_id", "snapshot_date", "pos_quantity")
+        for r in pos_rows:
+            pos_map[(r["item_id"], r["snapshot_date"])] = float(r["pos_quantity"] or 0)
+
+    # Bulk-fetch item details + current cost.
+    item_map = {
+        it.id: it for it in Item.objects.filter(id__in=item_ids).only(
+            "id", "item_code", "item_name", "category", "cost_price"
+        )
+    }
+
+    rows = []
+    for c in count_list:
+        it = item_map.get(c.item_id)
+        if not it:
+            continue
+        counted_qty = float(c.actual_qty or 0)
+        mypos_qty = pos_map.get((c.item_id, c.count_date), 0.0)
+        variance = counted_qty - mypos_qty
+        cost = float(it.cost_price or 0)
+        loss_value = variance * cost
+        rows.append({
+            "count_id": c.id,
+            "count_date": str(c.count_date),
+            "item_id": c.item_id,
+            "item_code": it.item_code,
+            "item_name": it.item_name,
+            "category": it.category or "",
+            "counted_qty": counted_qty,
+            "counted_by_id": c.counted_by_id,
+            "counted_by_name": (
+                c.counted_by.username if c.counted_by_id and c.counted_by else ""
+            ),
+            "mypos_qty": mypos_qty,
+            "variance": variance,
+            "cost_price": cost,
+            "loss_value": loss_value,
+        })
+
+    if request.query_params.get("only_variance") in ("1", "true"):
+        rows = [r for r in rows if abs(r["variance"]) > 0.001]
+
+    # Summary computed BEFORE pagination so totals reflect the filtered set.
+    total_variance_qty = sum(r["variance"] for r in rows)
+    total_loss_value = sum(r["loss_value"] for r in rows if r["loss_value"] < 0)
+    total_surplus_value = sum(r["loss_value"] for r in rows if r["loss_value"] > 0)
+    summary = {
+        "total_events": len(rows),
+        "total_variance_qty": total_variance_qty,
+        "total_loss_value": total_loss_value,
+        "total_surplus_value": total_surplus_value,
+        "range_days": (to_date - from_date).days + 1,
+    }
+
+    sort_by = request.query_params.get("sort_by", "count_date")
+    order = request.query_params.get("order", "desc")
+    rows = _sort_rows(rows, sort_by, order, COUNT_HISTORY_SORT_KEYS, "count_date")
+
+    if request.query_params.get("export") == "csv":
+        header = [
+            "Count date", "Code", "Name", "Category",
+            "Counted qty", "MyPOS qty", "Variance",
+            "Cost price", "Loss/Surplus value", "Counted by",
+        ]
+
+        def iterator():
+            for r in rows:
+                yield [
+                    r["count_date"], r["item_code"], r["item_name"], r["category"],
+                    r["counted_qty"], r["mypos_qty"], r["variance"],
+                    r["cost_price"], r["loss_value"], r["counted_by_name"],
+                ]
+
+        resp = _csv_stream(header, iterator())
+        resp["Content-Disposition"] = (
+            f'attachment; filename="count-history-detail-{from_date}-to-{to_date}.csv"'
+        )
+        return resp
+
+    try:
+        page = max(1, int(request.query_params.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = min(max(int(request.query_params.get("page_size", 50)), 1), 500)
+    except (TypeError, ValueError):
+        page_size = 50
+
+    total = len(rows)
+    offset = (page - 1) * page_size
+    results = rows[offset:offset + page_size]
+
+    return Response({
+        "count": total,
+        "page": page,
+        "page_size": page_size,
+        "outlet_id": outlet.id,
+        "from_date": str(from_date),
+        "to_date": str(to_date),
+        "summary": summary,
+        "results": results,
+    })
+
+
 @api_view(["GET"])
 @permission_classes([IsManager])
 def uncounted_items(request):
