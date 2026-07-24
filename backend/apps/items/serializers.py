@@ -1,7 +1,19 @@
 from rest_framework import serializers
-from .models import Item, PendingItem
+from .models import Item, PendingItem, Location
 from apps.uploads.models import PosSnapshot
 from apps.dashboard.models import StockCount
+
+
+class LocationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Location
+        fields = ["id", "name", "icon", "sort_order", "is_active", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def update(self, instance, validated_data):
+        # Name is immutable after creation — silently drop any incoming value.
+        validated_data.pop("name", None)
+        return super().update(instance, validated_data)
 
 
 class ItemSerializer(serializers.ModelSerializer):

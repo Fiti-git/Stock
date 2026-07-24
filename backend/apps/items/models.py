@@ -38,6 +38,28 @@ class Category(models.Model):
         return self.name
 
 
+class Location(models.Model):
+    """
+    Admin-managed list of physical locations shown as tiles in the mobile
+    PlaceScreen (e.g. "Rack", "Store Room", "Warehouse"). Shared across all
+    outlets. `name` is immutable after creation so historical Item.rack_number
+    / Item.shelf strings never drift from a known label.
+    """
+    name = models.CharField(max_length=80, unique=True)
+    icon = models.CharField(max_length=8, blank=True, default="")
+    sort_order = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "locations"
+        ordering = ["sort_order", "name"]
+
+    def __str__(self):
+        return self.name
+
+
 class Item(models.Model):
     class Status(models.TextChoices):
         ACTIVE = "active", "Active"

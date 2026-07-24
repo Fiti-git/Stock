@@ -10,8 +10,34 @@ from rest_framework.response import Response
 from apps.accounts.permissions import IsAdmin, IsManager, IsStoreUser
 from apps.accounts.device_utils import touch_device, get_device_uuid
 from apps.uploads.models import AuditLog, PosSnapshot
-from .models import Item, ItemBarcode, PendingItem, UnitOfMeasure
-from .serializers import ItemSerializer, PendingItemSerializer, AssignBarcodeSerializer, ItemDetailSerializer, ItemUpdateSerializer
+from rest_framework import viewsets
+from .models import Item, ItemBarcode, PendingItem, UnitOfMeasure, Location
+from .serializers import ItemSerializer, PendingItemSerializer, AssignBarcodeSerializer, ItemDetailSerializer, ItemUpdateSerializer, LocationSerializer
+
+
+class LocationViewSet(viewsets.ModelViewSet):
+    """
+    /api/locations/ — admin-managed list of physical locations shown in the
+    mobile PlaceScreen. Read = any authenticated user; write = admin only.
+    `name` is immutable on update (enforced in serializer).
+    """
+    queryset = Location.objects.all().order_by("sort_order", "name")
+    serializer_class = LocationSerializer
+    pagination_class = None
+
+    def get_permissions(self):
+        if self.action in ("list", "retrieve"):
+            return [IsAuthenticated()]
+        return [IsAuthenticated(), IsAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        active = self.request.query_params.get("is_active")
+        if active in ("true", "1"):
+            qs = qs.filter(is_active=True)
+        elif active in ("false", "0"):
+            qs = qs.filter(is_active=False)
+        return qs
 
 
 @api_view(["GET"])

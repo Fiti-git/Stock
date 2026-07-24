@@ -25,6 +25,7 @@ import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import LeaderboardIcon from "@mui/icons-material/Leaderboard";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import CategoryIcon from "@mui/icons-material/Category";
+import PlaceIcon from "@mui/icons-material/Place";
 import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
 import TodayIcon from "@mui/icons-material/Today";
 
@@ -86,6 +87,7 @@ export const routes = [
   { path: "/admin/master-mapping",        code: "nav.master_mapping",   label: "Master Mapping",   icon: EditNoteIcon,         roles: ["admin","super_admin"],                    group: "Masters",  system: "org" },
   { path: "/admin/suppliers",             code: "nav.suppliers",        label: "Suppliers",        icon: LocalShippingIcon,    roles: ["admin","super_admin"],                    group: "Masters",  system: "org" },
   { path: "/admin/categories",            code: "nav.categories",       label: "Categories",       icon: CategoryIcon,         roles: ["admin","super_admin"],                    group: "Masters",  system: "org" },
+  { path: "/admin/locations",             code: "nav.categories",       label: "Locations",        icon: PlaceIcon,            roles: ["admin","super_admin"],                    group: "Masters",  system: "org" },
   { path: "/admin/demand",                code: "nav.demand_dashboard", label: "Demand Dashboard", icon: QueryStatsIcon,       roles: ["manager","admin","super_admin"],         group: "Planning", system: "org" },
   { path: "/admin/purchase-plans",        code: "nav.purchase_plans",   label: "Purchase Plans",   icon: ListAltIcon,          roles: ["admin","super_admin"],                    group: "Planning", system: "org" },
 
