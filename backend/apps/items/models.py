@@ -187,6 +187,75 @@ class Item(models.Model):
         return f"{self.item_code} — {self.item_name}"
 
 
+class ItemDailyCountHistory(models.Model):
+    """
+    Append-only log of Item.is_daily_count toggles. Enables "was this item
+    a daily-count item on date X?" queries so historical reports stay
+    accurate after the flag is flipped off.
+
+    One row per toggle event. Latest row with effective_from <= target_date
+    determines the state on that date.
+    """
+    item = models.ForeignKey(
+        Item,
+        on_delete=models.CASCADE,
+        related_name="daily_count_history",
+    )
+    was_daily_count = models.BooleanField()
+    effective_from = models.DateField(db_index=True)
+    changed_by = models.ForeignKey(
+        "accounts.User",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    note = models.CharField(max_length=200, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "item_daily_count_history"
+        ordering = ["-effective_from", "-created_at"]
+        indexes = [
+            models.Index(fields=["item", "-effective_from"]),
+        ]
+
+    def __str__(self):
+        return f"{self.item_id} → {self.was_daily_count} on {self.effective_from}"
+
+
+def was_daily_count_on(item_id, target_date):
+    """Return whether item was flagged is_daily_count on target_date."""
+    row = (
+        ItemDailyCountHistory.objects
+        .filter(item_id=item_id, effective_from__lte=target_date)
+        .order_by("-effective_from", "-created_at")
+        .first()
+    )
+    return bool(row.was_daily_count) if row else False
+
+
+def daily_count_item_ids_on(outlet_id, target_date):
+    """
+    Item IDs that were flagged is_daily_count on target_date for the outlet.
+    Efficient: one SQL query using DISTINCT ON semantics via subquery.
+    """
+    from django.db.models import OuterRef, Subquery
+    latest = (
+        ItemDailyCountHistory.objects
+        .filter(item_id=OuterRef("id"), effective_from__lte=target_date)
+        .order_by("-effective_from", "-created_at")
+        .values("was_daily_count")[:1]
+    )
+    qs = (
+        Item.objects
+        .filter(outlet_id=outlet_id)
+        .annotate(_dc=Subquery(latest))
+        .filter(_dc=True)
+    )
+    return qs.values_list("id", flat=True)
+
+
 class ItemBarcode(models.Model):
     item = models.ForeignKey(
         Item,

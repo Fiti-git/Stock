@@ -11,7 +11,7 @@ from apps.accounts.permissions import IsAdmin, IsManager, IsStoreUser
 from apps.accounts.device_utils import touch_device, get_device_uuid
 from apps.uploads.models import AuditLog, PosSnapshot
 from rest_framework import viewsets
-from .models import Item, ItemBarcode, PendingItem, UnitOfMeasure, Location
+from .models import Item, ItemBarcode, PendingItem, UnitOfMeasure, Location, ItemDailyCountHistory
 from .serializers import ItemSerializer, PendingItemSerializer, AssignBarcodeSerializer, ItemDetailSerializer, ItemUpdateSerializer, LocationSerializer
 
 
@@ -377,6 +377,7 @@ def update_item(request, item_id):
         return Response({"detail": "Not authorized for this outlet."}, status=status.HTTP_403_FORBIDDEN)
 
     prev_is_nbci = item.is_nbci
+    prev_is_daily_count = item.is_daily_count
 
     serializer = ItemUpdateSerializer(item, data=request.data, partial=True)
     if not serializer.is_valid():
@@ -384,6 +385,16 @@ def update_item(request, item_id):
 
     new_barcode = serializer.validated_data.pop("barcode", None)
     updated = serializer.save()
+
+    # Record daily-count flag toggles in history so date-aware reports can
+    # answer "was this a DC item on date X?" after the flag has flipped off.
+    if updated.is_daily_count != prev_is_daily_count:
+        ItemDailyCountHistory.objects.create(
+            item=updated,
+            was_daily_count=updated.is_daily_count,
+            effective_from=timezone.now().date(),
+            changed_by=request.user,
+        )
 
     if new_barcode:
         if ItemBarcode.objects.filter(outlet=item.outlet, barcode=new_barcode).exclude(item=item).exists():

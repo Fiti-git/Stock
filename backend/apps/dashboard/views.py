@@ -1023,10 +1023,15 @@ def daily_count_items(request):
 
     target_date = _parse_date(request.query_params.get("date", "")) or date.today()
 
-    # All daily-count items for the outlet (active only).
+    # Date-aware daily-count filter: use ItemDailyCountHistory so reports
+    # for past dates reflect the flag state on that date, not "today". This
+    # matters when an item was flagged DC in May 2025 but unflagged in Jan
+    # 2026 — a query for Oct 2025 must still include it.
+    from apps.items.models import daily_count_item_ids_on
+    dc_item_ids = list(daily_count_item_ids_on(outlet.id, target_date))
     items_qs = (
         Item.objects
-        .filter(outlet=outlet, status=Item.Status.ACTIVE, is_daily_count=True)
+        .filter(outlet=outlet, status=Item.Status.ACTIVE, id__in=dc_item_ids)
     )
     q = request.query_params.get("q", "").strip()
     if q:
