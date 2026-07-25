@@ -10,6 +10,7 @@ import Layout from "../../components/Layout";
 import { PageHeader, DataTable } from "../../components/ui";
 import { useNotify } from "../../providers/NotificationProvider";
 import { useOutlet } from "../../contexts/OutletContext";
+import { useAuth } from "../../contexts/AuthContext";
 import {
   getCountHistoryDetail, downloadCountHistoryDetailCsv,
 } from "../../api/dashboard";
@@ -39,6 +40,7 @@ function daysAgoIso(n) {
 export default function CountHistoryDetailPage() {
   const notify = useNotify();
   const { outletId: ctxOutletId } = useOutlet();
+  const { user } = useAuth();
   const [params] = useSearchParams();
 
   // URL params take precedence so the "View detail" link from Count Coverage
@@ -60,7 +62,11 @@ export default function CountHistoryDetailPage() {
   const [rowCount, setRowCount] = useState(0);
   const [sortModel, setSortModel] = useState([{ field: "count_date", sort: "desc" }]);
 
-  const outletId = outletFromUrl || ctxOutletId;
+  // Priority: URL param (from "View detail" link) → admin's picked outlet
+  // (OutletContext, only populated for admins) → non-admin user's own outlet.
+  // Without the user.outlet_id fallback, managers landed on the page with
+  // outletId=null and the endpoint call never fired.
+  const outletId = outletFromUrl || ctxOutletId || user?.outlet_id || null;
 
   async function load() {
     if (!outletId) {
