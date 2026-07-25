@@ -63,7 +63,14 @@ export default function CountHistoryDetailPage() {
   const outletId = outletFromUrl || ctxOutletId;
 
   async function load() {
-    if (!outletId) return;
+    if (!outletId) {
+      // No outlet context yet — clear the loading spinner so the empty
+      // state renders instead of a permanent skeleton.
+      setLoading(false);
+      setRows([]);
+      setRowCount(0);
+      return;
+    }
     setLoading(true);
     try {
       const sort = sortModel[0];
@@ -80,19 +87,27 @@ export default function CountHistoryDetailPage() {
       setRows((data.results || []).map((r) => ({ ...r, id: r.count_id })));
       setRowCount(data.count ?? 0);
       setSummary(data.summary || null);
-    } catch {
-      notify.error("Failed to load count history.");
+    } catch (err) {
+      notify.error(err?.response?.data?.detail || "Failed to load count history.");
+      setRows([]);
+      setRowCount(0);
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [paginationModel, sortModel]);
-
+  // Single debounced effect covers ALL dependencies (filters + pagination +
+  // sort + outletId). Prevents the two-effect race that left rows blank when
+  // outletId arrived from OutletContext after first render.
   useEffect(() => {
-    setPaginationModel((m) => ({ ...m, page: 0 }));
-    const t = setTimeout(load, 250);
+    const t = setTimeout(load, 200);
     return () => clearTimeout(t);
+    // eslint-disable-next-line
+  }, [q, user, onlyVariance, from, to, outletId, paginationModel, sortModel]);
+
+  // Reset to page 0 when filter changes (but not when pagination changes).
+  useEffect(() => {
+    setPaginationModel((m) => (m.page === 0 ? m : { ...m, page: 0 }));
     // eslint-disable-next-line
   }, [q, user, onlyVariance, from, to, outletId]);
 
