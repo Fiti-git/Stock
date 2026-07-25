@@ -40,7 +40,7 @@ function daysAgoIso(n) {
 export default function CountHistoryDetailPage() {
   const notify = useNotify();
   const { outletId: ctxOutletId } = useOutlet();
-  const { user } = useAuth();
+  const { user: authUser } = useAuth();
   const [params] = useSearchParams();
 
   // URL params take precedence so the "View detail" link from Count Coverage
@@ -66,7 +66,7 @@ export default function CountHistoryDetailPage() {
   // (OutletContext, only populated for admins) → non-admin user's own outlet.
   // Without the user.outlet_id fallback, managers landed on the page with
   // outletId=null and the endpoint call never fired.
-  const outletId = outletFromUrl || ctxOutletId || user?.outlet_id || null;
+  const outletId = outletFromUrl || ctxOutletId || authUser?.outlet_id || null;
 
   async function load() {
     if (!outletId) {
