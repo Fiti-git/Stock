@@ -1,68 +1,22 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
-  Box, Typography, Stack, Card, TextField, Button,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Paper, Chip, CircularProgress, Alert, Avatar, Tooltip,
+  Stack, TextField, Box, Typography, Chip, Avatar,
 } from "@mui/material";
 import LeaderboardIcon from "@mui/icons-material/Leaderboard";
 import PersonIcon from "@mui/icons-material/Person";
-import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircle";
-import TrendingUpIcon from "@mui/icons-material/TrendingUp";
-import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
-import RefreshIcon from "@mui/icons-material/Refresh";
-import { getCounterPerformance } from "../../api/dashboard";
-import { useOutlet } from "../../contexts/OutletContext";
 import Layout from "../../components/Layout";
+import { PageHeader, DataTable } from "../../components/ui";
+import { useNotify } from "../../providers/NotificationProvider";
+import { useOutlet } from "../../contexts/OutletContext";
+import { useAuth } from "../../contexts/AuthContext";
+import { getCounterPerformance } from "../../api/dashboard";
 
-const today = () => new Date().toISOString().slice(0, 10);
-const daysAgo = (n) => {
+const todayIso = () => new Date().toISOString().slice(0, 10);
+const daysAgoIso = (n) => {
   const d = new Date();
   d.setDate(d.getDate() - n);
   return d.toISOString().slice(0, 10);
 };
-
-function StatCard({ icon: Icon, label, value, color = "#6366f1", sub }) {
-  return (
-    <Card
-      elevation={0}
-      sx={{
-        flex: 1,
-        minWidth: 160,
-        p: 2.5,
-        border: "1px solid rgba(15,23,42,0.08)",
-        borderRadius: 2,
-        bgcolor: "#fff",
-      }}
-    >
-      <Stack direction="row" alignItems="flex-start" spacing={1.5}>
-        <Box
-          sx={{
-            width: 40, height: 40, borderRadius: 1.5,
-            display: "grid", placeItems: "center",
-            bgcolor: `${color}18`,
-            color,
-            flexShrink: 0,
-          }}
-        >
-          <Icon sx={{ fontSize: 20 }} />
-        </Box>
-        <Box>
-          <Typography sx={{ fontSize: "0.78rem", color: "rgba(15,23,42,0.55)", fontWeight: 500, lineHeight: 1.2 }}>
-            {label}
-          </Typography>
-          <Typography sx={{ fontSize: "1.5rem", fontWeight: 800, color: "#0f172a", lineHeight: 1.2 }}>
-            {value ?? "—"}
-          </Typography>
-          {sub && (
-            <Typography sx={{ fontSize: "0.72rem", color: "rgba(15,23,42,0.45)", mt: 0.25 }}>
-              {sub}
-            </Typography>
-          )}
-        </Box>
-      </Stack>
-    </Card>
-  );
-}
 
 function approvalColor(rate) {
   if (rate >= 90) return "success";
@@ -70,279 +24,195 @@ function approvalColor(rate) {
   return "error";
 }
 
-function UserAvatar({ username }) {
-  const initials = username
+function initialsOf(username) {
+  if (!username) return "?";
+  return username
     .split(/[._\s-]/)
     .slice(0, 2)
     .map((p) => p[0]?.toUpperCase())
-    .join("");
-  return (
-    <Avatar sx={{ width: 32, height: 32, fontSize: "0.75rem", fontWeight: 700, bgcolor: "#6366f1", color: "#fff" }}>
-      {initials || <PersonIcon sx={{ fontSize: 16 }} />}
-    </Avatar>
-  );
+    .join("") || username[0].toUpperCase();
 }
 
 export default function CounterPerformancePage() {
-  const { selectedOutlet } = useOutlet();
-  const [dateFrom, setDateFrom] = useState(daysAgo(30));
-  const [dateTo, setDateTo] = useState(today());
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const notify = useNotify();
+  const { outletId: ctxOutletId } = useOutlet();
+  const { user } = useAuth();
+  const outletId = ctxOutletId || user?.outlet_id || null;
+
+  const [dateFrom, setDateFrom] = useState(daysAgoIso(30));
+  const [dateTo, setDateTo] = useState(todayIso());
+  const [rows, setRows] = useState([]);
+  const [meta, setMeta] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError("");
     try {
-      const res = await getCounterPerformance({
-        outletId: selectedOutlet?.id,
-        dateFrom,
-        dateTo,
+      const { data } = await getCounterPerformance({
+        outletId, dateFrom, dateTo,
       });
-      setData(res.data);
+      setRows((data?.results || []).map((r) => ({ ...r, id: r.user_id })));
+      setMeta({ date_from: data?.date_from, date_to: data?.date_to });
     } catch {
-      setError("Failed to load counter performance data.");
+      notify.error("Failed to load counter performance.");
+      setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [selectedOutlet, dateFrom, dateTo]);
+  }, [outletId, dateFrom, dateTo, notify]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const t = setTimeout(load, 200);
+    return () => clearTimeout(t);
+  }, [load]);
 
-  const rows = data?.results || [];
-  const totalCounts = rows.reduce((s, r) => s + r.total_counts, 0);
-  const avgApproval = rows.length
-    ? Math.round(rows.reduce((s, r) => s + r.approval_rate, 0) / rows.length)
-    : 0;
-  const mostActive = rows[0];
+  const totals = useMemo(() => {
+    const totalCounts = rows.reduce((s, r) => s + (r.total_counts || 0), 0);
+    const avgApproval = rows.length
+      ? Math.round(rows.reduce((s, r) => s + (r.approval_rate || 0), 0) / rows.length)
+      : 0;
+    const topCounter = rows.length ? rows[0] : null;
+    return { totalCounts, avgApproval, topCounter };
+  }, [rows]);
+
+  const columns = useMemo(() => [
+    {
+      field: "username", headerName: "Counter", flex: 1.2, minWidth: 200,
+      renderCell: (p) => (
+        <Stack direction="row" spacing={1.25} alignItems="center">
+          <Avatar sx={{ width: 30, height: 30, fontSize: "0.75rem", fontWeight: 700, bgcolor: "primary.main" }}>
+            {initialsOf(p.value)}
+          </Avatar>
+          <Box>
+            <Typography sx={{ fontWeight: 600, fontSize: "0.88rem" }}>{p.value}</Typography>
+            {p.row.__topCounter && (
+              <Typography sx={{ fontSize: "0.68rem", color: "primary.main", fontWeight: 600 }}>
+                Top counter
+              </Typography>
+            )}
+          </Box>
+        </Stack>
+      ),
+    },
+    { field: "total_counts", headerName: "Counts", width: 100, type: "number",
+      renderCell: (p) => (
+        <Typography sx={{ fontWeight: 700 }}>{Number(p.value || 0).toLocaleString()}</Typography>
+      ),
+    },
+    { field: "active_days", headerName: "Days", width: 80, type: "number" },
+    { field: "avg_per_day", headerName: "Avg / day", width: 100, type: "number" },
+    {
+      field: "approved_counts", headerName: "Approved", width: 110, type: "number",
+      renderCell: (p) => (
+        <Typography sx={{ color: "success.main", fontWeight: 600 }}>
+          {Number(p.value || 0).toLocaleString()}
+        </Typography>
+      ),
+    },
+    {
+      field: "rejected_counts", headerName: "Rejected", width: 110, type: "number",
+      renderCell: (p) => {
+        const v = Number(p.value || 0);
+        return (
+          <Typography sx={{ color: v > 0 ? "error.main" : "text.disabled", fontWeight: v > 0 ? 600 : 400 }}>
+            {v.toLocaleString()}
+          </Typography>
+        );
+      },
+    },
+    {
+      field: "pending_counts", headerName: "Pending", width: 100, type: "number",
+      renderCell: (p) => {
+        const v = Number(p.value || 0);
+        return (
+          <Typography sx={{ color: v > 0 ? "warning.main" : "text.disabled", fontWeight: v > 0 ? 600 : 400 }}>
+            {v.toLocaleString()}
+          </Typography>
+        );
+      },
+    },
+    {
+      field: "approval_rate", headerName: "Approval", width: 110, type: "number",
+      renderCell: (p) => (
+        <Chip
+          size="small"
+          label={`${Number(p.value || 0)}%`}
+          color={approvalColor(Number(p.value || 0))}
+          sx={{ fontWeight: 700, minWidth: 56 }}
+        />
+      ),
+    },
+    { field: "last_active", headerName: "Last active", width: 130,
+      renderCell: (p) => <Typography sx={{ color: "text.secondary", fontSize: "0.85rem" }}>{p.value || "—"}</Typography>,
+    },
+  ], []);
+
+  // Mark the top counter for the badge shown in the Counter cell.
+  const rowsForTable = useMemo(
+    () => rows.map((r, i) => ({ ...r, __topCounter: i === 0 })),
+    [rows]
+  );
 
   return (
     <Layout>
-    <Box sx={{ p: { xs: 0, md: 0 } }}>
-      {/* Header */}
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 3 }} flexWrap="wrap" gap={2}>
-        <Stack direction="row" alignItems="center" spacing={1.5}>
-          <Box
-            sx={{
-              width: 42, height: 42, borderRadius: 2,
-              display: "grid", placeItems: "center",
-              background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-              boxShadow: "0 8px 20px rgba(99,102,241,0.35)",
-            }}
-          >
-            <LeaderboardIcon sx={{ color: "#fff", fontSize: 22 }} />
-          </Box>
-          <Box>
-            <Typography sx={{ fontWeight: 800, fontSize: "1.25rem", color: "#0f172a", lineHeight: 1.1 }}>
-              Counter Performance
-            </Typography>
-            <Typography sx={{ fontSize: "0.8rem", color: "rgba(15,23,42,0.55)" }}>
-              Per-user stock count metrics
-            </Typography>
-          </Box>
-        </Stack>
+      <PageHeader
+        title="Counter Performance"
+        subtitle="Per-user stock-count metrics across the date range"
+        icon={<LeaderboardIcon />}
+      />
 
-        {/* Date filters */}
-        <Stack direction="row" alignItems="center" spacing={1.5} flexWrap="wrap" gap={1}>
-          <TextField
-            label="From"
-            type="date"
-            size="small"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            sx={{ width: 150 }}
-          />
-          <TextField
-            label="To"
-            type="date"
-            size="small"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            sx={{ width: 150 }}
-          />
-          <Button
-            variant="contained"
-            size="small"
-            startIcon={<RefreshIcon />}
-            onClick={load}
-            sx={{
-              textTransform: "none",
-              background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-              boxShadow: "0 4px 12px rgba(99,102,241,0.3)",
-              "&:hover": { background: "linear-gradient(135deg, #4f46e5, #7c3aed)" },
-            }}
-          >
-            Refresh
-          </Button>
-        </Stack>
-      </Stack>
-
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-
-      {/* Summary cards */}
-      <Stack direction="row" flexWrap="wrap" gap={2} sx={{ mb: 3 }}>
-        <StatCard
-          icon={PersonIcon}
-          label="Active Counters"
-          value={rows.length}
-          color="#6366f1"
-          sub={`${data?.date_from || ""} → ${data?.date_to || ""}`}
+      <Stack direction="row" spacing={1.5} sx={{ mb: 2 }} flexWrap="wrap" useFlexGap alignItems="center">
+        <TextField
+          size="small" type="date" label="From"
+          InputLabelProps={{ shrink: true }}
+          value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
         />
-        <StatCard
-          icon={TrendingUpIcon}
-          label="Total Counts"
-          value={totalCounts.toLocaleString()}
-          color="#22c55e"
-          sub="across all users"
-        />
-        <StatCard
-          icon={CheckCircleOutlineIcon}
-          label="Avg Approval Rate"
-          value={rows.length ? `${avgApproval}%` : "—"}
-          color={avgApproval >= 90 ? "#22c55e" : avgApproval >= 70 ? "#f59e0b" : "#ef4444"}
-        />
-        <StatCard
-          icon={CalendarTodayIcon}
-          label="Top Counter"
-          value={mostActive?.username || "—"}
-          color="#3b82f6"
-          sub={mostActive ? `${mostActive.total_counts} counts` : "no data"}
+        <TextField
+          size="small" type="date" label="To"
+          InputLabelProps={{ shrink: true }}
+          value={dateTo} onChange={(e) => setDateTo(e.target.value)}
         />
       </Stack>
 
-      {/* Table */}
-      {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
-          <CircularProgress sx={{ color: "#6366f1" }} />
-        </Box>
-      ) : rows.length === 0 ? (
-        <Card
-          elevation={0}
-          sx={{ border: "1px solid rgba(15,23,42,0.08)", borderRadius: 2, bgcolor: "#fff", p: 4, textAlign: "center" }}
-        >
-          <LeaderboardIcon sx={{ fontSize: 40, color: "rgba(15,23,42,0.2)", mb: 1 }} />
-          <Typography sx={{ color: "rgba(15,23,42,0.45)", fontSize: "0.9rem" }}>
-            No count data for this period.
-          </Typography>
-        </Card>
-      ) : (
-        <TableContainer
-          component={Paper}
-          elevation={0}
-          sx={{ border: "1px solid rgba(15,23,42,0.08)", borderRadius: 2 }}
-        >
-          <Table size="small">
-            <TableHead>
-              <TableRow sx={{ bgcolor: "#f8fafc" }}>
-                <TableCell sx={{ fontWeight: 700, fontSize: "0.78rem", color: "rgba(15,23,42,0.6)", py: 1.5 }}>
-                  Counter
-                </TableCell>
-                <TableCell align="right" sx={{ fontWeight: 700, fontSize: "0.78rem", color: "rgba(15,23,42,0.6)", py: 1.5 }}>
-                  Total Counts
-                </TableCell>
-                <TableCell align="right" sx={{ fontWeight: 700, fontSize: "0.78rem", color: "rgba(15,23,42,0.6)", py: 1.5 }}>
-                  Active Days
-                </TableCell>
-                <TableCell align="right" sx={{ fontWeight: 700, fontSize: "0.78rem", color: "rgba(15,23,42,0.6)", py: 1.5 }}>
-                  Avg / Day
-                </TableCell>
-                <TableCell align="right" sx={{ fontWeight: 700, fontSize: "0.78rem", color: "rgba(15,23,42,0.6)", py: 1.5 }}>
-                  Approved
-                </TableCell>
-                <TableCell align="right" sx={{ fontWeight: 700, fontSize: "0.78rem", color: "rgba(15,23,42,0.6)", py: 1.5 }}>
-                  Rejected
-                </TableCell>
-                <TableCell align="right" sx={{ fontWeight: 700, fontSize: "0.78rem", color: "rgba(15,23,42,0.6)", py: 1.5 }}>
-                  Pending
-                </TableCell>
-                <TableCell align="center" sx={{ fontWeight: 700, fontSize: "0.78rem", color: "rgba(15,23,42,0.6)", py: 1.5 }}>
-                  Approval Rate
-                </TableCell>
-                <TableCell align="right" sx={{ fontWeight: 700, fontSize: "0.78rem", color: "rgba(15,23,42,0.6)", py: 1.5 }}>
-                  Last Active
-                </TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {rows.map((row, idx) => (
-                <TableRow
-                  key={row.user_id}
-                  sx={{
-                    "&:last-child td": { border: 0 },
-                    bgcolor: idx % 2 === 0 ? "#fff" : "#fafafa",
-                    "&:hover": { bgcolor: "#f1f5f9" },
-                  }}
-                >
-                  <TableCell sx={{ py: 1.5 }}>
-                    <Stack direction="row" alignItems="center" spacing={1.25}>
-                      <UserAvatar username={row.username} />
-                      <Box>
-                        <Typography sx={{ fontWeight: 600, fontSize: "0.85rem", color: "#0f172a" }}>
-                          {row.username}
-                        </Typography>
-                        {idx === 0 && (
-                          <Typography sx={{ fontSize: "0.68rem", color: "#6366f1", fontWeight: 600 }}>
-                            Top counter
-                          </Typography>
-                        )}
-                      </Box>
-                    </Stack>
-                  </TableCell>
-                  <TableCell align="right">
-                    <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", color: "#0f172a" }}>
-                      {row.total_counts.toLocaleString()}
-                    </Typography>
-                  </TableCell>
-                  <TableCell align="right">
-                    <Typography sx={{ fontSize: "0.85rem", color: "#0f172a" }}>
-                      {row.active_days}
-                    </Typography>
-                  </TableCell>
-                  <TableCell align="right">
-                    <Typography sx={{ fontSize: "0.85rem", color: "#0f172a" }}>
-                      {row.avg_per_day}
-                    </Typography>
-                  </TableCell>
-                  <TableCell align="right">
-                    <Typography sx={{ fontSize: "0.85rem", color: "#22c55e", fontWeight: 600 }}>
-                      {row.approved_counts.toLocaleString()}
-                    </Typography>
-                  </TableCell>
-                  <TableCell align="right">
-                    <Typography sx={{ fontSize: "0.85rem", color: row.rejected_counts > 0 ? "#ef4444" : "rgba(15,23,42,0.4)", fontWeight: row.rejected_counts > 0 ? 600 : 400 }}>
-                      {row.rejected_counts.toLocaleString()}
-                    </Typography>
-                  </TableCell>
-                  <TableCell align="right">
-                    <Typography sx={{ fontSize: "0.85rem", color: row.pending_counts > 0 ? "#f59e0b" : "rgba(15,23,42,0.4)", fontWeight: row.pending_counts > 0 ? 600 : 400 }}>
-                      {row.pending_counts.toLocaleString()}
-                    </Typography>
-                  </TableCell>
-                  <TableCell align="center">
-                    <Tooltip title={`${row.approval_rate}%`}>
-                      <Chip
-                        label={`${row.approval_rate}%`}
-                        size="small"
-                        color={approvalColor(row.approval_rate)}
-                        sx={{ fontWeight: 700, fontSize: "0.78rem", minWidth: 56 }}
-                      />
-                    </Tooltip>
-                  </TableCell>
-                  <TableCell align="right">
-                    <Typography sx={{ fontSize: "0.82rem", color: "rgba(15,23,42,0.6)" }}>
-                      {row.last_active || "—"}
-                    </Typography>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      )}
-    </Box>
+      <Box sx={{ mb: 2, display: "flex", gap: 3, flexWrap: "wrap" }}>
+        <Stat label="Active counters" value={rows.length} icon={<PersonIcon fontSize="small" />} />
+        <Stat label="Total counts" value={totals.totalCounts.toLocaleString()} />
+        <Stat
+          label="Avg approval"
+          value={rows.length ? `${totals.avgApproval}%` : "—"}
+          color={totals.avgApproval >= 90 ? "success.main" : totals.avgApproval >= 70 ? "warning.main" : "error.main"}
+        />
+        <Stat
+          label="Top counter"
+          value={totals.topCounter?.username || "—"}
+          sub={totals.topCounter ? `${totals.topCounter.total_counts} counts` : ""}
+        />
+        {meta?.date_from && (
+          <Stat label="Range" value={`${meta.date_from} → ${meta.date_to}`} />
+        )}
+      </Box>
+
+      <DataTable
+        rows={rowsForTable}
+        columns={columns}
+        loading={loading}
+        emptyText="No count activity in this range"
+      />
     </Layout>
+  );
+}
+
+function Stat({ label, value, sub, color, icon }) {
+  return (
+    <Box>
+      <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 0.25 }}>
+        {icon}
+        <Typography variant="caption" color="text.secondary" sx={{ textTransform: "uppercase", letterSpacing: 0.5 }}>
+          {label}
+        </Typography>
+      </Stack>
+      <Typography variant="h6" sx={{ color: color || "text.primary", lineHeight: 1.2 }}>{value}</Typography>
+      {sub && <Typography variant="caption" color="text.secondary">{sub}</Typography>}
+    </Box>
   );
 }
