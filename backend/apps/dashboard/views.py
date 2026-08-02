@@ -1454,7 +1454,8 @@ def count_history_detail(request):
 
     # Bulk-fetch PosSnapshot rows for all (item, date) pairs in one query.
     count_list = list(counts_qs.only(
-        "id", "count_date", "actual_qty", "item_id", "counted_by_id"
+        "id", "count_date", "counted_at", "actual_qty", "item_id", "counted_by_id",
+        "location_tag", "device_uuid",
     ))
     item_ids = {c.item_id for c in count_list}
     dates = {c.count_date for c in count_list}
@@ -1473,6 +1474,45 @@ def count_history_detail(request):
         )
     }
 
+    # Prior on-hand: for each StockCount row, the running balance from
+    # StockMovement just BEFORE the count's counted_at timestamp. One query
+    # per count would kill the endpoint, so we bulk-fetch the last movement
+    # for each (item, count_id) via a correlated subquery approach:
+    # get every movement for these items in the range, group by item, then
+    # per-count pick the latest movement with created_at <= count.counted_at.
+    from apps.items.models import StockMovement
+    prior_map = {}
+    if count_list:
+        # Movements for these items up to the last count time (with margin).
+        latest_counted_at = max((c.counted_at for c in count_list if c.counted_at), default=None)
+        if latest_counted_at:
+            mv_qs = (
+                StockMovement.objects
+                .filter(outlet=outlet, item_id__in=item_ids, created_at__lte=latest_counted_at)
+                .order_by("item_id", "created_at")
+                .values("item_id", "created_at", "balance_after")
+            )
+            # Group by item, keep the movements list sorted by created_at asc.
+            by_item = {}
+            for mv in mv_qs:
+                by_item.setdefault(mv["item_id"], []).append(mv)
+            # For each count, binary-search the last movement <= counted_at.
+            import bisect
+            for c in count_list:
+                movements = by_item.get(c.item_id)
+                if not movements or not c.counted_at:
+                    continue
+                times = [m["created_at"] for m in movements]
+                # bisect_right finds insertion point AFTER equal timestamps
+                # (so we get the balance as of the count moment, not before).
+                idx = bisect.bisect_right(times, c.counted_at) - 1
+                if idx >= 0:
+                    prior_map[c.id] = float(movements[idx]["balance_after"] or 0)
+
+    # Date-aware "was daily-count?" per row — uses the ItemDailyCountHistory
+    # helper so a count from May 2025 shows DC status as it was then, not now.
+    from apps.items.models import was_daily_count_on
+
     rows = []
     for c in count_list:
         it = item_map.get(c.item_id)
@@ -1486,6 +1526,7 @@ def count_history_detail(request):
         rows.append({
             "count_id": c.id,
             "count_date": str(c.count_date),
+            "count_time": c.counted_at.strftime("%H:%M") if c.counted_at else "",
             "item_id": c.item_id,
             "item_code": it.item_code,
             "item_name": it.item_name,
@@ -1499,6 +1540,10 @@ def count_history_detail(request):
             "variance": variance,
             "cost_price": cost,
             "loss_value": loss_value,
+            "location_tag": c.location_tag or "",
+            "device": (c.device_uuid or "")[-6:],
+            "was_daily_count": was_daily_count_on(c.item_id, c.count_date),
+            "prior_on_hand": prior_map.get(c.id),
         })
 
     if request.query_params.get("only_variance") in ("1", "true"):
@@ -1522,17 +1567,23 @@ def count_history_detail(request):
 
     if request.query_params.get("export") == "csv":
         header = [
-            "Count date", "Code", "Name", "Category",
-            "Counted qty", "MyPOS qty", "Variance",
-            "Cost price", "Loss/Surplus value", "Counted by",
+            "Count date", "Count time", "Code", "Name", "Category",
+            "Counted qty", "Prior on-hand", "MyPOS qty", "Variance",
+            "Cost price", "Loss/Surplus value",
+            "Location", "Was daily-count", "Device", "Counted by",
         ]
 
         def iterator():
             for r in rows:
                 yield [
-                    r["count_date"], r["item_code"], r["item_name"], r["category"],
-                    r["counted_qty"], r["mypos_qty"], r["variance"],
-                    r["cost_price"], r["loss_value"], r["counted_by_name"],
+                    r["count_date"], r["count_time"],
+                    r["item_code"], r["item_name"], r["category"],
+                    r["counted_qty"],
+                    "" if r["prior_on_hand"] is None else r["prior_on_hand"],
+                    r["mypos_qty"], r["variance"],
+                    r["cost_price"], r["loss_value"],
+                    r["location_tag"], "Y" if r["was_daily_count"] else "N",
+                    r["device"], r["counted_by_name"],
                 ]
 
         resp = _csv_stream(header, iterator())

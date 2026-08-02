@@ -139,11 +139,22 @@ export default function CountHistoryDetailPage() {
 
   const columns = useMemo(() => [
     { field: "count_date", headerName: "Date", width: 110 },
+    { field: "count_time", headerName: "Time", width: 80,
+      renderCell: (p) => <span style={{ color: "#666" }}>{p.value || "—"}</span>,
+    },
     { field: "item_code", headerName: "Code", width: 130 },
     { field: "item_name", headerName: "Item", flex: 1.4, minWidth: 220 },
     {
-      field: "counted_qty", headerName: "Counted", width: 110, type: "number",
+      field: "counted_qty", headerName: "Counted", width: 100, type: "number",
       renderCell: (p) => fmtNum(p.value),
+    },
+    {
+      field: "prior_on_hand", headerName: "Prior on-hand", width: 120, type: "number",
+      renderCell: (p) => (
+        p.value == null
+          ? <span style={{ color: "#aaa" }}>—</span>
+          : <span style={{ color: "#666" }}>{fmtNum(p.value)}</span>
+      ),
     },
     {
       field: "mypos_qty", headerName: "MyPOS qty", width: 110, type: "number",
@@ -180,7 +191,31 @@ export default function CountHistoryDetailPage() {
         );
       },
     },
-    { field: "counted_by_name", headerName: "Counted by", width: 140 },
+    {
+      field: "location_tag", headerName: "Location", width: 130,
+      renderCell: (p) => (
+        p.value
+          ? <Chip size="small" label={p.value} variant="outlined" sx={{ fontSize: "0.72rem" }} />
+          : <span style={{ color: "#aaa" }}>—</span>
+      ),
+    },
+    {
+      field: "was_daily_count", headerName: "DC?", width: 70,
+      renderCell: (p) => (
+        p.value
+          ? <Chip size="small" label="DC" color="primary" sx={{ fontWeight: 700, fontSize: "0.7rem" }} />
+          : <span style={{ color: "#ccc" }}>—</span>
+      ),
+    },
+    { field: "counted_by_name", headerName: "Counted by", width: 130 },
+    {
+      field: "device", headerName: "Device", width: 100,
+      renderCell: (p) => (
+        p.value
+          ? <span style={{ fontFamily: "monospace", color: "#666", fontSize: "0.8rem" }}>{p.value}</span>
+          : <span style={{ color: "#ccc" }}>—</span>
+      ),
+    },
   ], []);
 
   return (
