@@ -239,6 +239,39 @@ export const downloadCountHistoryDetailCsv = ({
     responseType: "blob",
   });
 
+export const getItemCountHistory = ({
+  outletId, from, to, q, onlyVariance, sortBy, order, page = 1, pageSize = 25,
+} = {}) =>
+  api.get("/dashboard/item-count-history/", {
+    params: {
+      ...(outletId ? { outlet: outletId } : {}),
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+      ...(q ? { q } : {}),
+      ...(onlyVariance ? { only_variance: 1 } : {}),
+      ...(sortBy ? { sort_by: sortBy } : {}),
+      ...(order ? { order } : {}),
+      page, page_size: pageSize,
+    },
+  });
+
+export const downloadItemCountHistoryCsv = ({
+  outletId, from, to, q, onlyVariance, sortBy, order,
+} = {}) =>
+  api.get("/dashboard/item-count-history/", {
+    params: {
+      export: "csv",
+      ...(outletId ? { outlet: outletId } : {}),
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+      ...(q ? { q } : {}),
+      ...(onlyVariance ? { only_variance: 1 } : {}),
+      ...(sortBy ? { sort_by: sortBy } : {}),
+      ...(order ? { order } : {}),
+    },
+    responseType: "blob",
+  });
+
 export const getUncounted = ({
   outletId, date, page = 1, pageSize = 25, q = "",
   dailyOnly = false, recountOnly = false, sortBy, order,

@@ -1617,6 +1617,236 @@ def count_history_detail(request):
     })
 
 
+ITEM_COUNT_HISTORY_SORT_KEYS = {
+    "item_code":        lambda r: r["item_code"] or "",
+    "item_name":        lambda r: (r["item_name"] or "").lower(),
+    "counts_in_range":  lambda r: r["counts_in_range"],
+    "latest_mypos_qty": lambda r: r["latest_mypos_qty"] or 0,
+    "avg_counted":      lambda r: r["avg_counted"],
+    "latest_count_date":lambda r: r["latest_count_date"] or "",
+    "total_variance":   lambda r: r["total_variance"],
+    "loss_value":       lambda r: r["loss_value"],
+}
+
+
+@api_view(["GET"])
+@permission_classes([IsManager])
+def item_count_history(request):
+    """
+    Per-item roll-up of counting activity over a date range.
+
+    Unlike count_history_detail (one row per count event), this returns one
+    row per item that was counted at least once in the range, with a nested
+    `events` array holding every count for that item. Each event's variance
+    is computed against the item's LATEST PosSnapshot (not the snapshot on
+    the count's own date) — the question this report answers is "given
+    what POS says today, how do our counts stack up?".
+
+    Query params:
+      outlet=<id>            admin override
+      from=YYYY-MM-DD        range start (inclusive; default: today - 30d)
+      to=YYYY-MM-DD          range end (inclusive; default: today)
+      q                      search item_code / item_name
+      only_variance=1        only items whose total_variance != 0
+      sort_by, order         see ITEM_COUNT_HISTORY_SORT_KEYS
+      page, page_size        standard pagination
+      export=csv             stream all matching rows FLATTENED to one row
+                             per count event
+    """
+    outlet = _resolve_outlet(request)
+    if not outlet:
+        return Response({"detail": "No outlet."}, status=400)
+
+    to_date = _parse_date(request.query_params.get("to", "")) or date.today()
+    from_date = _parse_date(request.query_params.get("from", "")) or (to_date - timedelta(days=30))
+    if from_date > to_date:
+        from_date, to_date = to_date, from_date
+
+    counts_qs = (
+        StockCount.objects
+        .filter(outlet=outlet, count_date__gte=from_date, count_date__lte=to_date)
+        .exclude(approval_status=StockCount.ApprovalStatus.REJECTED)
+        .select_related("counted_by")
+        .only("id", "count_date", "counted_at", "actual_qty", "item_id",
+              "counted_by_id", "location_tag")
+    )
+
+    q = (request.query_params.get("q") or "").strip()
+    if q:
+        counts_qs = counts_qs.filter(
+            Q(item__item_code__icontains=q) | Q(item__item_name__icontains=q)
+        )
+
+    count_list = list(counts_qs)
+    item_ids = {c.item_id for c in count_list}
+
+    # Latest PosSnapshot per item — one row per item, `snapshot_date` newest.
+    # Uses a correlated subquery so we get exactly one snapshot per item in
+    # one SQL round-trip regardless of how many snapshots exist.
+    from django.db.models import OuterRef, Subquery
+    latest_snap_sq = (
+        PosSnapshot.objects
+        .filter(outlet=outlet, item_id=OuterRef("item_id"))
+        .order_by("-snapshot_date")
+        .values("snapshot_date", "pos_quantity")[:1]
+    )
+    latest_snap_map = {}
+    global_latest_snap_date = None
+    if item_ids:
+        # Simpler: pull per-item latest via a Python-side reduction. One
+        # ordered query, group in memory. Faster than N subqueries at scale.
+        snap_rows = (
+            PosSnapshot.objects
+            .filter(outlet=outlet, item_id__in=item_ids)
+            .order_by("item_id", "-snapshot_date")
+            .values("item_id", "snapshot_date", "pos_quantity")
+        )
+        seen = set()
+        for r in snap_rows:
+            iid = r["item_id"]
+            if iid in seen:
+                continue
+            seen.add(iid)
+            latest_snap_map[iid] = (float(r["pos_quantity"] or 0), r["snapshot_date"])
+            if global_latest_snap_date is None or r["snapshot_date"] > global_latest_snap_date:
+                global_latest_snap_date = r["snapshot_date"]
+
+    item_map = {
+        it.id: it for it in Item.objects.filter(id__in=item_ids).only(
+            "id", "item_code", "item_name", "category", "cost_price"
+        )
+    }
+
+    # Group counts by item.
+    per_item = {}
+    for c in count_list:
+        per_item.setdefault(c.item_id, []).append(c)
+
+    rows = []
+    for iid, counts in per_item.items():
+        it = item_map.get(iid)
+        if not it:
+            continue
+        latest = latest_snap_map.get(iid)
+        latest_mypos_qty = latest[0] if latest else None
+        latest_mypos_date = latest[1] if latest else None
+        cost = float(it.cost_price or 0)
+
+        # Sort events oldest → newest for the expanded panel.
+        counts_sorted = sorted(counts, key=lambda x: (x.count_date, x.counted_at or x.count_date))
+        events = []
+        total_counted = 0.0
+        total_variance = 0.0
+        total_loss = 0.0
+        total_surplus = 0.0
+        for c in counts_sorted:
+            cq = float(c.actual_qty or 0)
+            v = cq - latest_mypos_qty if latest_mypos_qty is not None else 0.0
+            lv = v * cost
+            events.append({
+                "count_id": c.id,
+                "date": str(c.count_date),
+                "time": c.counted_at.strftime("%H:%M") if c.counted_at else "",
+                "location": c.location_tag or "",
+                "counted": cq,
+                "variance": v,
+                "value": lv,
+                "counter": (
+                    c.counted_by.username if c.counted_by_id and c.counted_by else ""
+                ),
+            })
+            total_counted += cq
+            total_variance += v
+            if lv < 0:
+                total_loss += lv
+            elif lv > 0:
+                total_surplus += lv
+
+        latest_event = counts_sorted[-1]
+        rows.append({
+            "item_id": iid,
+            "item_code": it.item_code,
+            "item_name": it.item_name,
+            "category": it.category or "",
+            "counts_in_range": len(counts_sorted),
+            "latest_mypos_qty": latest_mypos_qty,
+            "latest_mypos_date": str(latest_mypos_date) if latest_mypos_date else None,
+            "cost_price": cost,
+            "avg_counted": round(total_counted / len(counts_sorted), 2) if counts_sorted else 0,
+            "latest_count_date": str(latest_event.count_date),
+            "latest_count_qty": float(latest_event.actual_qty or 0),
+            "total_variance": total_variance,
+            "loss_value": total_loss,     # signed, <= 0
+            "surplus_value": total_surplus,  # signed, >= 0
+            "events": events,
+        })
+
+    if request.query_params.get("only_variance") in ("1", "true"):
+        rows = [r for r in rows if abs(r["total_variance"]) > 0.001]
+
+    summary = {
+        "items_counted": len(rows),
+        "total_events": sum(r["counts_in_range"] for r in rows),
+        "latest_pos_snapshot_date": str(global_latest_snap_date) if global_latest_snap_date else None,
+        "total_loss": sum(r["loss_value"] for r in rows),
+        "total_surplus": sum(r["surplus_value"] for r in rows),
+        "range_days": (to_date - from_date).days + 1,
+    }
+
+    sort_by = request.query_params.get("sort_by", "counts_in_range")
+    order = request.query_params.get("order", "desc")
+    rows = _sort_rows(rows, sort_by, order, ITEM_COUNT_HISTORY_SORT_KEYS, "counts_in_range")
+
+    if request.query_params.get("export") == "csv":
+        header = [
+            "Item code", "Item name", "Category",
+            "Count date", "Count time", "Location", "Counted qty",
+            "Latest MyPOS qty", "Latest MyPOS date",
+            "Variance", "Cost price", "Loss/Surplus value", "Counter",
+        ]
+
+        def iterator():
+            for r in rows:
+                for e in r["events"]:
+                    yield [
+                        r["item_code"], r["item_name"], r["category"],
+                        e["date"], e["time"], e["location"], e["counted"],
+                        "" if r["latest_mypos_qty"] is None else r["latest_mypos_qty"],
+                        r["latest_mypos_date"] or "",
+                        e["variance"], r["cost_price"], e["value"], e["counter"],
+                    ]
+
+        resp = _csv_stream(header, iterator())
+        resp["Content-Disposition"] = (
+            f'attachment; filename="item-count-history-{from_date}-to-{to_date}.csv"'
+        )
+        return resp
+
+    try:
+        page = max(1, int(request.query_params.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = min(max(int(request.query_params.get("page_size", 25)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 25
+
+    total = len(rows)
+    offset = (page - 1) * page_size
+    results = rows[offset:offset + page_size]
+
+    return Response({
+        "count": total,
+        "page": page,
+        "page_size": page_size,
+        "outlet_id": outlet.id,
+        "from_date": str(from_date),
+        "to_date": str(to_date),
+        "summary": summary,
+        "results": results,
+    })
+
+
 @api_view(["GET"])
 @permission_classes([IsManager])
 def uncounted_items(request):

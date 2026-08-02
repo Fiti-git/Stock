@@ -53,6 +53,7 @@ const SuppliersPage = lazy(() => import("./pages/admin/SuppliersPage"));
 const CategoriesPage = lazy(() => import("./pages/admin/CategoriesPage"));
 const LocationsPage = lazy(() => import("./pages/admin/LocationsPage"));
 const CountHistoryDetailPage = lazy(() => import("./pages/admin/CountHistoryDetailPage"));
+const ItemCountHistoryPage = lazy(() => import("./pages/admin/ItemCountHistoryPage"));
 const MasterProductsPage = lazy(() => import("./pages/admin/MasterProductsPage"));
 const MasterMappingPage = lazy(() => import("./pages/admin/MasterMappingPage"));
 const DemandDashboardPage = lazy(() => import("./pages/admin/DemandDashboardPage"));
@@ -151,6 +152,7 @@ export default function App() {
                     <Route path="/admin/categories" element={<PermissionRoute code="nav.categories"><CategoriesPage /></PermissionRoute>} />
                     <Route path="/admin/locations" element={<PermissionRoute code="nav.categories"><LocationsPage /></PermissionRoute>} />
                     <Route path="/admin/count-history-detail" element={<PermissionRoute code="nav.stock_variance"><CountHistoryDetailPage /></PermissionRoute>} />
+                    <Route path="/admin/reports/item-count-history" element={<PermissionRoute code="nav.stock_variance"><ItemCountHistoryPage /></PermissionRoute>} />
                     <Route path="/admin/master-products" element={<PermissionRoute code="nav.master_products"><MasterProductsPage /></PermissionRoute>} />
                     <Route path="/admin/master-mapping" element={<PermissionRoute code="nav.master_mapping"><MasterMappingPage /></PermissionRoute>} />
                     <Route path="/admin/demand" element={<PermissionRoute code="nav.demand_dashboard"><DemandDashboardPage /></PermissionRoute>} />
