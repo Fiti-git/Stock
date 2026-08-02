@@ -209,7 +209,7 @@ export function findRoute(pathname) {
   });
 }
 
-export const GROUP_ORDER = ["Operate", "Analyze", "Snapshot Reports", "Masters", "Planning", "Configure"];
+export const GROUP_ORDER = ["Operate", "Analyze", "Reports", "Masters", "Planning", "Configure"];
 
 // Groups that start expanded.
 export const DEFAULT_EXPANDED_GROUPS = new Set(["Operate", "Analyze", "Masters", "Planning", "Configure"]);
