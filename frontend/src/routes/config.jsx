@@ -79,9 +79,9 @@ export const routes = [
   // permission codes are unchanged; only the sidebar group is normalised.
   { path: "/admin/count-history-detail",  code: "nav.stock_variance",        label: "Count History Detail", icon: HistoryIcon,           roles: ["admin","super_admin","manager"],              group: "Reports", system: "stock" },
   { path: "/admin/reports/item-count-history", code: "nav.stock_variance",   label: "Item Count History",   icon: Inventory2Icon,        roles: ["admin","super_admin","manager"],              group: "Reports", system: "stock" },
-  { path: "/admin/reports/counted-items", code: "nav.counted_items_report",  label: "Counted vs Uncounted", icon: ChecklistIcon,         roles: ["admin","super_admin","manager"],              group: "Reports", system: "stock" },
+  { path: "/admin/reports/counted-items", code: "nav.counted_items_report",  label: "Counted vs Uncounted", icon: ChecklistIcon,         roles: ["admin","super_admin","manager"],              group: "Reports", system: "stock", showInNav: false },
   { path: "/reports/counter-performance", code: "nav.counter_performance",   label: "Counter Performance",  icon: LeaderboardIcon,       roles: ["manager","admin","super_admin"],              group: "Reports", system: "stock" },
-  { path: "/admin/reports/stock-variance",code: "nav.stock_variance",        label: "Stock Variance",       icon: FactCheckIcon,         roles: ["admin","super_admin"],                        group: "Reports", system: "stock" },
+  { path: "/admin/reports/stock-variance",code: "nav.stock_variance",        label: "Stock Variance",       icon: FactCheckIcon,         roles: ["admin","super_admin"],                        group: "Reports", system: "stock", showInNav: false },
   { path: "/admin/reports/daily-upload",  code: "nav.daily_upload_report",   label: "Daily Upload",         icon: AssessmentIcon,        roles: ["admin","super_admin"],                        group: "Reports", system: "stock" },
   { path: "/admin/negative-pos",          code: "nav.negative_pos",          label: "Negative POS",         icon: ReportProblemIcon,     roles: ["admin","super_admin"],                        group: "Reports", system: "stock" },
 
