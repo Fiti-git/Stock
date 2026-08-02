@@ -74,11 +74,15 @@ export const routes = [
   { path: "/catalog",                   code: "nav.catalog",              label: "Product Catalog",    icon: Inventory2Icon,         roles: ["manager","admin","super_admin"],              group: "Analyze", system: "stock" },
 
   // POS-snapshot reports — grouped under "Snapshot Reports" so they don't scatter across Analyze.
-  { path: "/admin/reports/daily-upload",code: "nav.daily_upload_report",  label: "Daily Upload",       icon: AssessmentIcon,         roles: ["admin","super_admin"],                        group: "Snapshot Reports", system: "stock" },
-  { path: "/admin/negative-pos",        code: "nav.negative_pos",         label: "Negative POS",       icon: ReportProblemIcon,      roles: ["admin","super_admin"],                        group: "Snapshot Reports", system: "stock" },
-  { path: "/admin/reports/stock-variance", code: "nav.stock_variance",    label: "Stock Variance",     icon: FactCheckIcon,          roles: ["admin","super_admin"],                        group: "Operate", system: "ops" },
-  { path: "/admin/reports/counted-items",  code: "nav.counted_items_report", label: "Counted vs Uncounted", icon: ChecklistIcon,      roles: ["admin","super_admin","manager"],              group: "Operate", system: "ops" },
-  { path: "/reports/counter-performance",  code: "nav.counter_performance",  label: "Counter Performance",  icon: LeaderboardIcon,    roles: ["manager","admin","super_admin"],              group: "Operate", system: "stock" },
+  // Reports — all report pages grouped in the Stock sidebar's "Reports" section
+  // so managers have one place to find every report. Individual URLs and
+  // permission codes are unchanged; only the sidebar group is normalised.
+  { path: "/admin/count-history-detail",  code: "nav.stock_variance",        label: "Count History Detail", icon: HistoryIcon,           roles: ["admin","super_admin","manager"],              group: "Reports", system: "stock" },
+  { path: "/admin/reports/counted-items", code: "nav.counted_items_report",  label: "Counted vs Uncounted", icon: ChecklistIcon,         roles: ["admin","super_admin","manager"],              group: "Reports", system: "stock" },
+  { path: "/reports/counter-performance", code: "nav.counter_performance",   label: "Counter Performance",  icon: LeaderboardIcon,       roles: ["manager","admin","super_admin"],              group: "Reports", system: "stock" },
+  { path: "/admin/reports/stock-variance",code: "nav.stock_variance",        label: "Stock Variance",       icon: FactCheckIcon,         roles: ["admin","super_admin"],                        group: "Reports", system: "stock" },
+  { path: "/admin/reports/daily-upload",  code: "nav.daily_upload_report",   label: "Daily Upload",         icon: AssessmentIcon,        roles: ["admin","super_admin"],                        group: "Reports", system: "stock" },
+  { path: "/admin/negative-pos",          code: "nav.negative_pos",          label: "Negative POS",         icon: ReportProblemIcon,     roles: ["admin","super_admin"],                        group: "Reports", system: "stock" },
 
   // ------------------------- ORGANIZATION (org app) -------------------------
   // Cross-outlet masters & planning. Shown only when the user picks the
