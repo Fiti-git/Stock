@@ -1699,7 +1699,7 @@ def item_count_history(request):
             PosSnapshot.objects
             .filter(outlet=outlet, item_id__in=item_ids)
             .order_by("item_id", "-snapshot_date")
-            .values("item_id", "snapshot_date", "pos_quantity")
+            .values("item_id", "snapshot_date", "pos_quantity", "cost_price")
         )
         seen = set()
         for r in snap_rows:
@@ -1707,7 +1707,13 @@ def item_count_history(request):
             if iid in seen:
                 continue
             seen.add(iid)
-            latest_snap_map[iid] = (float(r["pos_quantity"] or 0), r["snapshot_date"])
+            latest_snap_map[iid] = (
+                float(r["pos_quantity"] or 0),
+                r["snapshot_date"],
+                # Cost from the latest snapshot is nullable — keep as None so
+                # we can fall back to Item.cost_price below.
+                float(r["cost_price"]) if r["cost_price"] is not None else None,
+            )
             if global_latest_snap_date is None or r["snapshot_date"] > global_latest_snap_date:
                 global_latest_snap_date = r["snapshot_date"]
 
@@ -1758,7 +1764,18 @@ def item_count_history(request):
         latest = latest_snap_map.get(iid)
         latest_mypos_qty = latest[0] if latest else None
         latest_mypos_date = latest[1] if latest else None
-        cost = float(it.cost_price or 0)
+        latest_snap_cost = latest[2] if latest else None
+        # Cost basis for ALL value math on this item: the cost recorded on
+        # the LATEST PosSnapshot. Falls back to Item.cost_price only when
+        # the snapshot itself has no cost. Applied uniformly to per-event
+        # values and per-item totals so the numbers stay internally
+        # consistent (no "row uses A, total uses B" mismatches).
+        cost = (
+            latest_snap_cost
+            if latest_snap_cost is not None
+            else float(it.cost_price or 0)
+        )
+        cost_source = "snapshot" if latest_snap_cost is not None else "item"
         # Stock age proxy: since GRNs aren't uploaded here, ItemBatch.received_at
         # is almost always empty. Fall back to Item.created_at — when the item
         # first entered the catalog. Not perfect but always populated and
@@ -1830,6 +1847,7 @@ def item_count_history(request):
             "latest_mypos_qty": latest_mypos_qty,
             "latest_mypos_date": str(latest_mypos_date) if latest_mypos_date else None,
             "cost_price": cost,
+            "cost_source": cost_source,
             "avg_counted": round(total_counted / len(counts_sorted), 2) if counts_sorted else 0,
             "latest_count_date": str(latest_event.count_date),
             "latest_count_qty": float(latest_event.actual_qty or 0),

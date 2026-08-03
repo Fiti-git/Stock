@@ -75,6 +75,11 @@ function ExpandedEvents({ row }) {
           {"  · Latest POS: "}{fmtNum(row.latest_mypos_qty)}
           {row.latest_mypos_date && ` (as of ${row.latest_mypos_date})`}
           {"  · Cost: "}{fmtMoney(row.cost_price)}
+          {row.cost_source === "item" && (
+            <span style={{ color: "#c07a00", fontStyle: "italic" }}>
+              {" (item master — snapshot had no cost)"}
+            </span>
+          )}
         </span>
       </Typography>
       <Table size="small" sx={{ bgcolor: "#fff", borderRadius: 1 }}>
