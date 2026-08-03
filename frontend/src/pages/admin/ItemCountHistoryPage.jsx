@@ -84,6 +84,9 @@ function ExpandedEvents({ row }) {
             <TableCell sx={{ fontWeight: 700 }}>Time</TableCell>
             <TableCell sx={{ fontWeight: 700 }}>Location</TableCell>
             <TableCell align="right" sx={{ fontWeight: 700 }}>Counted</TableCell>
+            <TableCell align="right" sx={{ fontWeight: 700 }}>AsatDate qty</TableCell>
+            <TableCell sx={{ fontWeight: 700 }}>AsatDate</TableCell>
+            <TableCell align="right" sx={{ fontWeight: 700 }}>Stock age (d)</TableCell>
             <TableCell align="right" sx={{ fontWeight: 700 }}>Variance</TableCell>
             <TableCell align="right" sx={{ fontWeight: 700 }}>Loss/Surplus</TableCell>
             <TableCell sx={{ fontWeight: 700 }}>Counter</TableCell>
@@ -100,8 +103,27 @@ function ExpandedEvents({ row }) {
                   : <span style={{ color: "#aaa" }}>—</span>}
               </TableCell>
               <TableCell align="right">{fmtNum(e.counted)}</TableCell>
-              <TableCell align="right"><VarianceCell value={e.variance} /></TableCell>
-              <TableCell align="right"><ValueCell value={e.value} /></TableCell>
+              <TableCell align="right">
+                {e.asat_date_qty == null
+                  ? <span style={{ color: "#aaa" }}>—</span>
+                  : fmtNum(e.asat_date_qty)}
+              </TableCell>
+              <TableCell sx={{ color: "text.secondary", fontSize: "0.8rem" }}>
+                {e.asat_date || <span style={{ color: "#aaa" }}>—</span>}
+              </TableCell>
+              <TableCell align="right" sx={{ color: "text.secondary" }}>
+                {e.stock_age_days == null ? "—" : e.stock_age_days}
+              </TableCell>
+              <TableCell align="right">
+                {e.variance_has_asat === false
+                  ? <span style={{ color: "#aaa" }}>—</span>
+                  : <VarianceCell value={e.variance} />}
+              </TableCell>
+              <TableCell align="right">
+                {e.variance_has_asat === false
+                  ? <span style={{ color: "#aaa" }}>—</span>
+                  : <ValueCell value={e.value} />}
+              </TableCell>
               <TableCell sx={{ color: "text.secondary" }}>{e.counter || "—"}</TableCell>
             </TableRow>
           ))}
@@ -250,11 +272,11 @@ export default function ItemCountHistoryPage() {
               <TableCell sx={{ fontWeight: 700 }}>Code</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Item</TableCell>
               <TableCell align="right" sx={{ fontWeight: 700 }}>Counts</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 700 }}>Latest MyPOS</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 700 }}>Avg counted</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Latest count</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 700 }}>Total variance</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 700 }}>Counted SUM</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 700 }}>AsatDate SUM</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 700 }}>Variance SUM</TableCell>
               <TableCell align="right" sx={{ fontWeight: 700 }}>Loss / Surplus</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 700 }}>Avg stock age</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -281,17 +303,17 @@ export default function ItemCountHistoryPage() {
                     <TableCell sx={{ fontFamily: "monospace", fontSize: "0.82rem" }}>{row.item_code}</TableCell>
                     <TableCell>{row.item_name}</TableCell>
                     <TableCell align="right"><strong>{row.counts_in_range}</strong></TableCell>
+                    <TableCell align="right">{fmtNum(row.counted_sum)}</TableCell>
                     <TableCell align="right">
-                      {row.latest_mypos_qty == null
+                      {row.asat_date_sum == null
                         ? <span style={{ color: "#aaa" }}>—</span>
-                        : fmtNum(row.latest_mypos_qty)}
+                        : fmtNum(row.asat_date_sum)}
                     </TableCell>
-                    <TableCell align="right">{fmtNum(row.avg_counted)}</TableCell>
-                    <TableCell sx={{ color: "text.secondary" }}>
-                      {row.latest_count_date} ({fmtNum(row.latest_count_qty)})
-                    </TableCell>
-                    <TableCell align="right"><VarianceCell value={row.total_variance} /></TableCell>
+                    <TableCell align="right"><VarianceCell value={row.variance_sum} /></TableCell>
                     <TableCell align="right"><ValueCell value={net} /></TableCell>
+                    <TableCell align="right" sx={{ color: "text.secondary" }}>
+                      {row.avg_stock_age == null ? "—" : row.avg_stock_age}
+                    </TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell colSpan={9} sx={{ p: 0, borderBottom: isOpen ? undefined : "unset" }}>

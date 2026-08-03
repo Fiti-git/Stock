@@ -1713,9 +1713,37 @@ def item_count_history(request):
 
     item_map = {
         it.id: it for it in Item.objects.filter(id__in=item_ids).only(
-            "id", "item_code", "item_name", "category", "cost_price"
+            "id", "item_code", "item_name", "category", "cost_price", "created_at"
         )
     }
+
+    # All snapshots per item, sorted ASC — used for per-event "as-at" lookup.
+    # One SQL query for the whole page.
+    snaps_by_item = {}
+    if item_ids:
+        for r in (
+            PosSnapshot.objects
+            .filter(outlet=outlet, item_id__in=item_ids)
+            .order_by("item_id", "snapshot_date")
+            .values("item_id", "snapshot_date", "pos_quantity")
+        ):
+            snaps_by_item.setdefault(r["item_id"], []).append(r)
+
+    import bisect
+    def asat_snapshot_for(iid, on_date):
+        """
+        Latest PosSnapshot with snapshot_date <= on_date. Returns (qty, date)
+        or (None, None). O(log n) per lookup.
+        """
+        snaps = snaps_by_item.get(iid)
+        if not snaps:
+            return None, None
+        dates = [s["snapshot_date"] for s in snaps]
+        idx = bisect.bisect_right(dates, on_date) - 1
+        if idx < 0:
+            return None, None
+        s = snaps[idx]
+        return float(s["pos_quantity"] or 0), s["snapshot_date"]
 
     # Group counts by item.
     per_item = {}
@@ -1731,38 +1759,68 @@ def item_count_history(request):
         latest_mypos_qty = latest[0] if latest else None
         latest_mypos_date = latest[1] if latest else None
         cost = float(it.cost_price or 0)
+        # Stock age proxy: since GRNs aren't uploaded here, ItemBatch.received_at
+        # is almost always empty. Fall back to Item.created_at — when the item
+        # first entered the catalog. Not perfect but always populated and
+        # honest ("how long has this SKU been on our books").
+        item_created_date = it.created_at.date() if it.created_at else None
 
         # Sort events oldest → newest for the expanded panel.
         counts_sorted = sorted(counts, key=lambda x: (x.count_date, x.counted_at or x.count_date))
         events = []
         total_counted = 0.0
+        total_asat_qty = 0.0
+        total_asat_qty_has_data = False
         total_variance = 0.0
         total_loss = 0.0
         total_surplus = 0.0
+        total_stock_age = 0
+        stock_age_count = 0
         for c in counts_sorted:
             cq = float(c.actual_qty or 0)
-            v = cq - latest_mypos_qty if latest_mypos_qty is not None else 0.0
-            lv = v * cost
+            asat_qty, asat_date = asat_snapshot_for(iid, c.count_date)
+            if asat_qty is None:
+                v = None
+                lv = None
+            else:
+                v = cq - asat_qty
+                lv = v * cost
+                total_asat_qty += asat_qty
+                total_asat_qty_has_data = True
+                total_variance += v
+                if lv < 0:
+                    total_loss += lv
+                elif lv > 0:
+                    total_surplus += lv
+            stock_age_days = (
+                (c.count_date - item_created_date).days
+                if item_created_date else None
+            )
+            if stock_age_days is not None:
+                total_stock_age += stock_age_days
+                stock_age_count += 1
             events.append({
                 "count_id": c.id,
                 "date": str(c.count_date),
                 "time": c.counted_at.strftime("%H:%M") if c.counted_at else "",
                 "location": c.location_tag or "",
                 "counted": cq,
-                "variance": v,
-                "value": lv,
+                "asat_date_qty": asat_qty,
+                "asat_date": str(asat_date) if asat_date else None,
+                "stock_age_days": stock_age_days,
+                "variance": v if v is not None else 0.0,
+                "variance_has_asat": v is not None,
+                "value": lv if lv is not None else 0.0,
                 "counter": (
                     c.counted_by.username if c.counted_by_id and c.counted_by else ""
                 ),
             })
             total_counted += cq
-            total_variance += v
-            if lv < 0:
-                total_loss += lv
-            elif lv > 0:
-                total_surplus += lv
 
         latest_event = counts_sorted[-1]
+        avg_stock_age = (
+            round(total_stock_age / stock_age_count, 1) if stock_age_count else None
+        )
         rows.append({
             "item_id": iid,
             "item_code": it.item_code,
@@ -1775,6 +1833,12 @@ def item_count_history(request):
             "avg_counted": round(total_counted / len(counts_sorted), 2) if counts_sorted else 0,
             "latest_count_date": str(latest_event.count_date),
             "latest_count_qty": float(latest_event.actual_qty or 0),
+            # NEW: per-item sums (Excel-style totals)
+            "counted_sum": total_counted,
+            "asat_date_sum": total_asat_qty if total_asat_qty_has_data else None,
+            "variance_sum": total_variance,
+            "avg_stock_age": avg_stock_age,
+            # Kept for backwards compat with existing UI code paths
             "total_variance": total_variance,
             "loss_value": total_loss,     # signed, <= 0
             "surplus_value": total_surplus,  # signed, >= 0
@@ -1801,19 +1865,34 @@ def item_count_history(request):
         header = [
             "Item code", "Item name", "Category",
             "Count date", "Count time", "Location", "Counted qty",
+            "AsatDate qty", "Stock age (days)",
             "Latest MyPOS qty", "Latest MyPOS date",
             "Variance", "Cost price", "Loss/Surplus value", "Counter",
+            # Totals — populated only on the first row of each item
+            "Counted SUM", "AsatDate SUM", "Variance SUM", "Avg stock age",
         ]
 
         def iterator():
             for r in rows:
-                for e in r["events"]:
+                for i, e in enumerate(r["events"]):
+                    is_first = i == 0
                     yield [
                         r["item_code"], r["item_name"], r["category"],
                         e["date"], e["time"], e["location"], e["counted"],
+                        "" if e["asat_date_qty"] is None else e["asat_date_qty"],
+                        "" if e["stock_age_days"] is None else e["stock_age_days"],
                         "" if r["latest_mypos_qty"] is None else r["latest_mypos_qty"],
                         r["latest_mypos_date"] or "",
-                        e["variance"], r["cost_price"], e["value"], e["counter"],
+                        e["variance"] if e["variance_has_asat"] else "",
+                        r["cost_price"],
+                        e["value"] if e["variance_has_asat"] else "",
+                        e["counter"],
+                        # Totals block — first row only, blank on the rest so
+                        # Excel matches the client's spreadsheet layout
+                        (r["counted_sum"] if is_first else ""),
+                        ("" if not is_first or r["asat_date_sum"] is None else r["asat_date_sum"]),
+                        (r["variance_sum"] if is_first else ""),
+                        ("" if not is_first or r["avg_stock_age"] is None else r["avg_stock_age"]),
                     ]
 
         resp = _csv_stream(header, iterator())
