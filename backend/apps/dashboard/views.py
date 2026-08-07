@@ -1724,8 +1724,11 @@ def item_count_history(request):
     }
 
     # All snapshots per item, sorted ASC — used for per-event "as-at" lookup.
-    # One SQL query for the whole page.
+    # One SQL query for the whole page. Cache a parallel list of dates so
+    # bisect doesn't rebuild it per call (previously O(n) per lookup for the
+    # dates list on top of the O(log n) bisect).
     snaps_by_item = {}
+    snap_dates_by_item = {}
     if item_ids:
         for r in (
             PosSnapshot.objects
@@ -1734,21 +1737,21 @@ def item_count_history(request):
             .values("item_id", "snapshot_date", "pos_quantity")
         ):
             snaps_by_item.setdefault(r["item_id"], []).append(r)
+            snap_dates_by_item.setdefault(r["item_id"], []).append(r["snapshot_date"])
 
     import bisect
     def asat_snapshot_for(iid, on_date):
         """
         Latest PosSnapshot with snapshot_date <= on_date. Returns (qty, date)
-        or (None, None). O(log n) per lookup.
+        or (None, None). O(log n) per lookup, no list rebuild.
         """
-        snaps = snaps_by_item.get(iid)
-        if not snaps:
+        dates = snap_dates_by_item.get(iid)
+        if not dates:
             return None, None
-        dates = [s["snapshot_date"] for s in snaps]
         idx = bisect.bisect_right(dates, on_date) - 1
         if idx < 0:
             return None, None
-        s = snaps[idx]
+        s = snaps_by_item[iid][idx]
         return float(s["pos_quantity"] or 0), s["snapshot_date"]
 
     # Group counts by item.
@@ -1785,10 +1788,16 @@ def item_count_history(request):
         # Sort events oldest → newest for the expanded panel.
         counts_sorted = sorted(counts, key=lambda x: (x.count_date, x.counted_at or x.count_date))
         events = []
-        total_counted = 0.0
+        # BOTH sums (counted + asat) accumulate only over the SAME set of
+        # events — the ones with an AsatDate snapshot available. That keeps
+        # variance_sum internally consistent: it always equals
+        # (counted_sum_asat_only − asat_date_sum), no bias from mixing
+        # different event sets. counted_sum below is the *total* count
+        # quantity (all events) — a separate, unrelated total.
+        counted_sum_all = 0.0
+        counted_sum_asat_only = 0.0
         total_asat_qty = 0.0
-        total_asat_qty_has_data = False
-        total_variance = 0.0
+        events_with_asat = 0
         total_loss = 0.0
         total_surplus = 0.0
         total_stock_age = 0
@@ -1803,8 +1812,8 @@ def item_count_history(request):
                 v = cq - asat_qty
                 lv = v * cost
                 total_asat_qty += asat_qty
-                total_asat_qty_has_data = True
-                total_variance += v
+                counted_sum_asat_only += cq
+                events_with_asat += 1
                 if lv < 0:
                     total_loss += lv
                 elif lv > 0:
@@ -1832,7 +1841,16 @@ def item_count_history(request):
                     c.counted_by.username if c.counted_by_id and c.counted_by else ""
                 ),
             })
-            total_counted += cq
+            counted_sum_all += cq
+
+        # variance_sum = counted_sum − asat_date_sum, over the SAME event set
+        # (asat-eligible only). Guarantees the identity holds.
+        total_variance = (
+            counted_sum_asat_only - total_asat_qty
+            if events_with_asat else 0.0
+        )
+        # Alias kept for clarity in the row payload.
+        total_counted = counted_sum_all
 
         latest_event = counts_sorted[-1]
         avg_stock_age = (
@@ -1853,8 +1871,12 @@ def item_count_history(request):
             "latest_count_qty": float(latest_event.actual_qty or 0),
             # NEW: per-item sums (Excel-style totals)
             "counted_sum": total_counted,
-            "asat_date_sum": total_asat_qty if total_asat_qty_has_data else None,
+            "asat_date_sum": total_asat_qty if events_with_asat else None,
             "variance_sum": total_variance,
+            # How many events (of counts_in_range) had an AsatDate snapshot.
+            # UI uses this to flag partial-coverage rows so reviewers know
+            # variance_sum isn't over the full event set for those items.
+            "events_with_asat": events_with_asat,
             "avg_stock_age": avg_stock_age,
             # Kept for backwards compat with existing UI code paths
             "total_variance": total_variance,

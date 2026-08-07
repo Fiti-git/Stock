@@ -312,9 +312,43 @@ export default function ItemCountHistoryPage() {
                     <TableCell align="right">
                       {row.asat_date_sum == null
                         ? <span style={{ color: "#aaa" }}>—</span>
-                        : fmtNum(row.asat_date_sum)}
+                        : (
+                          <Tooltip
+                            title={
+                              row.events_with_asat < row.counts_in_range
+                                ? `AsatDate available on ${row.events_with_asat} of ${row.counts_in_range} counts — SUM is over the ${row.events_with_asat} covered rows only.`
+                                : "AsatDate available on all counts"
+                            }
+                          >
+                            <span
+                              style={{
+                                color: row.events_with_asat < row.counts_in_range ? "#c07a00" : "inherit",
+                                borderBottom: row.events_with_asat < row.counts_in_range ? "1px dashed #c07a00" : "none",
+                              }}
+                            >
+                              {fmtNum(row.asat_date_sum)}
+                              {row.events_with_asat < row.counts_in_range && (
+                                <span style={{ fontSize: "0.72rem", marginLeft: 4 }}>
+                                  ({row.events_with_asat}/{row.counts_in_range})
+                                </span>
+                              )}
+                            </span>
+                          </Tooltip>
+                        )}
                     </TableCell>
-                    <TableCell align="right"><VarianceCell value={row.variance_sum} /></TableCell>
+                    <TableCell align="right">
+                      <Tooltip
+                        title={
+                          row.events_with_asat === 0
+                            ? "No AsatDate coverage — variance not calculated"
+                            : row.events_with_asat < row.counts_in_range
+                            ? `Variance over ${row.events_with_asat} of ${row.counts_in_range} counts`
+                            : ""
+                        }
+                      >
+                        <span><VarianceCell value={row.variance_sum} /></span>
+                      </Tooltip>
+                    </TableCell>
                     <TableCell align="right"><ValueCell value={net} /></TableCell>
                     <TableCell align="right" sx={{ color: "text.secondary" }}>
                       {row.avg_stock_age == null ? "—" : row.avg_stock_age}
