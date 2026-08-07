@@ -1958,10 +1958,17 @@ def item_count_history(request):
             # coverage — matches the semantics of dates_counted.
             "events_with_asat": dates_with_asat,
             "avg_stock_age": avg_stock_age,
-            # Kept for backwards compat with existing UI code paths
-            "total_variance": total_variance,
+            # Value math — three flavours, all cast to the same cost basis
+            # (latest snapshot cost) so a reader can pick the framing:
+            #   net_value    = variance_sum × cost — one signed number, honest
+            #                  net across the item (loss and surplus cancel)
+            #   loss_value   = sum of NEGATIVE-value date events (gross loss)
+            #   surplus_value= sum of POSITIVE-value date events (gross surplus)
+            "net_value": total_variance * cost,
             "loss_value": total_loss,     # signed, <= 0
             "surplus_value": total_surplus,  # signed, >= 0
+            # total_variance kept for backwards compat
+            "total_variance": total_variance,
             "events": events,
         })
 
@@ -1972,6 +1979,15 @@ def item_count_history(request):
         "items_counted": len(rows),
         "total_events": sum(r["counts_in_range"] for r in rows),
         "latest_pos_snapshot_date": str(global_latest_snap_date) if global_latest_snap_date else None,
+        # Gross totals: negative-value dates and positive-value dates summed
+        # separately (not netted). Useful for shrinkage auditing.
+        "gross_loss": sum(r["loss_value"] for r in rows),
+        "gross_surplus": sum(r["surplus_value"] for r in rows),
+        # Net value: variance × cost summed per item (signed single number).
+        # Equivalent to gross_loss + gross_surplus but sourced from the
+        # per-item net_value field directly for clarity.
+        "net_value": sum(r["net_value"] for r in rows),
+        # Legacy aliases retained for any older UI code paths.
         "total_loss": sum(r["loss_value"] for r in rows),
         "total_surplus": sum(r["surplus_value"] for r in rows),
         "range_days": (to_date - from_date).days + 1,
@@ -1987,9 +2003,10 @@ def item_count_history(request):
             "Count date", "Count time", "Location", "Counted qty",
             "AsatDate qty", "Stock age (days)",
             "Latest MyPOS qty", "Latest MyPOS date",
-            "Variance", "Cost price", "Loss/Surplus value", "Counter",
+            "Variance", "Cost price", "Value (gross)", "Counter",
             # Totals — populated only on the first row of each item
-            "Counted SUM", "AsatDate SUM", "Variance SUM", "Avg stock age",
+            "Counted SUM", "AsatDate SUM", "Variance SUM",
+            "Net value", "Gross loss", "Gross surplus", "Avg stock age",
         ]
 
         def iterator():
@@ -2012,6 +2029,9 @@ def item_count_history(request):
                         (r["counted_sum"] if is_first else ""),
                         ("" if not is_first or r["asat_date_sum"] is None else r["asat_date_sum"]),
                         (r["variance_sum"] if is_first else ""),
+                        (r["net_value"] if is_first else ""),
+                        (r["loss_value"] if is_first else ""),
+                        (r["surplus_value"] if is_first else ""),
                         ("" if not is_first or r["avg_stock_age"] is None else r["avg_stock_age"]),
                     ]
 

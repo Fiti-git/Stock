@@ -284,8 +284,34 @@ export default function ItemCountHistoryPage() {
           <Stat label="Items counted" value={fmtNum(summary.items_counted)} />
           <Stat label="Total count events" value={fmtNum(summary.total_events)} />
           <Stat label="Latest POS snapshot" value={summary.latest_pos_snapshot_date || "—"} />
-          <Stat label="Total loss" value={fmtMoney(summary.total_loss)} color="error.main" />
-          <Stat label="Total surplus" value={`+${fmtMoney(summary.total_surplus)}`} color="success.main" />
+          <Stat
+            label="Net value"
+            value={
+              summary.net_value == null
+                ? "—"
+                : `${summary.net_value >= 0 ? "+" : ""}${fmtMoney(summary.net_value)}`
+            }
+            color={
+              summary.net_value == null
+                ? undefined
+                : summary.net_value < 0
+                ? "error.main"
+                : "success.main"
+            }
+            sub="Losses & surpluses net"
+          />
+          <Stat
+            label="Gross loss"
+            value={fmtMoney(summary.gross_loss ?? summary.total_loss)}
+            color="error.main"
+            sub="Loss dates only"
+          />
+          <Stat
+            label="Gross surplus"
+            value={`+${fmtMoney(summary.gross_surplus ?? summary.total_surplus)}`}
+            color="success.main"
+            sub="Surplus dates only"
+          />
           <Stat label="Days" value={summary.range_days} />
         </Box>
       )}
@@ -302,14 +328,19 @@ export default function ItemCountHistoryPage() {
               <TableCell align="right" sx={{ fontWeight: 700 }}>Counted SUM</TableCell>
               <TableCell align="right" sx={{ fontWeight: 700 }}>AsatDate SUM</TableCell>
               <TableCell align="right" sx={{ fontWeight: 700 }}>Variance SUM</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 700 }}>Loss / Surplus</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 700 }}>Net value</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 700 }}>
+                <Tooltip title="Gross loss (negative-value dates summed) / Gross surplus (positive-value dates summed). Does not net.">
+                  <span style={{ borderBottom: "1px dotted #999" }}>Gross ↓ / ↑</span>
+                </Tooltip>
+              </TableCell>
               <TableCell align="right" sx={{ fontWeight: 700 }}>Avg stock age</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {rows.length === 0 && !loading && (
               <TableRow>
-                <TableCell colSpan={9} sx={{ textAlign: "center", py: 5, color: "text.secondary" }}>
+                <TableCell colSpan={10} sx={{ textAlign: "center", py: 5, color: "text.secondary" }}>
                   No counts in this range
                 </TableCell>
               </TableRow>
@@ -371,13 +402,24 @@ export default function ItemCountHistoryPage() {
                         <span><VarianceCell value={row.variance_sum} /></span>
                       </Tooltip>
                     </TableCell>
-                    <TableCell align="right"><ValueCell value={net} /></TableCell>
+                    <TableCell align="right">
+                      <ValueCell value={row.net_value ?? net} />
+                    </TableCell>
+                    <TableCell align="right">
+                      <Tooltip
+                        title={`Gross loss ${fmtMoney(row.loss_value)} / Gross surplus +${fmtMoney(row.surplus_value)}`}
+                      >
+                        <span style={{ fontSize: "0.78rem", color: "#666" }}>
+                          {fmtMoney(row.loss_value)} / +{fmtMoney(row.surplus_value)}
+                        </span>
+                      </Tooltip>
+                    </TableCell>
                     <TableCell align="right" sx={{ color: "text.secondary" }}>
                       {row.avg_stock_age == null ? "—" : row.avg_stock_age}
                     </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell colSpan={9} sx={{ p: 0, borderBottom: isOpen ? undefined : "unset" }}>
+                    <TableCell colSpan={10} sx={{ p: 0, borderBottom: isOpen ? undefined : "unset" }}>
                       <Collapse in={isOpen} timeout="auto" unmountOnExit>
                         <ExpandedEvents row={row} />
                       </Collapse>
