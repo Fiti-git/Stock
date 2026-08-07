@@ -1674,9 +1674,25 @@ def item_count_history(request):
       export=csv             stream all matching rows FLATTENED to one row
                              per count event
     """
-    outlet = _resolve_outlet(request)
-    if not outlet:
-        return Response({"detail": "No outlet."}, status=400)
+    # "all" mode: admins can pass outlet=all to aggregate across every
+    # outlet. Non-admins are pinned to their own outlet regardless of the
+    # param (matches _resolve_outlet's contract).
+    outlet_param = (request.query_params.get("outlet") or "").strip().lower()
+    all_outlets_mode = (
+        outlet_param == "all"
+        and request.user.role in (User.Role.ADMIN, User.Role.SUPER_ADMIN)
+    )
+
+    if all_outlets_mode:
+        outlet = None
+        outlet_map = {
+            o.id: o for o in Outlet.objects.all().only("id", "outlet_name")
+        }
+    else:
+        outlet = _resolve_outlet(request)
+        if not outlet:
+            return Response({"detail": "No outlet."}, status=400)
+        outlet_map = {outlet.id: outlet}
 
     to_date = _parse_date(request.query_params.get("to", "")) or date.today()
     from_date = _parse_date(request.query_params.get("from", "")) or (to_date - timedelta(days=30))
@@ -1685,12 +1701,14 @@ def item_count_history(request):
 
     counts_qs = (
         StockCount.objects
-        .filter(outlet=outlet, count_date__gte=from_date, count_date__lte=to_date)
+        .filter(count_date__gte=from_date, count_date__lte=to_date)
         .exclude(approval_status=StockCount.ApprovalStatus.REJECTED)
         .select_related("counted_by")
         .only("id", "count_date", "counted_at", "actual_qty", "item_id",
-              "counted_by_id", "location_tag", "pos_qty_at_count")
+              "outlet_id", "counted_by_id", "location_tag", "pos_qty_at_count")
     )
+    if not all_outlets_mode:
+        counts_qs = counts_qs.filter(outlet=outlet)
 
     q = (request.query_params.get("q") or "").strip()
     if q:
@@ -1702,64 +1720,60 @@ def item_count_history(request):
 
     raw_count_list = list(counts_qs)
 
-    # Dedupe: for each (item_id, count_date, location_tag), keep only the
-    # LATEST by counted_at. Earlier entries are treated as superseded
-    # corrections (a recount at 15:00 supersedes the 09:00 mistake). This
-    # eliminates recount-inflation without losing the multi-location split
-    # (Rack + Store Room on the same date are DIFFERENT location_tags and
-    # both survive).
-    superseded_by_item = {}  # item_id -> list of dropped counts (for the UI note)
+    # Dedupe: for each (outlet_id, item_id, count_date, location_tag), keep
+    # only the LATEST by counted_at. Earlier entries are treated as
+    # superseded corrections (a recount at 15:00 supersedes the 09:00
+    # mistake). This eliminates recount-inflation without losing the
+    # multi-location split (Rack + Store Room on the same date are DIFFERENT
+    # location_tags and both survive). outlet_id is in the key so all-outlets
+    # mode never accidentally collapses counts from different outlets.
+    superseded_by_key = {}  # (outlet_id, item_id) -> list of dropped counts
     if include_superseded:
         count_list = raw_count_list
     else:
         # Sort so the latest comes last per group; take the last per key.
         raw_sorted = sorted(
             raw_count_list,
-            key=lambda c: (c.item_id, c.count_date, c.location_tag or "", c.counted_at or c.count_date),
+            key=lambda c: (c.outlet_id, c.item_id, c.count_date, c.location_tag or "", c.counted_at or c.count_date),
         )
         latest_per_key = {}
         for c in raw_sorted:
-            key = (c.item_id, c.count_date, c.location_tag or "")
+            key = (c.outlet_id, c.item_id, c.count_date, c.location_tag or "")
             if key in latest_per_key:
-                # The previous winner is now superseded.
-                superseded_by_item.setdefault(c.item_id, []).append(latest_per_key[key])
+                superseded_by_key.setdefault((c.outlet_id, c.item_id), []).append(latest_per_key[key])
             latest_per_key[key] = c
         count_list = list(latest_per_key.values())
 
     item_ids = {c.item_id for c in count_list}
+    # For all-outlets mode we need per-(outlet, item) lookups later. In
+    # single-outlet mode this is just {outlet.id} × item_ids.
+    outlet_item_pairs = {(c.outlet_id, c.item_id) for c in count_list}
 
-    # Latest PosSnapshot per item — one row per item, `snapshot_date` newest.
-    # Uses a correlated subquery so we get exactly one snapshot per item in
-    # one SQL round-trip regardless of how many snapshots exist.
-    from django.db.models import OuterRef, Subquery
-    latest_snap_sq = (
-        PosSnapshot.objects
-        .filter(outlet=outlet, item_id=OuterRef("item_id"))
-        .order_by("-snapshot_date")
-        .values("snapshot_date", "pos_quantity")[:1]
-    )
+    # Latest PosSnapshot per (outlet, item) — one entry per pair, newest date.
+    # Keyed by (outlet_id, item_id) so all-outlets mode never leaks a
+    # snapshot from outlet A into outlet B's rows for the same SKU.
     latest_snap_map = {}
     global_latest_snap_date = None
-    if item_ids:
-        # Simpler: pull per-item latest via a Python-side reduction. One
-        # ordered query, group in memory. Faster than N subqueries at scale.
+    if outlet_item_pairs:
+        # Pull ordered by (outlet, item, -snapshot_date). First row per
+        # (outlet, item) group is the latest.
+        snap_filter = PosSnapshot.objects.filter(item_id__in=item_ids)
+        if not all_outlets_mode:
+            snap_filter = snap_filter.filter(outlet=outlet)
         snap_rows = (
-            PosSnapshot.objects
-            .filter(outlet=outlet, item_id__in=item_ids)
-            .order_by("item_id", "-snapshot_date")
-            .values("item_id", "snapshot_date", "pos_quantity", "cost_price")
+            snap_filter
+            .order_by("outlet_id", "item_id", "-snapshot_date")
+            .values("outlet_id", "item_id", "snapshot_date", "pos_quantity", "cost_price")
         )
         seen = set()
         for r in snap_rows:
-            iid = r["item_id"]
-            if iid in seen:
+            pair = (r["outlet_id"], r["item_id"])
+            if pair in seen:
                 continue
-            seen.add(iid)
-            latest_snap_map[iid] = (
+            seen.add(pair)
+            latest_snap_map[pair] = (
                 float(r["pos_quantity"] or 0),
                 r["snapshot_date"],
-                # Cost from the latest snapshot is nullable — keep as None so
-                # we can fall back to Item.cost_price below.
                 float(r["cost_price"]) if r["cost_price"] is not None else None,
             )
             if global_latest_snap_date is None or r["snapshot_date"] > global_latest_snap_date:
@@ -1771,48 +1785,50 @@ def item_count_history(request):
         )
     }
 
-    # All snapshots per item, sorted ASC — used for per-event "as-at" lookup.
-    # One SQL query for the whole page. Cache a parallel list of dates so
-    # bisect doesn't rebuild it per call (previously O(n) per lookup for the
-    # dates list on top of the O(log n) bisect).
-    snaps_by_item = {}
-    snap_dates_by_item = {}
-    if item_ids:
+    # All snapshots per (outlet, item) sorted ASC — used for per-event
+    # "as-at" lookup. One SQL query for the whole page. Cache a parallel
+    # list of dates so bisect doesn't rebuild it per call.
+    snaps_by_pair = {}
+    snap_dates_by_pair = {}
+    if outlet_item_pairs:
+        snap_filter = PosSnapshot.objects.filter(item_id__in=item_ids)
+        if not all_outlets_mode:
+            snap_filter = snap_filter.filter(outlet=outlet)
         for r in (
-            PosSnapshot.objects
-            .filter(outlet=outlet, item_id__in=item_ids)
-            .order_by("item_id", "snapshot_date")
-            .values("item_id", "snapshot_date", "pos_quantity")
+            snap_filter
+            .order_by("outlet_id", "item_id", "snapshot_date")
+            .values("outlet_id", "item_id", "snapshot_date", "pos_quantity")
         ):
-            snaps_by_item.setdefault(r["item_id"], []).append(r)
-            snap_dates_by_item.setdefault(r["item_id"], []).append(r["snapshot_date"])
+            pair = (r["outlet_id"], r["item_id"])
+            snaps_by_pair.setdefault(pair, []).append(r)
+            snap_dates_by_pair.setdefault(pair, []).append(r["snapshot_date"])
 
     import bisect
-    def asat_snapshot_for(iid, on_date):
+    def asat_snapshot_for(pair, on_date):
         """
-        Latest PosSnapshot with snapshot_date <= on_date. Returns (qty, date)
-        or (None, None). O(log n) per lookup, no list rebuild.
+        Latest PosSnapshot for (outlet_id, item_id) with snapshot_date
+        <= on_date. Returns (qty, date) or (None, None).
         """
-        dates = snap_dates_by_item.get(iid)
+        dates = snap_dates_by_pair.get(pair)
         if not dates:
             return None, None
         idx = bisect.bisect_right(dates, on_date) - 1
         if idx < 0:
             return None, None
-        s = snaps_by_item[iid][idx]
+        s = snaps_by_pair[pair][idx]
         return float(s["pos_quantity"] or 0), s["snapshot_date"]
 
-    # Group counts by item.
-    per_item = {}
+    # Group counts by (outlet, item) so each (outlet, item) becomes one row.
+    per_pair = {}
     for c in count_list:
-        per_item.setdefault(c.item_id, []).append(c)
+        per_pair.setdefault((c.outlet_id, c.item_id), []).append(c)
 
     rows = []
-    for iid, counts in per_item.items():
+    for (oid, iid), counts in per_pair.items():
         it = item_map.get(iid)
         if not it:
             continue
-        latest = latest_snap_map.get(iid)
+        latest = latest_snap_map.get((oid, iid))
         latest_mypos_qty = latest[0] if latest else None
         latest_mypos_date = latest[1] if latest else None
         latest_snap_cost = latest[2] if latest else None
@@ -1866,9 +1882,9 @@ def item_count_history(request):
             if frozen_vals:
                 date_asat_qty = frozen_vals[0]
                 # asat_date: find the snapshot the frozen value came from.
-                _, asat_date = asat_snapshot_for(iid, cdate)
+                _, asat_date = asat_snapshot_for((oid, iid), cdate)
             else:
-                date_asat_qty, asat_date = asat_snapshot_for(iid, cdate)
+                date_asat_qty, asat_date = asat_snapshot_for((oid, iid), cdate)
 
             date_counted = sum(float(c.actual_qty or 0) for c in day_counts)
             if date_asat_qty is not None:
@@ -1927,13 +1943,16 @@ def item_count_history(request):
         )
         total_counted = counted_sum_all
         events_with_asat = dates_with_asat  # kept for UI backwards compat
-        superseded_count = len(superseded_by_item.get(iid, []))
+        superseded_count = len(superseded_by_key.get((oid, iid), []))
 
         latest_event = counts_sorted[-1]
         avg_stock_age = (
             round(total_stock_age / stock_age_count, 1) if stock_age_count else None
         )
+        _o = outlet_map.get(oid)
         rows.append({
+            "outlet_id": oid,
+            "outlet_name": _o.outlet_name if _o else "",
             "item_id": iid,
             "item_code": it.item_code,
             "item_name": it.item_name,
@@ -1999,6 +2018,7 @@ def item_count_history(request):
 
     if request.query_params.get("export") == "csv":
         header = [
+            "Outlet",
             "Item code", "Item name", "Category",
             "Count date", "Count time", "Location", "Counted qty",
             "AsatDate qty", "Stock age (days)",
@@ -2014,6 +2034,7 @@ def item_count_history(request):
                 for i, e in enumerate(r["events"]):
                     is_first = i == 0
                     yield [
+                        r.get("outlet_name", ""),
                         r["item_code"], r["item_name"], r["category"],
                         e["date"], e["time"], e["location"], e["counted"],
                         "" if e["asat_date_qty"] is None else e["asat_date_qty"],
@@ -2058,7 +2079,8 @@ def item_count_history(request):
         "count": total,
         "page": page,
         "page_size": page_size,
-        "outlet_id": outlet.id,
+        "outlet_id": outlet.id if outlet else None,
+        "all_outlets_mode": all_outlets_mode,
         "from_date": str(from_date),
         "to_date": str(to_date),
         "summary": summary,

@@ -170,6 +170,8 @@ export default function ItemCountHistoryPage() {
   const [to, setTo] = useState(todayIso());
   const [q, setQ] = useState("");
   const [onlyVariance, setOnlyVariance] = useState(false);
+  const [allOutlets, setAllOutlets] = useState(false);
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -188,7 +190,9 @@ export default function ItemCountHistoryPage() {
     setLoading(true);
     try {
       const { data } = await getItemCountHistory({
-        outletId, from, to,
+        outletId: allOutlets ? undefined : outletId,
+        allOutlets,
+        from, to,
         q: q.trim() || undefined,
         onlyVariance,
         page: page + 1,
@@ -209,12 +213,12 @@ export default function ItemCountHistoryPage() {
     const t = setTimeout(load, 200);
     return () => clearTimeout(t);
     // eslint-disable-next-line
-  }, [q, onlyVariance, from, to, outletId, page, pageSize]);
+  }, [q, onlyVariance, from, to, outletId, allOutlets, page, pageSize]);
 
   useEffect(() => {
     setPage(0);
     // eslint-disable-next-line
-  }, [q, onlyVariance, from, to, outletId]);
+  }, [q, onlyVariance, from, to, outletId, allOutlets]);
 
   function toggleRow(id) {
     setExpanded((prev) => {
@@ -228,7 +232,9 @@ export default function ItemCountHistoryPage() {
     setCsvSaving(true);
     try {
       const { data } = await downloadItemCountHistoryCsv({
-        outletId, from, to,
+        outletId: allOutlets ? undefined : outletId,
+        allOutlets,
+        from, to,
         q: q.trim() || undefined,
         onlyVariance,
       });
@@ -277,6 +283,12 @@ export default function ItemCountHistoryPage() {
           control={<Switch checked={onlyVariance} onChange={(e) => setOnlyVariance(e.target.checked)} />}
           label="Only with variance"
         />
+        {isAdmin && (
+          <FormControlLabel
+            control={<Switch checked={allOutlets} onChange={(e) => setAllOutlets(e.target.checked)} />}
+            label="All outlets"
+          />
+        )}
       </Stack>
 
       {summary && (
@@ -322,6 +334,7 @@ export default function ItemCountHistoryPage() {
           <TableHead>
             <TableRow sx={{ bgcolor: "#f8fafc" }}>
               <TableCell sx={{ width: 40 }} />
+              {allOutlets && <TableCell sx={{ fontWeight: 700 }}>Outlet</TableCell>}
               <TableCell sx={{ fontWeight: 700 }}>Code</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Item</TableCell>
               <TableCell align="right" sx={{ fontWeight: 700 }}>Counts</TableCell>
@@ -340,24 +353,30 @@ export default function ItemCountHistoryPage() {
           <TableBody>
             {rows.length === 0 && !loading && (
               <TableRow>
-                <TableCell colSpan={10} sx={{ textAlign: "center", py: 5, color: "text.secondary" }}>
+                <TableCell colSpan={allOutlets ? 11 : 10} sx={{ textAlign: "center", py: 5, color: "text.secondary" }}>
                   No counts in this range
                 </TableCell>
               </TableRow>
             )}
             {rows.map((row) => {
-              const isOpen = expanded.has(row.item_id);
+              const rowKey = `${row.outlet_id ?? "x"}:${row.item_id}`;
+              const isOpen = expanded.has(rowKey);
               const net = Number(row.loss_value || 0) + Number(row.surplus_value || 0);
               return (
-                <Box key={row.item_id} sx={{ display: "contents" }}>
+                <Box key={rowKey} sx={{ display: "contents" }}>
                   <TableRow hover sx={{ "& > *": { borderBottom: "unset" } }}>
                     <TableCell>
                       <Tooltip title={isOpen ? "Collapse" : "Expand"}>
-                        <IconButton size="small" onClick={() => toggleRow(row.item_id)}>
+                        <IconButton size="small" onClick={() => toggleRow(`${row.outlet_id ?? "x"}:${row.item_id}`)}>
                           {isOpen ? <ExpandMoreIcon /> : <ChevronRightIcon />}
                         </IconButton>
                       </Tooltip>
                     </TableCell>
+                    {allOutlets && (
+                      <TableCell sx={{ fontSize: "0.82rem", color: "text.secondary" }}>
+                        {row.outlet_name || "—"}
+                      </TableCell>
+                    )}
                     <TableCell sx={{ fontFamily: "monospace", fontSize: "0.82rem" }}>{row.item_code}</TableCell>
                     <TableCell>{row.item_name}</TableCell>
                     <TableCell align="right"><strong>{row.counts_in_range}</strong></TableCell>
@@ -419,7 +438,7 @@ export default function ItemCountHistoryPage() {
                     </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell colSpan={10} sx={{ p: 0, borderBottom: isOpen ? undefined : "unset" }}>
+                    <TableCell colSpan={allOutlets ? 11 : 10} sx={{ p: 0, borderBottom: isOpen ? undefined : "unset" }}>
                       <Collapse in={isOpen} timeout="auto" unmountOnExit>
                         <ExpandedEvents row={row} />
                       </Collapse>

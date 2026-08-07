@@ -240,11 +240,11 @@ export const downloadCountHistoryDetailCsv = ({
   });
 
 export const getItemCountHistory = ({
-  outletId, from, to, q, onlyVariance, sortBy, order, page = 1, pageSize = 25,
+  outletId, allOutlets, from, to, q, onlyVariance, sortBy, order, page = 1, pageSize = 25,
 } = {}) =>
   api.get("/dashboard/item-count-history/", {
     params: {
-      ...(outletId ? { outlet: outletId } : {}),
+      ...(allOutlets ? { outlet: "all" } : (outletId ? { outlet: outletId } : {})),
       ...(from ? { from } : {}),
       ...(to ? { to } : {}),
       ...(q ? { q } : {}),
@@ -256,12 +256,12 @@ export const getItemCountHistory = ({
   });
 
 export const downloadItemCountHistoryCsv = ({
-  outletId, from, to, q, onlyVariance, sortBy, order,
+  outletId, allOutlets, from, to, q, onlyVariance, sortBy, order,
 } = {}) =>
   api.get("/dashboard/item-count-history/", {
     params: {
       export: "csv",
-      ...(outletId ? { outlet: outletId } : {}),
+      ...(allOutlets ? { outlet: "all" } : (outletId ? { outlet: outletId } : {})),
       ...(from ? { from } : {}),
       ...(to ? { to } : {}),
       ...(q ? { q } : {}),
