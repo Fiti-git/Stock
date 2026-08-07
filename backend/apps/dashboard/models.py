@@ -89,6 +89,23 @@ class StockCount(models.Model):
     is_month_end = models.BooleanField(default=False)
     device_uuid = models.CharField(max_length=64, blank=True, default="")
 
+    # Frozen POS qty as at the moment this count was submitted. Populated by
+    # the write path (submit_count / recount / admin edit) using the latest
+    # PosSnapshot for (outlet, item) with snapshot_date <= today. Once set,
+    # NEVER updated — subsequent POS uploads must not retroactively change
+    # historical variance. NULL only for legacy rows (pre-migration counts
+    # with no snapshot at backfill time) and for items that never had a
+    # PosSnapshot at all.
+    pos_qty_at_count = models.DecimalField(
+        max_digits=12, decimal_places=3, null=True, blank=True,
+    )
+    pos_snapshot_at_count = models.ForeignKey(
+        "uploads.PosSnapshot",
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
     session = models.ForeignKey(
         CountSession,
         on_delete=models.SET_NULL,

@@ -478,6 +478,21 @@ def submit_count(request):
         if Decimal(actual_qty) > Decimal(pos_qty) * Decimal("10"):
             flagged = True
 
+    # Freeze the latest PosSnapshot (with snapshot_date <= count_date) at
+    # submission time. This becomes the "AsatDate qty" the Item Count
+    # History report will use, forever. Even if POS is re-uploaded later,
+    # historical variance stays honest to what was known when we counted.
+    frozen_snap = (
+        PosSnapshot.objects.filter(
+            outlet=outlet, item=item, snapshot_date__lte=count_date,
+        )
+        .order_by("-snapshot_date")
+        .only("id", "pos_quantity")
+        .first()
+    )
+    frozen_pos_qty = frozen_snap.pos_quantity if frozen_snap else None
+    frozen_snap_id = frozen_snap.id if frozen_snap else None
+
     with transaction.atomic():
         session = _get_or_create_open_session(outlet, count_date, request.user)
 
@@ -502,6 +517,10 @@ def submit_count(request):
             existing.flagged_outlier = flagged
             existing.submitted_at = timezone.now()
             existing.approval_status = StockCount.ApprovalStatus.SUBMITTED
+            # Re-freeze on upsert — the count is being submitted "now" again,
+            # so the AsatDate should reflect the latest snapshot as of now.
+            existing.pos_qty_at_count = frozen_pos_qty
+            existing.pos_snapshot_at_count_id = frozen_snap_id
             existing.save()
             record_audit(
                 user=request.user,
@@ -525,6 +544,8 @@ def submit_count(request):
             approval_status=StockCount.ApprovalStatus.SUBMITTED,
             submitted_at=timezone.now(),
             flagged_outlier=flagged,
+            pos_qty_at_count=frozen_pos_qty,
+            pos_snapshot_at_count_id=frozen_snap_id,
         )
         record_audit(
             user=request.user,
@@ -1668,7 +1689,7 @@ def item_count_history(request):
         .exclude(approval_status=StockCount.ApprovalStatus.REJECTED)
         .select_related("counted_by")
         .only("id", "count_date", "counted_at", "actual_qty", "item_id",
-              "counted_by_id", "location_tag")
+              "counted_by_id", "location_tag", "pos_qty_at_count")
     )
 
     q = (request.query_params.get("q") or "").strip()
@@ -1677,7 +1698,34 @@ def item_count_history(request):
             Q(item__item_code__icontains=q) | Q(item__item_name__icontains=q)
         )
 
-    count_list = list(counts_qs)
+    include_superseded = request.query_params.get("include_superseded") in ("1", "true")
+
+    raw_count_list = list(counts_qs)
+
+    # Dedupe: for each (item_id, count_date, location_tag), keep only the
+    # LATEST by counted_at. Earlier entries are treated as superseded
+    # corrections (a recount at 15:00 supersedes the 09:00 mistake). This
+    # eliminates recount-inflation without losing the multi-location split
+    # (Rack + Store Room on the same date are DIFFERENT location_tags and
+    # both survive).
+    superseded_by_item = {}  # item_id -> list of dropped counts (for the UI note)
+    if include_superseded:
+        count_list = raw_count_list
+    else:
+        # Sort so the latest comes last per group; take the last per key.
+        raw_sorted = sorted(
+            raw_count_list,
+            key=lambda c: (c.item_id, c.count_date, c.location_tag or "", c.counted_at or c.count_date),
+        )
+        latest_per_key = {}
+        for c in raw_sorted:
+            key = (c.item_id, c.count_date, c.location_tag or "")
+            if key in latest_per_key:
+                # The previous winner is now superseded.
+                superseded_by_item.setdefault(c.item_id, []).append(latest_per_key[key])
+            latest_per_key[key] = c
+        count_list = list(latest_per_key.values())
+
     item_ids = {c.item_id for c in count_list}
 
     # Latest PosSnapshot per item — one row per item, `snapshot_date` newest.
@@ -1787,70 +1835,99 @@ def item_count_history(request):
 
         # Sort events oldest → newest for the expanded panel.
         counts_sorted = sorted(counts, key=lambda x: (x.count_date, x.counted_at or x.count_date))
-        events = []
-        # BOTH sums (counted + asat) accumulate only over the SAME set of
-        # events — the ones with an AsatDate snapshot available. That keeps
-        # variance_sum internally consistent: it always equals
-        # (counted_sum_asat_only − asat_date_sum), no bias from mixing
-        # different event sets. counted_sum below is the *total* count
-        # quantity (all events) — a separate, unrelated total.
-        counted_sum_all = 0.0
-        counted_sum_asat_only = 0.0
-        total_asat_qty = 0.0
-        events_with_asat = 0
+
+        # Group by count_date so we can compute variance ONCE per date
+        # (multi-location split on same date shares one AsatDate qty).
+        from collections import defaultdict
+        counts_by_date = defaultdict(list)
+        for c in counts_sorted:
+            counts_by_date[c.count_date].append(c)
+
+        events = []                          # per-count-event rows (for expanded panel)
+        counted_sum_all = 0.0                # sum of all surviving events
+        counted_sum_asat_only = 0.0          # only dates that had a frozen POS
+        total_asat_qty = 0.0                 # sum of per-date AsatDate qty
+        dates_with_asat = 0                  # count of DATES (not events)
+        total_dates = len(counts_by_date)
         total_loss = 0.0
         total_surplus = 0.0
         total_stock_age = 0
         stock_age_count = 0
-        for c in counts_sorted:
-            cq = float(c.actual_qty or 0)
-            asat_qty, asat_date = asat_snapshot_for(iid, c.count_date)
-            if asat_qty is None:
-                v = None
-                lv = None
+
+        for cdate, day_counts in sorted(counts_by_date.items()):
+            # Frozen POS from ANY event on the date (they should all share
+            # the same value since it's frozen at submit time from the same
+            # snapshot; take the first as canonical). Fall back to the
+            # historical bisect for pre-migration counts.
+            frozen_vals = [
+                float(c.pos_qty_at_count) for c in day_counts
+                if c.pos_qty_at_count is not None
+            ]
+            if frozen_vals:
+                date_asat_qty = frozen_vals[0]
+                # asat_date: find the snapshot the frozen value came from.
+                _, asat_date = asat_snapshot_for(iid, cdate)
             else:
-                v = cq - asat_qty
-                lv = v * cost
-                total_asat_qty += asat_qty
-                counted_sum_asat_only += cq
-                events_with_asat += 1
-                if lv < 0:
-                    total_loss += lv
-                elif lv > 0:
-                    total_surplus += lv
+                date_asat_qty, asat_date = asat_snapshot_for(iid, cdate)
+
+            date_counted = sum(float(c.actual_qty or 0) for c in day_counts)
+            if date_asat_qty is not None:
+                date_variance = date_counted - date_asat_qty
+                date_value = date_variance * cost
+                total_asat_qty += date_asat_qty
+                counted_sum_asat_only += date_counted
+                dates_with_asat += 1
+                if date_value < 0:
+                    total_loss += date_value
+                elif date_value > 0:
+                    total_surplus += date_value
+            else:
+                date_variance = None
+                date_value = None
+
+            counted_sum_all += date_counted
             stock_age_days = (
-                (c.count_date - item_created_date).days
-                if item_created_date else None
+                (cdate - item_created_date).days if item_created_date else None
             )
             if stock_age_days is not None:
                 total_stock_age += stock_age_days
                 stock_age_count += 1
-            events.append({
-                "count_id": c.id,
-                "date": str(c.count_date),
-                "time": c.counted_at.strftime("%H:%M") if c.counted_at else "",
-                "location": c.location_tag or "",
-                "counted": cq,
-                "asat_date_qty": asat_qty,
-                "asat_date": str(asat_date) if asat_date else None,
-                "stock_age_days": stock_age_days,
-                "variance": v if v is not None else 0.0,
-                "variance_has_asat": v is not None,
-                "value": lv if lv is not None else 0.0,
-                "counter": (
-                    c.counted_by.username if c.counted_by_id and c.counted_by else ""
-                ),
-            })
-            counted_sum_all += cq
 
-        # variance_sum = counted_sum − asat_date_sum, over the SAME event set
-        # (asat-eligible only). Guarantees the identity holds.
+            # Emit ONE event row per (date, location) — no more per-event
+            # variance columns; per-row values are aggregated into a single
+            # "date variance" that appears on the LAST row of the date
+            # (so the expanded panel visually attaches the total to the
+            # date group). Other rows in the date group leave variance blank.
+            for idx, c in enumerate(day_counts):
+                is_date_summary = idx == len(day_counts) - 1
+                events.append({
+                    "count_id": c.id,
+                    "date": str(cdate),
+                    "time": c.counted_at.strftime("%H:%M") if c.counted_at else "",
+                    "location": c.location_tag or "",
+                    "counted": float(c.actual_qty or 0),
+                    # AsatDate qty + date carried on the LAST row of the date
+                    "asat_date_qty": date_asat_qty if is_date_summary else None,
+                    "asat_date": str(asat_date) if (is_date_summary and asat_date) else None,
+                    "stock_age_days": stock_age_days if is_date_summary else None,
+                    # Variance / value likewise attached to the LAST row.
+                    "variance": date_variance if is_date_summary and date_variance is not None else 0.0,
+                    "variance_has_asat": is_date_summary and date_variance is not None,
+                    "value": date_value if is_date_summary and date_value is not None else 0.0,
+                    "is_date_summary": is_date_summary,
+                    "date_locations_count": len(day_counts),
+                    "counter": (
+                        c.counted_by.username if c.counted_by_id and c.counted_by else ""
+                    ),
+                })
+
+        # variance_sum = sum of per-date variances (already summed above).
         total_variance = (
-            counted_sum_asat_only - total_asat_qty
-            if events_with_asat else 0.0
+            counted_sum_asat_only - total_asat_qty if dates_with_asat else 0.0
         )
-        # Alias kept for clarity in the row payload.
         total_counted = counted_sum_all
+        events_with_asat = dates_with_asat  # kept for UI backwards compat
+        superseded_count = len(superseded_by_item.get(iid, []))
 
         latest_event = counts_sorted[-1]
         avg_stock_age = (
@@ -1861,22 +1938,25 @@ def item_count_history(request):
             "item_code": it.item_code,
             "item_name": it.item_name,
             "category": it.category or "",
+            # counts_in_range now = surviving (post-dedup) events shown in the
+            # expanded panel. Dates count is separate.
             "counts_in_range": len(counts_sorted),
+            "dates_counted": total_dates,
+            "superseded_count": superseded_count,
             "latest_mypos_qty": latest_mypos_qty,
             "latest_mypos_date": str(latest_mypos_date) if latest_mypos_date else None,
             "cost_price": cost,
             "cost_source": cost_source,
-            "avg_counted": round(total_counted / len(counts_sorted), 2) if counts_sorted else 0,
+            "avg_counted": round(total_counted / total_dates, 2) if total_dates else 0,
             "latest_count_date": str(latest_event.count_date),
             "latest_count_qty": float(latest_event.actual_qty or 0),
-            # NEW: per-item sums (Excel-style totals)
+            # Per-item sums (Excel-style totals) — now per-DATE not per-event
             "counted_sum": total_counted,
-            "asat_date_sum": total_asat_qty if events_with_asat else None,
+            "asat_date_sum": total_asat_qty if dates_with_asat else None,
             "variance_sum": total_variance,
-            # How many events (of counts_in_range) had an AsatDate snapshot.
-            # UI uses this to flag partial-coverage rows so reviewers know
-            # variance_sum isn't over the full event set for those items.
-            "events_with_asat": events_with_asat,
+            # How many DATES had a frozen POS. UI uses this to flag partial
+            # coverage — matches the semantics of dates_counted.
+            "events_with_asat": dates_with_asat,
             "avg_stock_age": avg_stock_age,
             # Kept for backwards compat with existing UI code paths
             "total_variance": total_variance,

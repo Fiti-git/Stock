@@ -82,6 +82,11 @@ function ExpandedEvents({ row }) {
           )}
         </span>
       </Typography>
+      {row.superseded_count > 0 && (
+        <Typography variant="caption" sx={{ color: "#888", display: "block", mb: 1 }}>
+          {row.superseded_count} earlier count{row.superseded_count > 1 ? "s" : ""} superseded by later recounts on same (date, location) — hidden.
+        </Typography>
+      )}
       <Table size="small" sx={{ bgcolor: "#fff", borderRadius: 1 }}>
         <TableHead>
           <TableRow>
@@ -107,11 +112,28 @@ function ExpandedEvents({ row }) {
                   ? <Chip size="small" label={e.location} variant="outlined" sx={{ fontSize: "0.7rem" }} />
                   : <span style={{ color: "#aaa" }}>—</span>}
               </TableCell>
-              <TableCell align="right">{fmtNum(e.counted)}</TableCell>
+              <TableCell align="right">
+                {fmtNum(e.counted)}
+                {e.is_date_summary && e.date_locations_count > 1 && (
+                  <span style={{ color: "#666", fontSize: "0.7rem", marginLeft: 4 }}>
+                    (date Σ)
+                  </span>
+                )}
+              </TableCell>
               <TableCell align="right">
                 {e.asat_date_qty == null
                   ? <span style={{ color: "#aaa" }}>—</span>
-                  : fmtNum(e.asat_date_qty)}
+                  : (
+                    <Tooltip
+                      title={
+                        e.date_locations_count > 1
+                          ? "One AsatDate qty per date — shared across the location split"
+                          : ""
+                      }
+                    >
+                      <span>{fmtNum(e.asat_date_qty)}</span>
+                    </Tooltip>
+                  )}
               </TableCell>
               <TableCell sx={{ color: "text.secondary", fontSize: "0.8rem" }}>
                 {e.asat_date || <span style={{ color: "#aaa" }}>—</span>}
