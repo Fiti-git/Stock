@@ -151,8 +151,8 @@ export default function App() {
                     <Route path="/admin/suppliers" element={<PermissionRoute code="nav.suppliers"><SuppliersPage /></PermissionRoute>} />
                     <Route path="/admin/categories" element={<PermissionRoute code="nav.categories"><CategoriesPage /></PermissionRoute>} />
                     <Route path="/admin/locations" element={<PermissionRoute code="nav.categories"><LocationsPage /></PermissionRoute>} />
-                    <Route path="/admin/count-history-detail" element={<PermissionRoute code="nav.stock_variance"><CountHistoryDetailPage /></PermissionRoute>} />
-                    <Route path="/admin/reports/item-count-history" element={<PermissionRoute code="nav.stock_variance"><ItemCountHistoryPage /></PermissionRoute>} />
+                    <Route path="/admin/count-history-detail" element={<PermissionRoute code="nav.manager_dashboard"><CountHistoryDetailPage /></PermissionRoute>} />
+                    <Route path="/admin/reports/item-count-history" element={<PermissionRoute code="nav.manager_dashboard"><ItemCountHistoryPage /></PermissionRoute>} />
                     <Route path="/admin/master-products" element={<PermissionRoute code="nav.master_products"><MasterProductsPage /></PermissionRoute>} />
                     <Route path="/admin/master-mapping" element={<PermissionRoute code="nav.master_mapping"><MasterMappingPage /></PermissionRoute>} />
                     <Route path="/admin/demand" element={<PermissionRoute code="nav.demand_dashboard"><DemandDashboardPage /></PermissionRoute>} />
