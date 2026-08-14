@@ -239,6 +239,39 @@ export const downloadCountHistoryDetailCsv = ({
     responseType: "blob",
   });
 
+export const getRealLoss = ({
+  outletId, allOutlets, from, to, q, onlyVariance, sortBy, order, page = 1, pageSize = 25,
+} = {}) =>
+  api.get("/dashboard/real-loss/", {
+    params: {
+      ...(allOutlets ? { outlet: "all" } : (outletId ? { outlet: outletId } : {})),
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+      ...(q ? { q } : {}),
+      ...(onlyVariance ? { only_variance: 1 } : {}),
+      ...(sortBy ? { sort_by: sortBy } : {}),
+      ...(order ? { order } : {}),
+      page, page_size: pageSize,
+    },
+  });
+
+export const downloadRealLossCsv = ({
+  outletId, allOutlets, from, to, q, onlyVariance, sortBy, order,
+} = {}) =>
+  api.get("/dashboard/real-loss/", {
+    params: {
+      export: "csv",
+      ...(allOutlets ? { outlet: "all" } : (outletId ? { outlet: outletId } : {})),
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+      ...(q ? { q } : {}),
+      ...(onlyVariance ? { only_variance: 1 } : {}),
+      ...(sortBy ? { sort_by: sortBy } : {}),
+      ...(order ? { order } : {}),
+    },
+    responseType: "blob",
+  });
+
 export const getItemCountHistory = ({
   outletId, allOutlets, from, to, q, onlyVariance, sortBy, order, page = 1, pageSize = 25,
 } = {}) =>

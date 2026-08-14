@@ -2088,6 +2088,497 @@ def item_count_history(request):
     })
 
 
+REAL_LOSS_SORT_KEYS = {
+    "item_code":         lambda r: r["item_code"] or "",
+    "item_name":         lambda r: (r["item_name"] or "").lower(),
+    "counts_in_range":   lambda r: r["counts_in_range"],
+    "real_variance_sum": lambda r: r["real_variance_sum"],
+    "real_net_value":    lambda r: r["real_net_value"],
+    "real_loss":         lambda r: r["real_loss"],
+}
+
+
+@api_view(["GET"])
+@permission_classes([IsManager])
+def real_loss_report(request):
+    """
+    Real Loss — full stock reconciliation per counted item.
+
+    For each StockCount, computes the "expected" qty at count moment by
+    starting from the frozen anchor POS snapshot (the snapshot in effect
+    just before the count, captured at submit time) and applying every
+    signed transaction between the snapshot date and the count date.
+
+    Signed movement table (positive = stock in, negative = stock out):
+      GRN + Sales Returns + Verification (signed)  →  positive
+      Sales + Damage + Office + RTS                →  negative
+
+    Real variance = counted_qty − expected_qty. Real loss/surplus = variance
+    × cost from the LATEST POS snapshot (matches Item Count History cost
+    basis for continuity).
+
+    This is the strictly-honest number: it explains 100% of variance IF
+    every transaction is faithfully uploaded. Unexplained variance = real
+    shrinkage OR missing uploads.
+    """
+    from apps.uploads.models import (
+        SalesLine, SalesReturnLine, DamageLine, OfficeLine,
+        VerificationLine, GrnLine, RtsLine,
+    )
+
+    # Outlet resolution (same pattern as item_count_history — supports all).
+    outlet_param = (request.query_params.get("outlet") or "").strip().lower()
+    all_outlets_mode = (
+        outlet_param == "all"
+        and request.user.role in (User.Role.ADMIN, User.Role.SUPER_ADMIN)
+    )
+    if all_outlets_mode:
+        outlet = None
+        outlet_map = {o.id: o for o in Outlet.objects.all().only("id", "outlet_name")}
+    else:
+        outlet = _resolve_outlet(request)
+        if not outlet:
+            return Response({"detail": "No outlet."}, status=400)
+        outlet_map = {outlet.id: outlet}
+
+    to_date = _parse_date(request.query_params.get("to", "")) or date.today()
+    from_date = _parse_date(request.query_params.get("from", "")) or (to_date - timedelta(days=30))
+    if from_date > to_date:
+        from_date, to_date = to_date, from_date
+
+    # Pull all counts in range.
+    counts_qs = (
+        StockCount.objects
+        .filter(count_date__gte=from_date, count_date__lte=to_date)
+        .exclude(approval_status=StockCount.ApprovalStatus.REJECTED)
+        .select_related("counted_by", "pos_snapshot_at_count")
+        .only("id", "count_date", "counted_at", "actual_qty", "item_id",
+              "outlet_id", "counted_by_id", "location_tag",
+              "pos_qty_at_count", "pos_snapshot_at_count_id")
+    )
+    if not all_outlets_mode:
+        counts_qs = counts_qs.filter(outlet=outlet)
+
+    q = (request.query_params.get("q") or "").strip()
+    if q:
+        counts_qs = counts_qs.filter(
+            Q(item__item_code__icontains=q) | Q(item__item_name__icontains=q)
+        )
+
+    # Dedupe: same (outlet, item, date, location) → latest wins.
+    raw_sorted = sorted(
+        list(counts_qs),
+        key=lambda c: (c.outlet_id, c.item_id, c.count_date, c.location_tag or "", c.counted_at or c.count_date),
+    )
+    latest_per_key = {}
+    for c in raw_sorted:
+        key = (c.outlet_id, c.item_id, c.count_date, c.location_tag or "")
+        latest_per_key[key] = c
+    count_list = list(latest_per_key.values())
+
+    if not count_list:
+        return Response({
+            "count": 0, "page": 1, "page_size": 25,
+            "outlet_id": outlet.id if outlet else None,
+            "all_outlets_mode": all_outlets_mode,
+            "from_date": str(from_date), "to_date": str(to_date),
+            "summary": {"items_counted": 0, "total_events": 0,
+                        "real_net_value": 0, "real_loss": 0, "real_surplus": 0,
+                        "range_days": (to_date - from_date).days + 1},
+            "results": [],
+        })
+
+    item_ids = {c.item_id for c in count_list}
+    outlet_item_pairs = {(c.outlet_id, c.item_id) for c in count_list}
+
+    # Item lookup — need item_code for txn joins and cost_price fallback.
+    item_map = {
+        it.id: it for it in Item.objects.filter(id__in=item_ids).only(
+            "id", "item_code", "item_name", "category", "cost_price", "created_at"
+        )
+    }
+    # Reverse: (outlet_id, item_code) → item_id, for joining txn lines back.
+    code_to_id = {}
+    for c in count_list:
+        it = item_map.get(c.item_id)
+        if it:
+            code_to_id[(c.outlet_id, it.item_code)] = c.item_id
+
+    # Latest snapshot per (outlet, item) for cost + display fields.
+    latest_snap_map = {}
+    latest_snap_date_global = None
+    snap_filter = PosSnapshot.objects.filter(item_id__in=item_ids)
+    if not all_outlets_mode:
+        snap_filter = snap_filter.filter(outlet=outlet)
+    for r in (
+        snap_filter
+        .order_by("outlet_id", "item_id", "-snapshot_date")
+        .values("outlet_id", "item_id", "snapshot_date", "pos_quantity", "cost_price")
+    ):
+        pair = (r["outlet_id"], r["item_id"])
+        if pair in latest_snap_map:
+            continue
+        latest_snap_map[pair] = (
+            float(r["pos_quantity"] or 0),
+            r["snapshot_date"],
+            float(r["cost_price"]) if r["cost_price"] is not None else None,
+        )
+        if latest_snap_date_global is None or r["snapshot_date"] > latest_snap_date_global:
+            latest_snap_date_global = r["snapshot_date"]
+
+    # Determine the earliest anchor date across all counts so we know how far
+    # back to pull transactions. Anchor = pos_snapshot_at_count.snapshot_date.
+    # For counts missing a frozen snapshot, use count_date - 1 as a safe upper
+    # bound so we still capture some window.
+    anchor_dates = []
+    for c in count_list:
+        anchor = c.pos_snapshot_at_count.snapshot_date if c.pos_snapshot_at_count_id else None
+        anchor_dates.append(anchor if anchor else c.count_date)
+    txn_from = min(anchor_dates) if anchor_dates else from_date
+    txn_to = to_date
+
+    # Bulk-fetch all transaction lines in the window. One query per type,
+    # aggregated by (outlet_id, item_code, txn_date) → summed qty.
+    # Store as dict: (outlet_id, item_id, txn_date) → {type: qty}
+    # Note: line tables use item_code, so we translate via code_to_id.
+    def _bulk_load(qs, qty_expr="qty"):
+        """Aggregate qty by (outlet, item_code, txn_date) into a dict."""
+        out = {}
+        for row in qs.values("outlet_id", "item_code", "txn_date").annotate(_sum=Sum(qty_expr)):
+            iid = code_to_id.get((row["outlet_id"], row["item_code"]))
+            if iid is None:
+                continue
+            key = (row["outlet_id"], iid, row["txn_date"])
+            out[key] = out.get(key, 0.0) + float(row["_sum"] or 0)
+        return out
+
+    outlet_filter_kw = {} if all_outlets_mode else {"outlet": outlet}
+    date_filter_kw = {"txn_date__gte": txn_from, "txn_date__lte": txn_to}
+
+    from django.db.models import F, Sum as _Sum
+    sales_by_key = _bulk_load(
+        SalesLine.objects.filter(**outlet_filter_kw, **date_filter_kw)
+    )
+    returns_by_key = _bulk_load(
+        SalesReturnLine.objects.filter(**outlet_filter_kw, **date_filter_kw)
+    )
+    damage_by_key = _bulk_load(
+        DamageLine.objects.filter(**outlet_filter_kw, **date_filter_kw)
+    )
+    office_by_key = _bulk_load(
+        OfficeLine.objects.filter(**outlet_filter_kw, **date_filter_kw)
+    )
+    verification_by_key = _bulk_load(
+        VerificationLine.objects.filter(**outlet_filter_kw, **date_filter_kw)
+    )
+    # GRN / RTS include free_qty as physical stock in/out — sum qty + free_qty.
+    grn_by_key = {}
+    for row in (
+        GrnLine.objects.filter(**outlet_filter_kw, **date_filter_kw)
+        .values("outlet_id", "item_code", "txn_date")
+        .annotate(_sum_qty=_Sum("qty"), _sum_free=_Sum("free_qty"))
+    ):
+        iid = code_to_id.get((row["outlet_id"], row["item_code"]))
+        if iid is None:
+            continue
+        key = (row["outlet_id"], iid, row["txn_date"])
+        grn_by_key[key] = grn_by_key.get(key, 0.0) + float(row["_sum_qty"] or 0) + float(row["_sum_free"] or 0)
+    rts_by_key = {}
+    for row in (
+        RtsLine.objects.filter(**outlet_filter_kw, **date_filter_kw)
+        .values("outlet_id", "item_code", "txn_date")
+        .annotate(_sum_qty=_Sum("qty"), _sum_free=_Sum("free_qty"))
+    ):
+        iid = code_to_id.get((row["outlet_id"], row["item_code"]))
+        if iid is None:
+            continue
+        key = (row["outlet_id"], iid, row["txn_date"])
+        rts_by_key[key] = rts_by_key.get(key, 0.0) + float(row["_sum_qty"] or 0) + float(row["_sum_free"] or 0)
+
+    def _sum_between(by_key, oid, iid, day_from, day_to):
+        """Sum qty for (outlet, item) across the inclusive date window."""
+        if day_from > day_to:
+            return 0.0
+        # by_key is a dict; iterate is O(n txns) — for typical volume fine.
+        # If needed later, pre-group by (outlet, item) into sorted-by-date list.
+        total = 0.0
+        for (o, i, d), v in by_key.items():
+            if o == oid and i == iid and day_from <= d <= day_to:
+                total += v
+        return total
+
+    # For efficiency, pre-index each txn dict by (outlet, item) → list of (date, qty).
+    def _index_by_pair(by_key):
+        idx = {}
+        for (o, i, d), v in by_key.items():
+            idx.setdefault((o, i), []).append((d, v))
+        for k in idx:
+            idx[k].sort()
+        return idx
+
+    sales_idx = _index_by_pair(sales_by_key)
+    returns_idx = _index_by_pair(returns_by_key)
+    damage_idx = _index_by_pair(damage_by_key)
+    office_idx = _index_by_pair(office_by_key)
+    verification_idx = _index_by_pair(verification_by_key)
+    grn_idx = _index_by_pair(grn_by_key)
+    rts_idx = _index_by_pair(rts_by_key)
+
+    import bisect
+    def _sum_window(idx, oid, iid, day_from, day_to):
+        arr = idx.get((oid, iid))
+        if not arr:
+            return 0.0
+        dates_only = [d for d, _ in arr]
+        lo = bisect.bisect_left(dates_only, day_from)
+        hi = bisect.bisect_right(dates_only, day_to)
+        return sum(v for _, v in arr[lo:hi])
+
+    # Group counts by (outlet, item).
+    per_pair = {}
+    for c in count_list:
+        per_pair.setdefault((c.outlet_id, c.item_id), []).append(c)
+
+    rows = []
+    for (oid, iid), counts in per_pair.items():
+        it = item_map.get(iid)
+        if not it:
+            continue
+        latest = latest_snap_map.get((oid, iid))
+        latest_snap_cost = latest[2] if latest else None
+        latest_mypos_qty = latest[0] if latest else None
+        latest_mypos_date = latest[1] if latest else None
+        cost = (
+            latest_snap_cost
+            if latest_snap_cost is not None
+            else float(it.cost_price or 0)
+        )
+        cost_source = "snapshot" if latest_snap_cost is not None else "item"
+
+        counts_sorted = sorted(counts, key=lambda x: (x.count_date, x.counted_at or x.count_date))
+
+        events = []
+        real_variance_sum = 0.0
+        real_loss_events = 0.0
+        real_surplus_events = 0.0
+        counted_sum_all = 0.0
+        expected_sum = 0.0
+        events_computable = 0
+
+        # Roll-up totals of each txn type across the range (for the item row).
+        item_sales = 0.0
+        item_returns = 0.0
+        item_grn = 0.0
+        item_rts = 0.0
+        item_damage = 0.0
+        item_office = 0.0
+        item_verification = 0.0
+
+        for c in counts_sorted:
+            cq = float(c.actual_qty or 0)
+            counted_sum_all += cq
+            anchor_qty = (
+                float(c.pos_qty_at_count) if c.pos_qty_at_count is not None else None
+            )
+            anchor_date = (
+                c.pos_snapshot_at_count.snapshot_date
+                if c.pos_snapshot_at_count_id else None
+            )
+            # Delta window: (anchor_date, count_date]. If no anchor, skip
+            # the reconciliation math for this event.
+            if anchor_qty is None or anchor_date is None:
+                events.append({
+                    "count_id": c.id, "date": str(c.count_date),
+                    "time": c.counted_at.strftime("%H:%M") if c.counted_at else "",
+                    "location": c.location_tag or "",
+                    "counted": cq,
+                    "anchor_qty": None, "anchor_date": None,
+                    "sales": None, "returns": None, "grn": None, "rts": None,
+                    "damage": None, "office": None, "verification": None,
+                    "expected": None, "real_variance": None, "real_value": None,
+                    "has_data": False,
+                    "counter": (c.counted_by.username if c.counted_by_id and c.counted_by else ""),
+                })
+                continue
+            day_from = anchor_date + timedelta(days=1)
+            day_to = c.count_date
+
+            sales_q = _sum_window(sales_idx, oid, iid, day_from, day_to)
+            returns_q = _sum_window(returns_idx, oid, iid, day_from, day_to)
+            grn_q = _sum_window(grn_idx, oid, iid, day_from, day_to)
+            rts_q = _sum_window(rts_idx, oid, iid, day_from, day_to)
+            damage_q = _sum_window(damage_idx, oid, iid, day_from, day_to)
+            office_q = _sum_window(office_idx, oid, iid, day_from, day_to)
+            verification_q = _sum_window(verification_idx, oid, iid, day_from, day_to)
+
+            expected = (
+                anchor_qty
+                + grn_q + returns_q + verification_q
+                - sales_q - rts_q - damage_q - office_q
+            )
+            real_variance = cq - expected
+            real_value = real_variance * cost
+
+            real_variance_sum += real_variance
+            expected_sum += expected
+            events_computable += 1
+            if real_value < 0:
+                real_loss_events += real_value
+            elif real_value > 0:
+                real_surplus_events += real_value
+
+            item_sales += sales_q
+            item_returns += returns_q
+            item_grn += grn_q
+            item_rts += rts_q
+            item_damage += damage_q
+            item_office += office_q
+            item_verification += verification_q
+
+            events.append({
+                "count_id": c.id, "date": str(c.count_date),
+                "time": c.counted_at.strftime("%H:%M") if c.counted_at else "",
+                "location": c.location_tag or "",
+                "counted": cq,
+                "anchor_qty": anchor_qty,
+                "anchor_date": str(anchor_date),
+                "sales": sales_q, "returns": returns_q,
+                "grn": grn_q, "rts": rts_q,
+                "damage": damage_q, "office": office_q,
+                "verification": verification_q,
+                "expected": expected,
+                "real_variance": real_variance,
+                "real_value": real_value,
+                "has_data": True,
+                "counter": (c.counted_by.username if c.counted_by_id and c.counted_by else ""),
+            })
+
+        real_net_value = real_variance_sum * cost
+        _o = outlet_map.get(oid)
+        rows.append({
+            "outlet_id": oid,
+            "outlet_name": _o.outlet_name if _o else "",
+            "item_id": iid,
+            "item_code": it.item_code,
+            "item_name": it.item_name,
+            "category": it.category or "",
+            "counts_in_range": len(counts_sorted),
+            "events_computable": events_computable,
+            "latest_mypos_qty": latest_mypos_qty,
+            "latest_mypos_date": str(latest_mypos_date) if latest_mypos_date else None,
+            "cost_price": cost,
+            "cost_source": cost_source,
+            "counted_sum": counted_sum_all,
+            "expected_sum": expected_sum if events_computable else None,
+            "real_variance_sum": real_variance_sum,
+            "real_net_value": real_net_value,
+            "real_loss": real_loss_events,     # <= 0
+            "real_surplus": real_surplus_events, # >= 0
+            # Roll-up of txn types over the whole range for this item
+            "sales_sum": item_sales,
+            "returns_sum": item_returns,
+            "grn_sum": item_grn,
+            "rts_sum": item_rts,
+            "damage_sum": item_damage,
+            "office_sum": item_office,
+            "verification_sum": item_verification,
+            "events": events,
+        })
+
+    if request.query_params.get("only_variance") in ("1", "true"):
+        rows = [r for r in rows if abs(r["real_variance_sum"]) > 0.001]
+
+    summary = {
+        "items_counted": len(rows),
+        "total_events": sum(r["counts_in_range"] for r in rows),
+        "events_computable": sum(r["events_computable"] for r in rows),
+        "latest_pos_snapshot_date": str(latest_snap_date_global) if latest_snap_date_global else None,
+        "real_loss": sum(r["real_loss"] for r in rows),
+        "real_surplus": sum(r["real_surplus"] for r in rows),
+        "real_net_value": sum(r["real_net_value"] for r in rows),
+        "range_days": (to_date - from_date).days + 1,
+    }
+
+    sort_by = request.query_params.get("sort_by", "real_loss")
+    order = request.query_params.get("order", "asc")
+    rows = _sort_rows(rows, sort_by, order, REAL_LOSS_SORT_KEYS, "real_loss")
+
+    if request.query_params.get("export") == "csv":
+        header = [
+            "Outlet", "Item code", "Item name", "Category",
+            "Count date", "Count time", "Location", "Counted qty",
+            "Anchor POS qty", "Anchor snapshot date",
+            "GRN in", "Sales", "Returns", "Damage", "Office", "RTS", "Verification (signed)",
+            "Expected qty", "Real variance", "Cost", "Real value (event)",
+            "Counter",
+            # First-row totals per item
+            "Counted SUM", "Expected SUM",
+            "Real variance SUM", "Real net value",
+            "Real loss (gross)", "Real surplus (gross)",
+        ]
+
+        def iterator():
+            for r in rows:
+                for i, e in enumerate(r["events"]):
+                    is_first = i == 0
+                    yield [
+                        r.get("outlet_name", ""),
+                        r["item_code"], r["item_name"], r["category"],
+                        e["date"], e["time"], e["location"], e["counted"],
+                        "" if e["anchor_qty"] is None else e["anchor_qty"],
+                        e["anchor_date"] or "",
+                        "" if e["grn"] is None else e["grn"],
+                        "" if e["sales"] is None else e["sales"],
+                        "" if e["returns"] is None else e["returns"],
+                        "" if e["damage"] is None else e["damage"],
+                        "" if e["office"] is None else e["office"],
+                        "" if e["rts"] is None else e["rts"],
+                        "" if e["verification"] is None else e["verification"],
+                        "" if e["expected"] is None else e["expected"],
+                        "" if e["real_variance"] is None else e["real_variance"],
+                        r["cost_price"],
+                        "" if e["real_value"] is None else e["real_value"],
+                        e["counter"],
+                        (r["counted_sum"] if is_first else ""),
+                        ("" if not is_first or r["expected_sum"] is None else r["expected_sum"]),
+                        (r["real_variance_sum"] if is_first else ""),
+                        (r["real_net_value"] if is_first else ""),
+                        (r["real_loss"] if is_first else ""),
+                        (r["real_surplus"] if is_first else ""),
+                    ]
+
+        resp = _csv_stream(header, iterator())
+        resp["Content-Disposition"] = (
+            f'attachment; filename="real-loss-{from_date}-to-{to_date}.csv"'
+        )
+        return resp
+
+    try:
+        page = max(1, int(request.query_params.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = min(max(int(request.query_params.get("page_size", 25)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 25
+
+    total = len(rows)
+    offset = (page - 1) * page_size
+    results = rows[offset:offset + page_size]
+
+    return Response({
+        "count": total,
+        "page": page,
+        "page_size": page_size,
+        "outlet_id": outlet.id if outlet else None,
+        "all_outlets_mode": all_outlets_mode,
+        "from_date": str(from_date),
+        "to_date": str(to_date),
+        "summary": summary,
+        "results": results,
+    })
+
+
 @api_view(["GET"])
 @permission_classes([IsManager])
 def uncounted_items(request):

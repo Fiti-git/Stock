@@ -79,6 +79,7 @@ export const routes = [
   // permission codes are unchanged; only the sidebar group is normalised.
   { path: "/admin/count-history-detail",  code: "nav.manager_dashboard",     label: "Count History Detail", icon: HistoryIcon,           roles: ["admin","super_admin","manager"],              group: "Reports", system: "stock", showInNav: false },
   { path: "/admin/reports/item-count-history", code: "nav.manager_dashboard",label: "Item Count History",   icon: Inventory2Icon,        roles: ["admin","super_admin","manager"],              group: "Reports", system: "stock" },
+  { path: "/admin/reports/real-loss",     code: "nav.manager_dashboard",     label: "Real Loss",            icon: TrendingDownIcon,      roles: ["admin","super_admin","manager"],              group: "Reports", system: "stock" },
   { path: "/admin/reports/counted-items", code: "nav.counted_items_report",  label: "Counted vs Uncounted", icon: ChecklistIcon,         roles: ["admin","super_admin","manager"],              group: "Reports", system: "stock", showInNav: false },
   { path: "/reports/counter-performance", code: "nav.counter_performance",   label: "Counter Performance",  icon: LeaderboardIcon,       roles: ["manager","admin","super_admin"],              group: "Reports", system: "stock" },
   { path: "/admin/reports/stock-variance",code: "nav.stock_variance",        label: "Stock Variance",       icon: FactCheckIcon,         roles: ["admin","super_admin"],                        group: "Reports", system: "stock", showInNav: false },
