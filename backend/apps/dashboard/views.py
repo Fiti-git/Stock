@@ -522,6 +522,15 @@ def submit_count(request):
             existing.pos_qty_at_count = frozen_pos_qty
             existing.pos_snapshot_at_count_id = frozen_snap_id
             existing.save()
+            # Real Loss freeze — captures anchor + all txn totals in the
+            # delta window as of NOW. Cheap (few queries per count) and
+            # keeps report reads free of live compute for this count.
+            try:
+                from apps.dashboard.real_loss_freeze import freeze_stock_count
+                freeze_stock_count(existing, source="submit")
+            except Exception:
+                # Never let a freeze failure block the count submission.
+                pass
             record_audit(
                 user=request.user,
                 action="stock_count.upsert",
@@ -547,6 +556,12 @@ def submit_count(request):
             pos_qty_at_count=frozen_pos_qty,
             pos_snapshot_at_count_id=frozen_snap_id,
         )
+        # Real Loss freeze on new count (same rules as upsert path).
+        try:
+            from apps.dashboard.real_loss_freeze import freeze_stock_count
+            freeze_stock_count(count, source="submit")
+        except Exception:
+            pass
         record_audit(
             user=request.user,
             action="stock_count.submit",
@@ -2098,6 +2113,79 @@ REAL_LOSS_SORT_KEYS = {
 }
 
 
+@api_view(["POST"])
+@permission_classes([IsManager])
+def real_loss_rerun(request):
+    """
+    Re-freeze Real Loss reconciliation for the given StockCount ids using
+    current DB state. Writes a RealLossRerunHistory row per count so the
+    change is auditable. Body:  { "count_ids": [1,2,3, ...] }
+    Cap: 500 counts per request (protects against runaway "rerun all" clicks).
+    """
+    from apps.dashboard.real_loss_freeze import freeze_stock_count
+    from apps.dashboard.models import RealLossRerunHistory
+
+    count_ids = request.data.get("count_ids") or []
+    if not isinstance(count_ids, list) or not count_ids:
+        return Response({"detail": "count_ids required (list)."}, status=400)
+    if len(count_ids) > 500:
+        return Response({"detail": "Max 500 counts per rerun."}, status=400)
+
+    # Scope: managers can only rerun counts in their own outlet.
+    qs = StockCount.objects.filter(id__in=count_ids)
+    if request.user.role not in (User.Role.ADMIN, User.Role.SUPER_ADMIN):
+        qs = qs.filter(outlet=request.user.outlet)
+
+    updated = 0
+    audit_rows = []
+    for sc in qs.select_related("pos_snapshot_at_count"):
+        prev, new = freeze_stock_count(sc, source="rerun")
+        audit_rows.append(RealLossRerunHistory(
+            count=sc, ran_by=request.user, source="rerun",
+            prev_expected=prev["expected"], prev_variance=prev["variance"], prev_value=prev["value"],
+            new_expected=new["expected"], new_variance=new["variance"], new_value=new["value"],
+        ))
+        updated += 1
+    if audit_rows:
+        RealLossRerunHistory.objects.bulk_create(audit_rows, batch_size=500)
+    return Response({"updated": updated})
+
+
+@api_view(["GET"])
+@permission_classes([IsManager])
+def real_loss_rerun_history(request, count_id):
+    """
+    List all rerun events for a StockCount, newest first. Used by the UI
+    to show the audit trail for a specific row.
+    """
+    from apps.dashboard.models import RealLossRerunHistory
+
+    sc = StockCount.objects.filter(pk=count_id).first()
+    if not sc:
+        return Response({"detail": "Not found."}, status=404)
+    if request.user.role not in (User.Role.ADMIN, User.Role.SUPER_ADMIN):
+        if sc.outlet_id != request.user.outlet_id:
+            return Response({"detail": "Forbidden."}, status=403)
+    rows = list(
+        RealLossRerunHistory.objects
+        .filter(count_id=count_id)
+        .select_related("ran_by")
+        .values(
+            "id", "ran_at", "source",
+            "prev_expected", "prev_variance", "prev_value",
+            "new_expected", "new_variance", "new_value",
+            "ran_by__username",
+        )
+    )
+    for r in rows:
+        r["ran_at"] = r["ran_at"].isoformat() if r["ran_at"] else None
+        r["ran_by"] = r.pop("ran_by__username")
+        for k in ("prev_expected", "prev_variance", "prev_value",
+                  "new_expected", "new_variance", "new_value"):
+            r[k] = float(r[k]) if r[k] is not None else None
+    return Response({"results": rows})
+
+
 @api_view(["GET"])
 @permission_classes([IsManager])
 def real_loss_report(request):
@@ -2403,21 +2491,38 @@ def real_loss_report(request):
             day_from = anchor_date + timedelta(days=1)
             day_to = c.count_date
 
-            sales_q = _sum_window(sales_idx, oid, iid, day_from, day_to)
-            returns_q = _sum_window(returns_idx, oid, iid, day_from, day_to)
-            grn_q = _sum_window(grn_idx, oid, iid, day_from, day_to)
-            rts_q = _sum_window(rts_idx, oid, iid, day_from, day_to)
-            damage_q = _sum_window(damage_idx, oid, iid, day_from, day_to)
-            office_q = _sum_window(office_idx, oid, iid, day_from, day_to)
-            verification_q = _sum_window(verification_idx, oid, iid, day_from, day_to)
-
-            expected = (
-                anchor_qty
-                + grn_q + returns_q + verification_q
-                - sales_q - rts_q - damage_q - office_q
-            )
-            real_variance = cq - expected
-            real_value = real_variance * cost
+            # Prefer FROZEN values when they exist. Fall back to live compute
+            # only for pre-freeze rows the migration missed. Frozen values are
+            # the count's honest historical truth; live compute drifts as more
+            # txns get uploaded.
+            if c.real_expected_qty is not None and c.real_variance is not None:
+                expected = float(c.real_expected_qty)
+                real_variance = float(c.real_variance)
+                real_value = float(c.real_value or 0)
+                # Read txn totals from the frozen breakdown for display.
+                totals = (c.real_txn_breakdown or {}).get("totals", {}) if isinstance(c.real_txn_breakdown, dict) else {}
+                sales_q = float(totals.get("sales", 0))
+                returns_q = float(totals.get("returns", 0))
+                grn_q = float(totals.get("grn", 0))
+                rts_q = float(totals.get("rts", 0))
+                damage_q = float(totals.get("damage", 0))
+                office_q = float(totals.get("office", 0))
+                verification_q = float(totals.get("verification", 0))
+            else:
+                sales_q = _sum_window(sales_idx, oid, iid, day_from, day_to)
+                returns_q = _sum_window(returns_idx, oid, iid, day_from, day_to)
+                grn_q = _sum_window(grn_idx, oid, iid, day_from, day_to)
+                rts_q = _sum_window(rts_idx, oid, iid, day_from, day_to)
+                damage_q = _sum_window(damage_idx, oid, iid, day_from, day_to)
+                office_q = _sum_window(office_idx, oid, iid, day_from, day_to)
+                verification_q = _sum_window(verification_idx, oid, iid, day_from, day_to)
+                expected = (
+                    anchor_qty
+                    + grn_q + returns_q + verification_q
+                    - sales_q - rts_q - damage_q - office_q
+                )
+                real_variance = cq - expected
+                real_value = real_variance * cost
 
             real_variance_sum += real_variance
             expected_sum += expected
@@ -2451,6 +2556,11 @@ def real_loss_report(request):
                 "real_value": real_value,
                 "has_data": True,
                 "counter": (c.counted_by.username if c.counted_by_id and c.counted_by else ""),
+                # Freeze metadata for the UI badge / Rerun button.
+                "freeze_at": c.real_freeze_at.isoformat() if c.real_freeze_at else None,
+                "freeze_source": c.real_freeze_source or "live",
+                # Full itemised txn list per delta window (only when frozen).
+                "txn_breakdown": c.real_txn_breakdown if isinstance(c.real_txn_breakdown, dict) else None,
             })
 
         real_net_value = real_variance_sum * cost

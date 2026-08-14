@@ -106,6 +106,30 @@ class StockCount(models.Model):
         related_name="+",
     )
 
+    # Real Loss reconciliation — frozen at count submit, refreshable via Rerun.
+    # expected = anchor_qty + Σ (signed txns in (anchor_date, count_date]).
+    # These fields are the AUTHORITATIVE source for the Real Loss report;
+    # if NULL, the reader falls back to live computation.
+    real_expected_qty = models.DecimalField(
+        max_digits=14, decimal_places=3, null=True, blank=True,
+    )
+    real_variance = models.DecimalField(
+        max_digits=14, decimal_places=3, null=True, blank=True,
+    )
+    real_value = models.DecimalField(
+        max_digits=16, decimal_places=2, null=True, blank=True,
+    )
+    real_freeze_at = models.DateTimeField(null=True, blank=True)
+    # 'submit' — frozen automatically when the count was submitted
+    # 'rerun'  — manually refreshed by a manager/admin
+    # 'backfill' — computed once during the migration; treat as best-effort
+    real_freeze_source = models.CharField(max_length=16, blank=True, default="")
+    # Itemised txn breakdown snapshot for the delta window. Shape:
+    #   {"grn": [{"date": "...", "qty": ...}, ...],
+    #    "sales": [...], "returns": [...], "damage": [...],
+    #    "office": [...], "rts": [...], "verification": [...]}
+    real_txn_breakdown = models.JSONField(null=True, blank=True)
+
     session = models.ForeignKey(
         CountSession,
         on_delete=models.SET_NULL,
@@ -210,3 +234,42 @@ class VarianceRecord(models.Model):
 
     def __str__(self):
         return f"Variance {self.item_id}@{self.count_date} {self.variance_qty}"
+
+
+
+class RealLossRerunHistory(models.Model):
+    """
+    Audit trail of every Real Loss re-freeze operation on a StockCount.
+    Written by the /real-loss/rerun/ endpoint so managers can see what
+    changed and when. Latest freeze wins; this table exists only for
+    auditability, not for report reads.
+    """
+    count = models.ForeignKey(
+        StockCount,
+        on_delete=models.CASCADE,
+        related_name="real_loss_reruns",
+    )
+    ran_by = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="real_loss_reruns",
+    )
+    ran_at = models.DateTimeField(auto_now_add=True)
+    source = models.CharField(max_length=16)  # 'submit' | 'rerun' | 'backfill'
+    prev_expected = models.DecimalField(max_digits=14, decimal_places=3, null=True)
+    prev_variance = models.DecimalField(max_digits=14, decimal_places=3, null=True)
+    prev_value = models.DecimalField(max_digits=16, decimal_places=2, null=True)
+    new_expected = models.DecimalField(max_digits=14, decimal_places=3, null=True)
+    new_variance = models.DecimalField(max_digits=14, decimal_places=3, null=True)
+    new_value = models.DecimalField(max_digits=16, decimal_places=2, null=True)
+
+    class Meta:
+        db_table = "real_loss_rerun_history"
+        ordering = ["-ran_at"]
+        indexes = [
+            models.Index(fields=["count", "-ran_at"]),
+        ]
+
+    def __str__(self):
+        return f"Rerun count={self.count_id} at {self.ran_at:%Y-%m-%d %H:%M} by {self.ran_by_id}"

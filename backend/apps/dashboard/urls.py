@@ -11,6 +11,7 @@ from .views import (
     manager_summary, sales_and_shrinkage_trend, category_performance,
     item_coverage_range, daily_count_items, count_history_detail,
     item_count_history, real_loss_report,
+    real_loss_rerun, real_loss_rerun_history,
 )
 
 urlpatterns = [
@@ -41,6 +42,8 @@ urlpatterns = [
     path("count-history-detail/", count_history_detail, name="count-history-detail"),
     path("item-count-history/", item_count_history, name="item-count-history"),
     path("real-loss/", real_loss_report, name="real-loss-report"),
+    path("real-loss/rerun/", real_loss_rerun, name="real-loss-rerun"),
+    path("real-loss/rerun-history/<int:count_id>/", real_loss_rerun_history, name="real-loss-rerun-history"),
     path("daily-count-items/", daily_count_items, name="daily-count-items"),
 
     path("count-sessions/", list_count_sessions, name="count-sessions"),

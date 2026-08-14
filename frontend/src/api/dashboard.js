@@ -239,6 +239,12 @@ export const downloadCountHistoryDetailCsv = ({
     responseType: "blob",
   });
 
+export const rerunRealLoss = (countIds) =>
+  api.post("/dashboard/real-loss/rerun/", { count_ids: countIds });
+
+export const getRealLossRerunHistory = (countId) =>
+  api.get(`/dashboard/real-loss/rerun-history/${countId}/`);
+
 export const getRealLoss = ({
   outletId, allOutlets, from, to, q, onlyVariance, sortBy, order, page = 1, pageSize = 25,
 } = {}) =>

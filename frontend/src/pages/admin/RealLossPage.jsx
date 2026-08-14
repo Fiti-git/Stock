@@ -15,7 +15,10 @@ import { PageHeader } from "../../components/ui";
 import { useNotify } from "../../providers/NotificationProvider";
 import { useOutlet } from "../../contexts/OutletContext";
 import { useAuth } from "../../contexts/AuthContext";
-import { getRealLoss, downloadRealLossCsv } from "../../api/dashboard";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import { Alert, AlertTitle, CircularProgress } from "@mui/material";
+import { getRealLoss, downloadRealLossCsv, rerunRealLoss } from "../../api/dashboard";
 
 const fmtNum = (n) => (n == null || Number.isNaN(Number(n))
   ? "—"
@@ -59,7 +62,22 @@ function ValueCell({ value }) {
   );
 }
 
-function ExpandedEvents({ row }) {
+function TxnList({ label, items, negative }) {
+  if (!items || items.length === 0) return null;
+  const color = negative ? "error.main" : "success.main";
+  return (
+    <Box sx={{ mb: 1 }}>
+      <Typography variant="caption" sx={{ fontWeight: 700, color }}>{label}</Typography>
+      <Typography variant="caption" sx={{ display: "block", color: "text.secondary", fontSize: "0.72rem" }}>
+        {items.map((t, i) => (
+          <span key={i}>{t.date}: {fmtNum(t.qty)}{i < items.length - 1 ? "  ·  " : ""}</span>
+        ))}
+      </Typography>
+    </Box>
+  );
+}
+
+function ExpandedEvents({ row, onRerunSingle, rerunning }) {
   const events = row.events || [];
   return (
     <Box sx={{ py: 2, px: 3, bgcolor: "#fafafa" }}>
@@ -139,6 +157,54 @@ function ExpandedEvents({ row }) {
           ))}
         </TableBody>
       </Table>
+
+      {/* Per-event freeze metadata + itemised txn breakdown. */}
+      {events.map((e) => (e.txn_breakdown ? (
+        <Box key={`bd-${e.count_id}`} sx={{ mt: 2, pl: 2, borderLeft: "3px solid #eee" }}>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+            <Typography variant="caption" sx={{ fontWeight: 700 }}>
+              {e.date} {e.time} · {e.location || "no location"}
+            </Typography>
+            <Chip
+              size="small"
+              label={
+                e.freeze_source === "submit" ? "Frozen at submit"
+                : e.freeze_source === "rerun" ? "Recomputed"
+                : e.freeze_source === "backfill" ? "Backfilled — Rerun recommended"
+                : "Live compute"
+              }
+              color={
+                e.freeze_source === "submit" || e.freeze_source === "rerun" ? "success"
+                : e.freeze_source === "backfill" ? "warning" : "default"
+              }
+              variant="outlined"
+              sx={{ fontSize: "0.65rem", height: 18 }}
+            />
+            {e.freeze_at && (
+              <Typography variant="caption" sx={{ color: "text.disabled", fontSize: "0.7rem" }}>
+                {new Date(e.freeze_at).toLocaleString()}
+              </Typography>
+            )}
+            <Button
+              size="small"
+              variant="text"
+              startIcon={<RefreshIcon fontSize="small" />}
+              disabled={rerunning}
+              onClick={() => onRerunSingle && onRerunSingle(e.count_id)}
+              sx={{ ml: "auto", fontSize: "0.72rem" }}
+            >
+              Rerun this count
+            </Button>
+          </Stack>
+          <TxnList label="GRN" items={e.txn_breakdown.grn} negative={false} />
+          <TxnList label="Sales Returns" items={e.txn_breakdown.returns} negative={false} />
+          <TxnList label="Verification (signed)" items={e.txn_breakdown.verification} negative={false} />
+          <TxnList label="Sales" items={e.txn_breakdown.sales} negative={true} />
+          <TxnList label="Damage" items={e.txn_breakdown.damage} negative={true} />
+          <TxnList label="Office Use" items={e.txn_breakdown.office} negative={true} />
+          <TxnList label="RTS" items={e.txn_breakdown.rts} negative={true} />
+        </Box>
+      ) : null))}
     </Box>
   );
 }
@@ -163,6 +229,33 @@ export default function RealLossPage() {
   const [pageSize, setPageSize] = useState(25);
   const [rowCount, setRowCount] = useState(0);
   const [expanded, setExpanded] = useState(() => new Set());
+  const [rerunning, setRerunning] = useState(false);
+
+  async function handleRerunCounts(countIds) {
+    if (!countIds || countIds.length === 0) return;
+    setRerunning(true);
+    try {
+      const { data } = await rerunRealLoss(countIds);
+      notify.success(`Recomputed ${data.updated} count${data.updated === 1 ? "" : "s"}.`);
+      load();
+    } catch (err) {
+      notify.error(err?.response?.data?.detail || "Rerun failed.");
+    } finally {
+      setRerunning(false);
+    }
+  }
+
+  function handleRerunVisible() {
+    const ids = [];
+    for (const row of rows) {
+      for (const e of (row.events || [])) ids.push(e.count_id);
+    }
+    if (ids.length > 500) {
+      notify.error(`Too many counts on this page (${ids.length}). Filter or reduce page size to under 500.`);
+      return;
+    }
+    handleRerunCounts(ids);
+  }
 
   async function load() {
     if (!allOutlets && !outletId) {
@@ -229,11 +322,33 @@ export default function RealLossPage() {
         subtitle="Full stock reconciliation — counted vs (anchor snapshot + all signed transactions between snapshot and count). Unexplained variance = real shrinkage or missing uploads."
         icon={<GavelIcon />}
         actions={
-          <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleDownloadCsv} disabled={csvSaving}>
-            {csvSaving ? "Preparing…" : "CSV"}
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Button
+              variant="outlined" startIcon={rerunning ? <CircularProgress size={14} /> : <RefreshIcon />}
+              onClick={handleRerunVisible} disabled={rerunning || loading}
+            >
+              {rerunning ? "Rerunning…" : "Rerun visible"}
+            </Button>
+            <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleDownloadCsv} disabled={csvSaving}>
+              {csvSaving ? "Preparing…" : "CSV"}
+            </Button>
+          </Stack>
         }
       />
+
+      <Alert
+        severity="info"
+        icon={<InfoOutlinedIcon />}
+        sx={{ mb: 2 }}
+      >
+        <AlertTitle sx={{ fontWeight: 700, mb: 0.5 }}>How Real Loss is calculated</AlertTitle>
+        Each count is reconciled at submission time against POS + all transactions uploaded up to that moment.
+        If Sales / GRN / Damage etc. are uploaded LATER, the count's numbers won't reflect them until you click <strong>Rerun</strong>.
+        <Box sx={{ mt: 1 }}>
+          <strong>Best practice:</strong> upload today's transactions BEFORE counting.
+          If not possible, count first, upload later, then click <strong>Rerun visible</strong> (top of page) or use the per-count Rerun in the expanded panel.
+        </Box>
+      </Alert>
 
       <Stack direction="row" spacing={1.5} sx={{ mb: 2 }} flexWrap="wrap" useFlexGap alignItems="center">
         <TextField size="small" type="date" label="From" InputLabelProps={{ shrink: true }} value={from} onChange={(e) => setFrom(e.target.value)} />
@@ -373,7 +488,11 @@ export default function RealLossPage() {
                   <TableRow>
                     <TableCell colSpan={totalCols} sx={{ p: 0, borderBottom: isOpen ? undefined : "unset" }}>
                       <Collapse in={isOpen} timeout="auto" unmountOnExit>
-                        <ExpandedEvents row={row} />
+                        <ExpandedEvents
+                          row={row}
+                          onRerunSingle={(cid) => handleRerunCounts([cid])}
+                          rerunning={rerunning}
+                        />
                       </Collapse>
                     </TableCell>
                   </TableRow>
