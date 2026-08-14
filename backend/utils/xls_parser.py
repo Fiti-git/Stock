@@ -232,7 +232,16 @@ def _read_xlsx(file) -> list:
 
 def _read_xls(file) -> list:
     data = file.read() if hasattr(file, "read") else open(file, "rb").read()
-    wb = xlrd.open_workbook(file_contents=data)
+    try:
+        wb = xlrd.open_workbook(file_contents=data)
+    except Exception as e:
+        raise ValueError(
+            "This .xls file couldn't be opened. "
+            "Please open it in Microsoft Excel, choose File → Save As, "
+            "select \"Excel Workbook (.xlsx)\" as the format, save, and "
+            "upload the new .xlsx file instead. "
+            f"(Reason: {type(e).__name__})"
+        ) from e
     ws = wb.sheet_by_index(0)
     rows = []
     for r in range(ws.nrows):
