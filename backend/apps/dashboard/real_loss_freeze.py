@@ -295,7 +295,9 @@ def freeze_stock_counts_bulk(counts, source="rerun"):
                 continue
             key = (oid, iid)
             idx.setdefault(key, []).append((row["txn_date"], qty))
-            events.setdefault(key, []).append({"date": str(row["txn_date"]), "qty": qty})
+            # Keep the raw date in `events` so we can range-filter cleanly;
+            # it's stringified only when written into the txn_breakdown JSON.
+            events.setdefault(key, []).append({"date": row["txn_date"], "qty": qty})
         for k in idx:
             idx[k].sort()
         for k in events:
@@ -327,7 +329,12 @@ def freeze_stock_counts_bulk(counts, source="rerun"):
         arr = events.get((oid, iid))
         if not arr:
             return []
-        return [e for e in arr if day_from <= e["date"][:10] <= str(day_to)]
+        # e["date"] is a datetime.date; convert to ISO string on the way out
+        # so the stored JSON matches the single-count freeze path.
+        return [
+            {"date": str(e["date"]), "qty": e["qty"]}
+            for e in arr if day_from <= e["date"] <= day_to
+        ]
 
     now = timezone.now()
     results = []
