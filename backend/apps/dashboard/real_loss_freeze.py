@@ -20,6 +20,7 @@ from apps.uploads.models import (
     SalesLine, SalesReturnLine, DamageLine, OfficeLine,
     VerificationLine, GrnLine, RtsLine,
 )
+from .models import StockCount
 
 
 def _sum_qty(qs):
