@@ -2122,8 +2122,9 @@ def real_loss_rerun(request):
     change is auditable. Body:  { "count_ids": [1,2,3, ...] }
     Cap: 500 counts per request (protects against runaway "rerun all" clicks).
     """
-    from apps.dashboard.real_loss_freeze import freeze_stock_count
+    from apps.dashboard.real_loss_freeze import freeze_stock_counts_bulk
     from apps.dashboard.models import RealLossRerunHistory
+    import time as _time
 
     count_ids = request.data.get("count_ids") or []
     if not isinstance(count_ids, list) or not count_ids:
@@ -2136,19 +2137,26 @@ def real_loss_rerun(request):
     if request.user.role not in (User.Role.ADMIN, User.Role.SUPER_ADMIN):
         qs = qs.filter(outlet=request.user.outlet)
 
-    updated = 0
-    audit_rows = []
-    for sc in qs.select_related("pos_snapshot_at_count"):
-        prev, new = freeze_stock_count(sc, source="rerun")
-        audit_rows.append(RealLossRerunHistory(
-            count=sc, ran_by=request.user, source="rerun",
+    counts = list(qs.select_related("pos_snapshot_at_count"))
+    if not counts:
+        return Response({"updated": 0, "elapsed_ms": 0})
+
+    t0 = _time.time()
+    results = freeze_stock_counts_bulk(counts, source="rerun")
+    audit_rows = [
+        RealLossRerunHistory(
+            count_id=cid, ran_by=request.user, source="rerun",
             prev_expected=prev["expected"], prev_variance=prev["variance"], prev_value=prev["value"],
             new_expected=new["expected"], new_variance=new["variance"], new_value=new["value"],
-        ))
-        updated += 1
+        )
+        for cid, prev, new in results
+    ]
     if audit_rows:
         RealLossRerunHistory.objects.bulk_create(audit_rows, batch_size=500)
-    return Response({"updated": updated})
+    return Response({
+        "updated": len(results),
+        "elapsed_ms": int((_time.time() - t0) * 1000),
+    })
 
 
 @api_view(["GET"])

@@ -230,18 +230,22 @@ export default function RealLossPage() {
   const [rowCount, setRowCount] = useState(0);
   const [expanded, setExpanded] = useState(() => new Set());
   const [rerunning, setRerunning] = useState(false);
+  const [rerunProgress, setRerunProgress] = useState(null); // { total } while running
 
   async function handleRerunCounts(countIds) {
     if (!countIds || countIds.length === 0) return;
     setRerunning(true);
+    setRerunProgress({ total: countIds.length });
     try {
       const { data } = await rerunRealLoss(countIds);
-      notify.success(`Recomputed ${data.updated} count${data.updated === 1 ? "" : "s"}.`);
+      const secs = data.elapsed_ms ? ` in ${(data.elapsed_ms / 1000).toFixed(1)}s` : "";
+      notify.success(`Recomputed ${data.updated} count${data.updated === 1 ? "" : "s"}${secs}.`);
       load();
     } catch (err) {
       notify.error(err?.response?.data?.detail || "Rerun failed.");
     } finally {
       setRerunning(false);
+      setRerunProgress(null);
     }
   }
 
@@ -327,7 +331,9 @@ export default function RealLossPage() {
               variant="outlined" startIcon={rerunning ? <CircularProgress size={14} /> : <RefreshIcon />}
               onClick={handleRerunVisible} disabled={rerunning || loading}
             >
-              {rerunning ? "Rerunning…" : "Rerun visible"}
+              {rerunning
+                ? (rerunProgress ? `Rerunning ${rerunProgress.total}…` : "Rerunning…")
+                : "Rerun visible"}
             </Button>
             <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleDownloadCsv} disabled={csvSaving}>
               {csvSaving ? "Preparing…" : "CSV"}
