@@ -130,12 +130,21 @@ function ExpandedEvents({ row, onRerunSingle, rerunning }) {
                   ? <Chip size="small" label={e.location} variant="outlined" sx={{ fontSize: "0.7rem" }} />
                   : <span style={{ color: "#aaa" }}>—</span>}
               </TableCell>
-              <TableCell align="right">{fmtNum(e.counted)}</TableCell>
+              <TableCell align="right">
+                {fmtNum(e.counted)}
+                {e.is_date_summary && e.date_locations_count > 1 && (
+                  <Tooltip title={`Date total across ${e.date_locations_count} locations`}>
+                    <span style={{ color: "#666", fontSize: "0.7rem", marginLeft: 4 }}>
+                      (Σ)
+                    </span>
+                  </Tooltip>
+                )}
+              </TableCell>
               <TableCell align="right">
                 {e.anchor_qty == null
                   ? <span style={{ color: "#aaa" }}>—</span>
                   : (
-                    <Tooltip title={`Snapshot ${e.anchor_date}`}>
+                    <Tooltip title={`Snapshot ${e.anchor_date} · shared across all locations for this date`}>
                       <span>{fmtNum(e.anchor_qty)}</span>
                     </Tooltip>
                   )}

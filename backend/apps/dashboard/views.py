@@ -2470,47 +2470,62 @@ def real_loss_report(request):
         item_office = 0.0
         item_verification = 0.0
 
+        # Group counts by count_date so multi-location counts on the same day
+        # share one anchor + one txn delta window (avoids double-counting the
+        # day's GRN/sales when the same item is counted in Rack + Store Room).
+        from collections import defaultdict as _dd
+        counts_by_date = _dd(list)
         for c in counts_sorted:
-            cq = float(c.actual_qty or 0)
-            counted_sum_all += cq
-            anchor_qty = (
-                float(c.pos_qty_at_count) if c.pos_qty_at_count is not None else None
-            )
-            anchor_date = (
-                c.pos_snapshot_at_count.snapshot_date
-                if c.pos_snapshot_at_count_id else None
-            )
-            # Delta window: (anchor_date, count_date]. If no anchor, skip
-            # the reconciliation math for this event.
-            if anchor_qty is None or anchor_date is None:
-                events.append({
-                    "count_id": c.id, "date": str(c.count_date),
-                    "time": c.counted_at.strftime("%H:%M") if c.counted_at else "",
-                    "location": c.location_tag or "",
-                    "counted": cq,
-                    "anchor_qty": None, "anchor_date": None,
-                    "sales": None, "returns": None, "grn": None, "rts": None,
-                    "damage": None, "office": None, "verification": None,
-                    "expected": None, "real_variance": None, "real_value": None,
-                    "has_data": False,
-                    "counter": (c.counted_by.username if c.counted_by_id and c.counted_by else ""),
-                })
-                continue
-            # POS snapshot is start-of-day → include the snapshot date in the
-            # delta window to capture same-day GRN / sales / etc.
-            day_from = anchor_date
-            day_to = c.count_date
+            counts_by_date[c.count_date].append(c)
 
-            # Prefer FROZEN values when they exist. Fall back to live compute
-            # only for pre-freeze rows the migration missed. Frozen values are
-            # the count's honest historical truth; live compute drifts as more
-            # txns get uploaded.
-            if c.real_expected_qty is not None and c.real_variance is not None:
-                expected = float(c.real_expected_qty)
-                real_variance = float(c.real_variance)
-                real_value = float(c.real_value or 0)
-                # Read txn totals from the frozen breakdown for display.
-                totals = (c.real_txn_breakdown or {}).get("totals", {}) if isinstance(c.real_txn_breakdown, dict) else {}
+        for cdate in sorted(counts_by_date.keys()):
+            day_counts = counts_by_date[cdate]
+            # Sum counted across all locations for the date — this is the
+            # physical stock found for the item on that day.
+            date_counted = sum(float(c.actual_qty or 0) for c in day_counts)
+            counted_sum_all += date_counted
+
+            # Pick a canonical anchor for the date. All same-day counts share
+            # the same frozen anchor (both are frozen against latest snapshot
+            # ≤ count_date), so grab the first non-null.
+            canonical = next(
+                (c for c in day_counts if c.pos_qty_at_count is not None and c.pos_snapshot_at_count_id),
+                None
+            )
+            if canonical is None:
+                # No usable anchor for any count on this date — emit each
+                # location row with has_data=False so the UI can flag it.
+                for c in day_counts:
+                    events.append({
+                        "count_id": c.id, "date": str(cdate),
+                        "time": c.counted_at.strftime("%H:%M") if c.counted_at else "",
+                        "location": c.location_tag or "",
+                        "counted": float(c.actual_qty or 0),
+                        "anchor_qty": None, "anchor_date": None,
+                        "sales": None, "returns": None, "grn": None, "rts": None,
+                        "damage": None, "office": None, "verification": None,
+                        "expected": None, "real_variance": None, "real_value": None,
+                        "has_data": False,
+                        "is_date_summary": False,
+                        "date_locations_count": len(day_counts),
+                        "counter": (c.counted_by.username if c.counted_by_id and c.counted_by else ""),
+                        "freeze_at": c.real_freeze_at.isoformat() if c.real_freeze_at else None,
+                        "freeze_source": c.real_freeze_source or "live",
+                        "txn_breakdown": c.real_txn_breakdown if isinstance(c.real_txn_breakdown, dict) else None,
+                    })
+                continue
+
+            anchor_qty = float(canonical.pos_qty_at_count)
+            anchor_date = canonical.pos_snapshot_at_count.snapshot_date
+            day_from = anchor_date  # inclusive: POS is start-of-day
+            day_to = cdate
+
+            # Prefer the canonical count's frozen breakdown for the txn totals
+            # (all same-day counts of this item share identical txn totals
+            # since the delta window is identical). Fall back to live compute.
+            if (canonical.real_expected_qty is not None
+                    and isinstance(canonical.real_txn_breakdown, dict)):
+                totals = canonical.real_txn_breakdown.get("totals", {})
                 sales_q = float(totals.get("sales", 0))
                 returns_q = float(totals.get("returns", 0))
                 grn_q = float(totals.get("grn", 0))
@@ -2526,17 +2541,19 @@ def real_loss_report(request):
                 damage_q = _sum_window(damage_idx, oid, iid, day_from, day_to)
                 office_q = _sum_window(office_idx, oid, iid, day_from, day_to)
                 verification_q = _sum_window(verification_idx, oid, iid, day_from, day_to)
-                expected = (
-                    anchor_qty
-                    + grn_q + returns_q + verification_q
-                    - sales_q - rts_q - damage_q - office_q
-                )
-                real_variance = cq - expected
-                real_value = real_variance * cost
 
+            expected = (
+                anchor_qty
+                + grn_q + returns_q + verification_q
+                - sales_q - rts_q - damage_q - office_q
+            )
+            real_variance = date_counted - expected
+            real_value = real_variance * cost
+
+            # Roll into item-level totals ONCE per date, not per location.
             real_variance_sum += real_variance
             expected_sum += expected
-            events_computable += 1
+            events_computable += len(day_counts)  # every location row is "computable"
             if real_value < 0:
                 real_loss_events += real_value
             elif real_value > 0:
@@ -2550,28 +2567,39 @@ def real_loss_report(request):
             item_office += office_q
             item_verification += verification_q
 
-            events.append({
-                "count_id": c.id, "date": str(c.count_date),
-                "time": c.counted_at.strftime("%H:%M") if c.counted_at else "",
-                "location": c.location_tag or "",
-                "counted": cq,
-                "anchor_qty": anchor_qty,
-                "anchor_date": str(anchor_date),
-                "sales": sales_q, "returns": returns_q,
-                "grn": grn_q, "rts": rts_q,
-                "damage": damage_q, "office": office_q,
-                "verification": verification_q,
-                "expected": expected,
-                "real_variance": real_variance,
-                "real_value": real_value,
-                "has_data": True,
-                "counter": (c.counted_by.username if c.counted_by_id and c.counted_by else ""),
-                # Freeze metadata for the UI badge / Rerun button.
-                "freeze_at": c.real_freeze_at.isoformat() if c.real_freeze_at else None,
-                "freeze_source": c.real_freeze_source or "live",
-                # Full itemised txn list per delta window (only when frozen).
-                "txn_breakdown": c.real_txn_breakdown if isinstance(c.real_txn_breakdown, dict) else None,
-            })
+            # Emit one row per (date, location). Only the LAST row of the
+            # date carries the date-level totals (expected / variance / value)
+            # — earlier rows blank those cells so the reader isn't misled into
+            # thinking each location has its own reconciliation.
+            for idx_i, c in enumerate(day_counts):
+                is_date_summary = idx_i == len(day_counts) - 1
+                events.append({
+                    "count_id": c.id, "date": str(cdate),
+                    "time": c.counted_at.strftime("%H:%M") if c.counted_at else "",
+                    "location": c.location_tag or "",
+                    "counted": float(c.actual_qty or 0),
+                    # Anchor + txn totals carried on the LAST location row so
+                    # the UI shows them once per date, not repeated per row.
+                    "anchor_qty": anchor_qty if is_date_summary else None,
+                    "anchor_date": str(anchor_date) if is_date_summary else None,
+                    "sales": sales_q if is_date_summary else None,
+                    "returns": returns_q if is_date_summary else None,
+                    "grn": grn_q if is_date_summary else None,
+                    "rts": rts_q if is_date_summary else None,
+                    "damage": damage_q if is_date_summary else None,
+                    "office": office_q if is_date_summary else None,
+                    "verification": verification_q if is_date_summary else None,
+                    "expected": expected if is_date_summary else None,
+                    "real_variance": real_variance if is_date_summary else None,
+                    "real_value": real_value if is_date_summary else None,
+                    "has_data": True,
+                    "is_date_summary": is_date_summary,
+                    "date_locations_count": len(day_counts),
+                    "counter": (c.counted_by.username if c.counted_by_id and c.counted_by else ""),
+                    "freeze_at": c.real_freeze_at.isoformat() if c.real_freeze_at else None,
+                    "freeze_source": c.real_freeze_source or "live",
+                    "txn_breakdown": canonical.real_txn_breakdown if is_date_summary and isinstance(canonical.real_txn_breakdown, dict) else None,
+                })
 
         real_net_value = real_variance_sum * cost
         _o = outlet_map.get(oid)
