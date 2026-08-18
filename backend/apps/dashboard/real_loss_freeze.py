@@ -88,7 +88,12 @@ def freeze_stock_count(sc, source="submit"):
         return prev, new
 
     anchor_date = anchor_snap.snapshot_date
-    day_from = anchor_date + timedelta(days=1)
+    # POS snapshot is start-of-day (contains state BEFORE any of that day's
+    # txns). Include the snapshot date itself in the delta window so we
+    # capture same-day GRN / sales / damage / etc. — otherwise counts taken
+    # the same day as the anchor snapshot get an empty window and all txn
+    # totals show 0.
+    day_from = anchor_date
     day_to = sc.count_date
 
     # Resolve item_code + cost from the item (fresh read).
@@ -243,7 +248,11 @@ def freeze_stock_counts_bulk(counts, source="rerun"):
         )
         return results
 
-    txn_from = min(anchor_dates) + _timedelta(days=1)
+    # POS snapshot is start-of-day → include the snapshot date itself in
+    # the delta window (see freeze_stock_count for why). day_from is the
+    # earliest anchor across the batch; same-count delta window per row
+    # below is [anchor_date, count_date] inclusive on both ends.
+    txn_from = min(anchor_dates)
     txn_to = max(c.count_date for c in counts)
 
     # Codes per outlet — used to bulk-filter txn tables.
@@ -359,7 +368,9 @@ def freeze_stock_counts_bulk(counts, source="rerun"):
                             {"expected": None, "variance": None, "value": None, "source": source}))
             continue
 
-        day_from = anchor_date + _timedelta(days=1)
+        # Inclusive window: [anchor_date, count_date] — POS snapshot is
+        # start-of-day so today's txns must be added.
+        day_from = anchor_date
         day_to = sc.count_date
         it = item_map.get(sc.item_id)
         cost = latest_cost_map.get((sc.outlet_id, sc.item_id))

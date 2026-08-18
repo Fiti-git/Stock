@@ -2496,7 +2496,9 @@ def real_loss_report(request):
                     "counter": (c.counted_by.username if c.counted_by_id and c.counted_by else ""),
                 })
                 continue
-            day_from = anchor_date + timedelta(days=1)
+            # POS snapshot is start-of-day → include the snapshot date in the
+            # delta window to capture same-day GRN / sales / etc.
+            day_from = anchor_date
             day_to = c.count_date
 
             # Prefer FROZEN values when they exist. Fall back to live compute
