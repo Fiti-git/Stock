@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Stack, TextField, Typography, Tabs, Tab, Box, Alert, Chip,
+  Stack, TextField, Typography, Tabs, Tab, Box, Alert, Chip, Tooltip,
 } from "@mui/material";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import ChecklistIcon from "@mui/icons-material/Checklist";
 import Layout from "../../components/Layout";
 import { PageHeader, DataTable } from "../../components/ui";
@@ -58,21 +59,51 @@ export default function CountedItemsReportPage() {
     [data.uncounted_items],
   );
 
+  const multiCountItems = useMemo(
+    () => countedRows.filter((r) => r.multi_count).length,
+    [countedRows],
+  );
+
   const countedCols = useMemo(() => [
     { field: "item_code", headerName: "Code", width: 120 },
     { field: "item_name", headerName: "Item", flex: 1.6, minWidth: 220 },
     { field: "category", headerName: "Category", flex: 1, minWidth: 140 },
     { field: "last_counted_date", headerName: "Last Counted", width: 140 },
     {
-      field: "days_since_count", headerName: "Days Ago", type: "number", width: 110,
+      field: "days_since_count", headerName: "Days Ago", type: "number", width: 100,
       renderCell: (p) => {
         if (p.value == null) return "—";
         const color = p.value <= 1 ? "success" : p.value <= 7 ? "warning" : "error";
         return <Chip size="small" color={color} variant="outlined" label={p.value} />;
       },
     },
-    { field: "total_counted_qty", headerName: "Counted Qty", type: "number", width: 130, valueFormatter: fmtQty },
-    { field: "count_entries", headerName: "Entries", type: "number", width: 90 },
+    {
+      field: "count_entries", headerName: "Counts", type: "number", width: 80,
+      renderCell: (p) => (
+        p.row.multi_count
+          ? <Chip size="small" color="warning" label={p.value} icon={<WarningAmberIcon />} />
+          : <Typography variant="body2">{p.value}</Typography>
+      ),
+    },
+    {
+      field: "last_counted_qty", headerName: "Last Qty", type: "number", width: 110,
+      renderCell: (p) => (
+        <Tooltip title={p.row.multi_count ? `Latest of ${p.row.count_entries} counts` : ""}>
+          <Typography variant="body2" fontWeight={p.row.multi_count ? 700 : 400}>
+            {fmtQty(p.value)}
+          </Typography>
+        </Tooltip>
+      ),
+    },
+    {
+      field: "avg_counted_qty", headerName: "Avg Qty", type: "number", width: 110,
+      renderCell: (p) => (
+        p.row.multi_count
+          ? <Typography variant="body2" color="text.secondary">{fmtQty(p.value)}</Typography>
+          : <Typography variant="body2" color="text.disabled">—</Typography>
+      ),
+    },
+    { field: "total_counted_qty", headerName: "Total Qty", type: "number", width: 110, valueFormatter: fmtQty },
     { field: "cost_price", headerName: "Cost", type: "number", width: 100, valueFormatter: fmtMoney },
     { field: "selling_price", headerName: "Sell", type: "number", width: 100, valueFormatter: fmtMoney },
     { field: "pos_qty", headerName: "POS Qty", type: "number", width: 110, valueFormatter: fmtQty },
@@ -113,6 +144,13 @@ export default function CountedItemsReportPage() {
 
       {!outletId && <Alert severity="info" sx={{ mb: 2 }}>Pick an outlet from the header switcher to view coverage.</Alert>}
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {multiCountItems > 0 && (
+        <Alert severity="warning" icon={<WarningAmberIcon />} sx={{ mb: 2 }}>
+          {multiCountItems} item{multiCountItems > 1 ? "s were" : " was"} counted more than once in this period.
+          The <strong>Last Qty</strong> column shows the most recent count. <strong>Avg Qty</strong> shows the average across all counts.
+          The <strong>Counts</strong> column shows how many times each item was counted — items with a warning badge have multiple entries.
+        </Alert>
+      )}
 
       <Box sx={{ borderBottom: 1, borderColor: "divider", mb: 2 }}>
         <Tabs value={tab} onChange={(_, v) => setTab(v)}>

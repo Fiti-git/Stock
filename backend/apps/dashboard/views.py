@@ -3032,6 +3032,20 @@ def counted_items_report(request):
     )
     count_map = {r["item_id"]: r for r in count_agg}
 
+    # For items counted multiple times, fetch the latest single count qty.
+    multi_item_ids = [iid for iid, r in count_map.items() if r["count_entries"] > 1]
+    last_qty_map = {}
+    if multi_item_ids:
+        for sc in (
+            StockCount.objects
+            .filter(outlet_id=outlet_id, count_date__gte=from_date, count_date__lte=to_date,
+                    item_id__in=multi_item_ids)
+            .exclude(approval_status=StockCount.ApprovalStatus.REJECTED)
+            .order_by("item_id", "-counted_at", "-id")
+        ):
+            if sc.item_id not in last_qty_map:
+                last_qty_map[sc.item_id] = float(sc.actual_qty)
+
     # Latest PosSnapshot per item (on or before to_date) for cost/sell price.
     pos_map = {}
     for s in (
@@ -3067,12 +3081,19 @@ def counted_items_report(request):
         }
         cnt = count_map.get(it.id)
         if cnt:
+            entries = int(cnt["count_entries"] or 0)
+            total = float(cnt["total_counted_qty"] or 0)
+            avg = round(total / entries, 3) if entries else total
+            last_qty = last_qty_map.get(it.id, total)
             counted_items.append({
                 **base,
                 "last_counted_date": str(cnt["last_counted_date"]) if cnt["last_counted_date"] else None,
                 "last_counted_at": cnt["last_counted_at"].isoformat() if cnt["last_counted_at"] else None,
-                "total_counted_qty": float(cnt["total_counted_qty"] or 0),
-                "count_entries": int(cnt["count_entries"] or 0),
+                "total_counted_qty": total,
+                "avg_counted_qty": avg,
+                "last_counted_qty": last_qty,
+                "count_entries": entries,
+                "multi_count": entries > 1,
             })
         else:
             uncounted_items.append(base)
