@@ -506,50 +506,9 @@ def submit_count(request):
     with transaction.atomic():
         session = _get_or_create_open_session(outlet, count_date, request.user)
 
-        existing = StockCount.objects.filter(
-            outlet=outlet,
-            item=item,
-            count_date=count_date,
-            location_tag=location_tag,
-            session=session,
-        ).first()
-
-        if existing and existing.approval_status in (
-            StockCount.ApprovalStatus.DRAFT,
-            StockCount.ApprovalStatus.SUBMITTED,
-        ):
-            # Upsert: overwrite a draft/submitted count from the same session
-            before = snapshot_stock_count(existing)
-            existing.actual_qty = actual_qty
-            existing.counted_by = request.user
-            existing.is_month_end = is_month_end
-            existing.device_uuid = device_uuid
-            existing.flagged_outlier = flagged
-            existing.submitted_at = timezone.now()
-            existing.approval_status = StockCount.ApprovalStatus.SUBMITTED
-            # Re-freeze on upsert — the count is being submitted "now" again,
-            # so the AsatDate should reflect the latest snapshot as of now.
-            existing.pos_qty_at_count = frozen_pos_qty
-            existing.pos_snapshot_at_count_id = frozen_snap_id
-            existing.save()
-            # Real Loss freeze — captures anchor + all txn totals in the
-            # delta window as of NOW. Cheap (few queries per count) and
-            # keeps report reads free of live compute for this count.
-            try:
-                from apps.dashboard.real_loss_freeze import freeze_stock_count
-                freeze_stock_count(existing, source="submit")
-            except Exception:
-                # Never let a freeze failure block the count submission.
-                pass
-            record_audit(
-                user=request.user,
-                action="stock_count.upsert",
-                entity=existing,
-                before=before,
-                after=snapshot_stock_count(existing),
-            )
-            return Response(StockCountSerializer(existing).data, status=200)
-
+        # Every submission always creates a new row — no upsert/overwrite.
+        # Multiple counts of the same item+location are all kept so the full
+        # counting history is visible in reports.
         count = StockCount.objects.create(
             outlet=outlet,
             item=item,
@@ -566,7 +525,6 @@ def submit_count(request):
             pos_qty_at_count=frozen_pos_qty,
             pos_snapshot_at_count_id=frozen_snap_id,
         )
-        # Real Loss freeze on new count (same rules as upsert path).
         try:
             from apps.dashboard.real_loss_freeze import freeze_stock_count
             freeze_stock_count(count, source="submit")
@@ -1741,33 +1699,7 @@ def item_count_history(request):
             Q(item__item_code__icontains=q) | Q(item__item_name__icontains=q)
         )
 
-    include_superseded = request.query_params.get("include_superseded") in ("1", "true")
-
-    raw_count_list = list(counts_qs)
-
-    # Dedupe: for each (outlet_id, item_id, count_date, location_tag), keep
-    # only the LATEST by counted_at. Earlier entries are treated as
-    # superseded corrections (a recount at 15:00 supersedes the 09:00
-    # mistake). This eliminates recount-inflation without losing the
-    # multi-location split (Rack + Store Room on the same date are DIFFERENT
-    # location_tags and both survive). outlet_id is in the key so all-outlets
-    # mode never accidentally collapses counts from different outlets.
-    superseded_by_key = {}  # (outlet_id, item_id) -> list of dropped counts
-    if include_superseded:
-        count_list = raw_count_list
-    else:
-        # Sort so the latest comes last per group; take the last per key.
-        raw_sorted = sorted(
-            raw_count_list,
-            key=lambda c: (c.outlet_id, c.item_id, c.count_date, c.location_tag or "", c.counted_at or c.count_date),
-        )
-        latest_per_key = {}
-        for c in raw_sorted:
-            key = (c.outlet_id, c.item_id, c.count_date, c.location_tag or "")
-            if key in latest_per_key:
-                superseded_by_key.setdefault((c.outlet_id, c.item_id), []).append(latest_per_key[key])
-            latest_per_key[key] = c
-        count_list = list(latest_per_key.values())
+    count_list = list(counts_qs)
 
     item_ids = {c.item_id for c in count_list}
     # For all-outlets mode we need per-(outlet, item) lookups later. In
@@ -1968,7 +1900,6 @@ def item_count_history(request):
         )
         total_counted = counted_sum_all
         events_with_asat = dates_with_asat  # kept for UI backwards compat
-        superseded_count = len(superseded_by_key.get((oid, iid), []))
 
         latest_event = counts_sorted[-1]
         avg_stock_age = (
@@ -1986,7 +1917,7 @@ def item_count_history(request):
             # expanded panel. Dates count is separate.
             "counts_in_range": len(counts_sorted),
             "dates_counted": total_dates,
-            "superseded_count": superseded_count,
+            "superseded_count": 0,
             "latest_mypos_qty": latest_mypos_qty,
             "latest_mypos_date": str(latest_mypos_date) if latest_mypos_date else None,
             "cost_price": cost,
@@ -2271,16 +2202,7 @@ def real_loss_report(request):
             Q(item__item_code__icontains=q) | Q(item__item_name__icontains=q)
         )
 
-    # Dedupe: same (outlet, item, date, location) → latest wins.
-    raw_sorted = sorted(
-        list(counts_qs),
-        key=lambda c: (c.outlet_id, c.item_id, c.count_date, c.location_tag or "", c.counted_at or c.count_date),
-    )
-    latest_per_key = {}
-    for c in raw_sorted:
-        key = (c.outlet_id, c.item_id, c.count_date, c.location_tag or "")
-        latest_per_key[key] = c
-    count_list = list(latest_per_key.values())
+    count_list = list(counts_qs)
 
     if not count_list:
         return Response({
