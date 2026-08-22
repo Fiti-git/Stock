@@ -249,7 +249,7 @@ export default function RealLossPage() {
       const { data } = await rerunRealLoss(countIds);
       const secs = data.elapsed_ms ? ` in ${(data.elapsed_ms / 1000).toFixed(1)}s` : "";
       notify.success(`Recomputed ${data.updated} count${data.updated === 1 ? "" : "s"}${secs}.`);
-      load();
+      if (committed) load();
     } catch (err) {
       notify.error(err?.response?.data?.detail || "Rerun failed.");
     } finally {
@@ -270,18 +270,24 @@ export default function RealLossPage() {
     handleRerunCounts(ids);
   }
 
-  async function load() {
-    if (!allOutlets && !outletId) {
+  // Track the "committed" params — only updated when user clicks Run.
+  const [committed, setCommitted] = useState(null);
+
+  async function load(params) {
+    const p = params || committed;
+    if (!p) return;
+    if (!p.allOutlets && !outletId) {
       setLoading(false); setRows([]); setRowCount(0);
       return;
     }
     setLoading(true);
     try {
       const { data } = await getRealLoss({
-        outletId: allOutlets ? undefined : outletId,
-        allOutlets, from, to,
-        q: q.trim() || undefined,
-        onlyVariance,
+        outletId: p.allOutlets ? undefined : outletId,
+        allOutlets: p.allOutlets,
+        from: p.from, to: p.to,
+        q: p.q || undefined,
+        onlyVariance: p.onlyVariance,
         page: page + 1, pageSize,
       });
       setRows(data.results || []);
@@ -293,16 +299,18 @@ export default function RealLossPage() {
     } finally { setLoading(false); }
   }
 
+  // Re-fetch on pagination change only (user already clicked Run).
   useEffect(() => {
-    const t = setTimeout(load, 200);
-    return () => clearTimeout(t);
+    if (committed) load();
     // eslint-disable-next-line
-  }, [q, onlyVariance, from, to, outletId, allOutlets, page, pageSize]);
+  }, [page, pageSize]);
 
-  useEffect(() => {
+  function handleRun() {
+    const params = { from, to, q: q.trim(), onlyVariance, allOutlets };
+    setCommitted(params);
     setPage(0);
-    // eslint-disable-next-line
-  }, [q, onlyVariance, from, to, outletId, allOutlets]);
+    load(params);
+  }
 
   function toggleRow(id) {
     setExpanded((prev) => {
@@ -371,6 +379,7 @@ export default function RealLossPage() {
         <TextField
           size="small" placeholder="Search item code or name…"
           value={q} onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleRun()}
           sx={{ flex: 1, minWidth: 220 }}
           InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
         />
@@ -384,6 +393,14 @@ export default function RealLossPage() {
             label="All outlets"
           />
         )}
+        <Button
+          variant="contained"
+          onClick={handleRun}
+          disabled={loading}
+          startIcon={loading ? <CircularProgress size={16} /> : <SearchIcon />}
+        >
+          Run
+        </Button>
       </Stack>
 
       {summary && (
