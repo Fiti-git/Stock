@@ -12,6 +12,7 @@ from .views import (
     item_coverage_range, daily_count_items, count_history_detail,
     item_count_history, real_loss_report,
     real_loss_rerun, real_loss_rerun_history,
+    po_planning,
 )
 
 urlpatterns = [
@@ -53,4 +54,6 @@ urlpatterns = [
     path("variance-records/", list_variance_records, name="variance-records"),
     path("variance-records/<int:record_id>/resolve/", resolve_variance, name="resolve-variance"),
     path("variance-records/bulk-resolve/", bulk_resolve_variance, name="bulk-resolve-variance"),
+
+    path("po-planning/", po_planning, name="po-planning"),
 ]

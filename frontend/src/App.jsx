@@ -62,6 +62,7 @@ const DemandDashboardPage = lazy(() => import("./pages/admin/DemandDashboardPage
 const PurchasePlansPage = lazy(() => import("./pages/admin/PurchasePlansPage"));
 const PurchasePlanDetailPage = lazy(() => import("./pages/admin/PurchasePlanDetailPage"));
 const StockAgePage = lazy(() => import("./pages/admin/StockAgePage"));
+const POPlanningPage = lazy(() => import("./pages/admin/POPlanningPage"));
 const DbManagement = lazy(() => import("./pages/DbManagement"));
 const SelectAppPage = lazy(() => import("./pages/SelectAppPage"));
 
@@ -163,6 +164,7 @@ export default function App() {
                     <Route path="/admin/purchase-plans" element={<PermissionRoute code="nav.purchase_plans"><PurchasePlansPage /></PermissionRoute>} />
                     <Route path="/admin/purchase-plans/:id" element={<PermissionRoute code="nav.purchase_plans"><PurchasePlanDetailPage /></PermissionRoute>} />
                     <Route path="/admin/stock-age" element={<PermissionRoute code="nav.stock_age"><StockAgePage /></PermissionRoute>} />
+                    <Route path="/admin/po-planning" element={<PermissionRoute code="nav.po_planning"><POPlanningPage /></PermissionRoute>} />
 
                     {/* Transactions hub + per-pipeline upload pages. Histories now live in /uploaded-sheets?pipeline=<x>. */}
                     <Route path="/transactions" element={<PermissionRoute code="nav.transactions_hub"><TransactionsHubPage /></PermissionRoute>} />

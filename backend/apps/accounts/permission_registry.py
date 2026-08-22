@@ -54,6 +54,7 @@ PERMISSIONS = [
     ("nav.master_mapping",        "Master Mapping",          "Navigation · Organization", "org"),
     ("nav.demand_dashboard",      "Demand Dashboard",        "Navigation · Organization", "org"),
     ("nav.purchase_plans",        "Purchase Plans",          "Navigation · Organization", "org"),
+    ("nav.po_planning",           "PO Planning",             "Navigation · Organization", "org"),
     ("nav.stock_age",             "Stock Age",               "Navigation · Review", "ops"),
 
     # Cross-product admin pages — visible regardless of which system the user has.
@@ -190,7 +191,7 @@ ROLE_DEFAULTS = {
         "nav.suppliers", "suppliers.manage",
         "nav.categories", "categories.manage",
         "nav.master_products", "nav.master_mapping",
-        "nav.demand_dashboard", "nav.purchase_plans",
+        "nav.demand_dashboard", "nav.purchase_plans", "nav.po_planning",
         "nav.stock_age",
     ],
 

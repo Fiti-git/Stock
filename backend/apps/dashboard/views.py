@@ -4290,3 +4290,205 @@ def category_performance(request):
         "to_date": str(to_date),
         "results": results[:10],
     })
+
+
+# ---------------------------------------------------------------------------
+# PO Planning — intelligent, velocity-based
+# ---------------------------------------------------------------------------
+@api_view(["GET"])
+@permission_classes([IsAdmin])
+def po_planning(request):
+    """
+    GET /api/dashboard/po-planning/
+
+    Returns per-item purchase order suggestions driven by real SalesLine
+    velocity + latest PosSnapshot stock levels.
+
+    Query params:
+      outlet=<id>             required (admin selects outlet)
+      velocity_days=30|90     window for avg daily sales (default 30)
+      cover_days=14           target days of stock to hold (default 14)
+      filter=all|below_reorder|out_of_stock   (default below_reorder)
+      q                       search item_code / item_name
+      sort_by                 item_code|item_name|current_stock|days_cover|
+                              avg_daily_30|avg_daily_90|suggested_qty|est_cost
+      order=asc|desc
+      export=csv
+    """
+    import csv as csv_mod
+    import math
+    from io import StringIO
+    from django.http import HttpResponse
+    from django.db.models import Sum
+    from apps.uploads.models import SalesLine, SalesUploadBatch, PosSnapshot as PS
+
+    outlet_id = request.query_params.get("outlet")
+    if not outlet_id:
+        return Response({"detail": "outlet param required."}, status=400)
+    outlet = get_object_or_404(Outlet, pk=outlet_id)
+
+    try:
+        velocity_days = int(request.query_params.get("velocity_days") or 30)
+        if velocity_days not in (7, 30, 90):
+            velocity_days = 30
+    except (ValueError, TypeError):
+        velocity_days = 30
+
+    try:
+        cover_days = int(request.query_params.get("cover_days") or 14)
+        cover_days = max(1, min(365, cover_days))
+    except (ValueError, TypeError):
+        cover_days = 14
+
+    stock_filter = request.query_params.get("filter", "below_reorder")
+    q = (request.query_params.get("q") or "").strip()
+    sort_by = request.query_params.get("sort_by", "days_cover")
+    order = request.query_params.get("order", "asc")
+
+    today = date.today()
+
+    # --- Sales velocity: aggregate SalesLine by item_code ---
+    approved_batches = SalesUploadBatch.objects.filter(
+        outlet=outlet,
+        status=SalesUploadBatch.Status.SUCCESS,
+        approval_status__in=(
+            SalesUploadBatch.ApprovalStatus.AUTO,
+            SalesUploadBatch.ApprovalStatus.APPROVED,
+        ),
+    ).values_list("id", flat=True)
+
+    def _sales_agg(days):
+        start = today - timedelta(days=days)
+        return {
+            row["item_code"]: float(row["qty"] or 0)
+            for row in (
+                SalesLine.objects
+                .filter(batch_id__in=approved_batches, txn_date__gte=start, txn_date__lte=today)
+                .values("item_code")
+                .annotate(qty=Sum("qty"))
+            )
+        }
+
+    sales_30 = _sales_agg(30)
+    sales_90 = _sales_agg(90) if velocity_days == 90 else {}
+    has_sales = bool(sales_30 or sales_90)
+
+    # --- Latest PosSnapshot per item ---
+    from django.db.models import Subquery, OuterRef
+    latest_snap_date = (
+        PS.objects
+        .filter(outlet=outlet, item_id=OuterRef("item_id"))
+        .order_by("-snapshot_date")
+        .values("snapshot_date")[:1]
+    )
+    snaps = (
+        PS.objects
+        .filter(outlet=outlet)
+        .annotate(_latest=Subquery(latest_snap_date))
+        .filter(snapshot_date=F("_latest"))
+        .select_related("item")
+        .values("item_id", "item__item_code", "item__item_name",
+                "item__category", "item__reorder_level", "item__cost_price",
+                "pos_quantity", "snapshot_date")
+    )
+
+    # --- Build item map ---
+    items_qs = Item.objects.filter(outlet=outlet)
+    if q:
+        items_qs = items_qs.filter(
+            Q(item_code__icontains=q) | Q(item_name__icontains=q)
+        )
+
+    item_map = {i.item_code: i for i in items_qs}
+    snap_map = {s["item__item_code"]: s for s in snaps}
+
+    rows = []
+    for code, item in item_map.items():
+        snap = snap_map.get(code)
+        current_stock = float(snap["pos_quantity"]) if snap else 0.0
+        snap_date = str(snap["snapshot_date"]) if snap else None
+        reorder_level = float(item.reorder_level or 0)
+        cost_price = float(item.cost_price or 0)
+
+        total_30 = sales_30.get(code, 0.0)
+        avg_daily_30 = total_30 / 30.0
+        total_90 = sales_90.get(code, total_30 * 3) if velocity_days == 90 else total_30 * 3
+        avg_daily_90 = total_90 / 90.0 if velocity_days == 90 else total_30 / 30.0
+
+        avg_daily = avg_daily_30 if velocity_days == 30 else avg_daily_90
+        days_cover = (current_stock / avg_daily) if avg_daily > 0 else (999.0 if current_stock > 0 else 0.0)
+
+        need = (cover_days * avg_daily) - current_stock
+        suggested_qty = math.ceil(max(need, 0))
+        est_cost = round(suggested_qty * cost_price, 2)
+
+        # apply stock filter
+        if stock_filter == "out_of_stock" and current_stock > 0:
+            continue
+        if stock_filter == "below_reorder" and current_stock > reorder_level:
+            continue
+
+        rows.append({
+            "item_code": code,
+            "item_name": item.item_name,
+            "category": item.category or "",
+            "reorder_level": reorder_level,
+            "current_stock": round(current_stock, 3),
+            "snap_date": snap_date,
+            "avg_daily_30": round(avg_daily_30, 3),
+            "avg_daily_90": round(avg_daily_90, 3),
+            "total_30d": round(total_30, 3),
+            "days_cover": round(days_cover, 1) if days_cover < 999 else None,
+            "suggested_qty": suggested_qty,
+            "cost_price": cost_price,
+            "est_cost": est_cost,
+            "has_sales_data": avg_daily_30 > 0,
+        })
+
+    # Sort
+    SORT_KEYS = {
+        "item_code": lambda r: r["item_code"],
+        "item_name": lambda r: r["item_name"],
+        "current_stock": lambda r: r["current_stock"],
+        "days_cover": lambda r: (r["days_cover"] if r["days_cover"] is not None else 9999),
+        "avg_daily_30": lambda r: r["avg_daily_30"],
+        "avg_daily_90": lambda r: r["avg_daily_90"],
+        "suggested_qty": lambda r: r["suggested_qty"],
+        "est_cost": lambda r: r["est_cost"],
+    }
+    key_fn = SORT_KEYS.get(sort_by, SORT_KEYS["days_cover"])
+    rows.sort(key=key_fn, reverse=(order == "desc"))
+
+    if request.query_params.get("export") == "csv":
+        buf = StringIO()
+        writer = csv_mod.writer(buf)
+        writer.writerow([
+            "Item Code", "Item Name", "Category",
+            "Reorder Level", "Current Stock", "Snapshot Date",
+            "Avg Daily (30d)", "Avg Daily (90d)", "Total Sold (30d)",
+            "Days Cover", "Suggested Order Qty", "Cost Price", "Est. Cost (LKR)",
+        ])
+        for r in rows:
+            writer.writerow([
+                r["item_code"], r["item_name"], r["category"],
+                r["reorder_level"], r["current_stock"], r["snap_date"] or "",
+                r["avg_daily_30"], r["avg_daily_90"], r["total_30d"],
+                r["days_cover"] if r["days_cover"] is not None else "",
+                r["suggested_qty"], r["cost_price"], r["est_cost"],
+            ])
+        resp = HttpResponse(buf.getvalue(), content_type="text/csv")
+        resp["Content-Disposition"] = (
+            f'attachment; filename="po-plan-{outlet.short_code}-{today}.csv"'
+        )
+        return resp
+
+    return Response({
+        "outlet_id": outlet.id,
+        "outlet_name": outlet.outlet_name,
+        "has_sales_data": has_sales,
+        "velocity_days": velocity_days,
+        "cover_days": cover_days,
+        "as_of": str(today),
+        "count": len(rows),
+        "rows": rows,
+    })

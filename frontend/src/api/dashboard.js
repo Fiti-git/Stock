@@ -399,3 +399,35 @@ export const getCounterPerformance = ({ outletId, dateFrom, dateTo } = {}) =>
       ...(dateTo ? { date_to: dateTo } : {}),
     },
   });
+
+export const getPOPlanning = ({
+  outletId, velocityDays, coverDays, filter, q, sortBy, order,
+} = {}) =>
+  api.get("/dashboard/po-planning/", {
+    params: {
+      ...(outletId ? { outlet: outletId } : {}),
+      ...(velocityDays ? { velocity_days: velocityDays } : {}),
+      ...(coverDays ? { cover_days: coverDays } : {}),
+      ...(filter ? { filter } : {}),
+      ...(q ? { q } : {}),
+      ...(sortBy ? { sort_by: sortBy } : {}),
+      ...(order ? { order } : {}),
+    },
+  });
+
+export const downloadPOPlanningCsv = ({
+  outletId, velocityDays, coverDays, filter, q, sortBy, order,
+} = {}) =>
+  api.get("/dashboard/po-planning/", {
+    params: {
+      export: "csv",
+      ...(outletId ? { outlet: outletId } : {}),
+      ...(velocityDays ? { velocity_days: velocityDays } : {}),
+      ...(coverDays ? { cover_days: coverDays } : {}),
+      ...(filter ? { filter } : {}),
+      ...(q ? { q } : {}),
+      ...(sortBy ? { sort_by: sortBy } : {}),
+      ...(order ? { order } : {}),
+    },
+    responseType: "blob",
+  });
