@@ -94,6 +94,12 @@ function ExpandedEvents({ row, onRerunSingle, rerunning }) {
           )}
         </span>
       </Typography>
+      {row.superseded_count > 0 && (
+        <Alert severity="info" sx={{ mb: 1, py: 0.5, fontSize: "0.8rem" }}>
+          <strong>{row.superseded_count} earlier count{row.superseded_count > 1 ? "s" : ""} hidden</strong> — when the same item is counted more than once in the same location on the same day, only the <em>latest</em> count is used for reconciliation (it supersedes the earlier one as a correction).
+          The {row.counts_in_range} event{row.counts_in_range !== 1 ? "s" : ""} shown below are the surviving counts.
+        </Alert>
+      )}
       {row.events_computable < row.counts_in_range && (
         <Typography variant="caption" sx={{ color: "#c07a00", display: "block", mb: 1 }}>
           {row.counts_in_range - row.events_computable} of {row.counts_in_range} counts lack a frozen anchor POS snapshot — reconciliation skipped for those rows.
