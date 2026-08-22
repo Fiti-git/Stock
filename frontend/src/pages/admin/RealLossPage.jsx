@@ -197,7 +197,7 @@ function ExpandedEvents({ row, onRerunSingle, rerunning }) {
             />
             {e.freeze_at && (
               <Typography variant="caption" sx={{ color: "text.disabled", fontSize: "0.7rem" }}>
-                {new Date(e.freeze_at).toLocaleString()}
+                {new Date(e.freeze_at).toLocaleString("en-LK", { timeZone: "Asia/Colombo" })}
               </Typography>
             )}
             <Button

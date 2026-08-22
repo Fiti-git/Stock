@@ -1,5 +1,15 @@
 from datetime import date, timedelta, datetime
 from decimal import Decimal
+from zoneinfo import ZoneInfo
+
+_SL_TZ = ZoneInfo("Asia/Colombo")
+
+
+def _fmt_local(dt):
+    """Format a UTC-aware datetime as HH:MM in Asia/Colombo (UTC+5:30)."""
+    if dt is None:
+        return ""
+    return dt.astimezone(_SL_TZ).strftime("%H:%M")
 
 from django.db import transaction
 from django.db.models import F, ExpressionWrapper, DecimalField, Count, Sum, Max, Q
@@ -1562,7 +1572,7 @@ def count_history_detail(request):
         rows.append({
             "count_id": c.id,
             "count_date": str(c.count_date),
-            "count_time": c.counted_at.strftime("%H:%M") if c.counted_at else "",
+            "count_time": _fmt_local(c.counted_at),
             "item_id": c.item_id,
             "item_code": it.item_code,
             "item_name": it.item_name,
@@ -1934,7 +1944,7 @@ def item_count_history(request):
                 events.append({
                     "count_id": c.id,
                     "date": str(cdate),
-                    "time": c.counted_at.strftime("%H:%M") if c.counted_at else "",
+                    "time": _fmt_local(c.counted_at),
                     "location": c.location_tag or "",
                     "counted": float(c.actual_qty or 0),
                     # AsatDate qty + date carried on the LAST row of the date
@@ -2498,7 +2508,7 @@ def real_loss_report(request):
                 for c in day_counts:
                     events.append({
                         "count_id": c.id, "date": str(cdate),
-                        "time": c.counted_at.strftime("%H:%M") if c.counted_at else "",
+                        "time": _fmt_local(c.counted_at),
                         "location": c.location_tag or "",
                         "counted": float(c.actual_qty or 0),
                         "anchor_qty": None, "anchor_date": None,
@@ -2575,7 +2585,7 @@ def real_loss_report(request):
                 is_date_summary = idx_i == len(day_counts) - 1
                 events.append({
                     "count_id": c.id, "date": str(cdate),
-                    "time": c.counted_at.strftime("%H:%M") if c.counted_at else "",
+                    "time": _fmt_local(c.counted_at),
                     "location": c.location_tag or "",
                     "counted": float(c.actual_qty or 0),
                     # Anchor + txn totals carried on the LAST location row so
