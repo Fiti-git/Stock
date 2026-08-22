@@ -92,7 +92,7 @@ export const routes = [
   // Organization launcher tile.
   { path: "/admin/master-products",       code: "nav.master_products",  label: "Master Products",  icon: Inventory2Icon,       roles: ["manager","admin","super_admin"],         group: "Masters",  system: "org" },
   { path: "/admin/master-mapping",        code: "nav.master_mapping",   label: "Master Mapping",   icon: EditNoteIcon,         roles: ["admin","super_admin"],                    group: "Masters",  system: "org" },
-  { path: "/admin/suppliers",             code: "nav.suppliers",        label: "Suppliers",        icon: LocalShippingIcon,    roles: ["admin","super_admin"],                    group: "Masters",  system: "org" },
+  { path: "/admin/suppliers",             code: "nav.suppliers",        label: "Suppliers",        icon: LocalShippingIcon,    roles: ["manager","admin","super_admin"],           group: "Masters",  system: "org" },
   { path: "/admin/categories",            code: "nav.categories",       label: "Categories",       icon: CategoryIcon,         roles: ["admin","super_admin"],                    group: "Masters",  system: "org" },
   { path: "/admin/locations",             code: "nav.categories",       label: "Locations",        icon: PlaceIcon,            roles: ["admin","super_admin"],                    group: "Masters",  system: "org" },
   { path: "/admin/demand",                code: "nav.demand_dashboard", label: "Demand Dashboard", icon: QueryStatsIcon,       roles: ["manager","admin","super_admin"],         group: "Planning", system: "org" },

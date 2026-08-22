@@ -2,13 +2,14 @@ import api from "./client";
 
 export const getSupplier = (id) => api.get(`/uploads/suppliers/${id}/`);
 
-export const getSuppliers = ({ q, active, page, pageSize } = {}) =>
+export const getSuppliers = ({ q, active, page, pageSize, outletId } = {}) =>
   api.get("/uploads/suppliers/", {
     params: {
       ...(q ? { q } : {}),
       ...(active != null ? { active: active ? "1" : "0" } : {}),
       ...(page ? { page } : {}),
       ...(pageSize ? { page_size: pageSize } : {}),
+      ...(outletId ? { outlet_id: outletId } : {}),
     },
   });
 

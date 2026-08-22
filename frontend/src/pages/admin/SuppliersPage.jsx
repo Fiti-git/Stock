@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Stack, TextField, Switch, FormControlLabel, Button, IconButton, Tooltip, Chip,
+  Stack, TextField, MenuItem, Switch, FormControlLabel, Button, IconButton, Tooltip, Chip,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
@@ -14,6 +14,7 @@ import { useNotify } from "../../providers/NotificationProvider";
 import {
   getSuppliers, createSupplier, updateSupplier, deleteSupplier,
 } from "../../api/suppliers";
+import { getOutlets } from "../../api/outlets";
 
 const EMPTY = {
   code: "",
@@ -42,15 +43,24 @@ export default function SuppliersPage() {
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 50 });
   const [rowCount, setRowCount] = useState(0);
   const [q, setQ] = useState("");
+  const [outletId, setOutletId] = useState("");
+  const [outlets, setOutlets] = useState([]);
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    getOutlets().then(({ data }) => {
+      setOutlets(Array.isArray(data) ? data : data.outlets || []);
+    }).catch(() => {});
+  }, []);
 
   async function load() {
     setLoading(true);
     try {
       const { data } = await getSuppliers({
         q: q.trim() || undefined,
+        outletId: outletId || undefined,
         page: paginationModel.page + 1,
         pageSize: paginationModel.pageSize,
       });
@@ -72,7 +82,7 @@ export default function SuppliersPage() {
     }, 250);
     return () => clearTimeout(t);
     // eslint-disable-next-line
-  }, [q]);
+  }, [q, outletId]);
 
   async function handleSubmit() {
     setSaving(true);
@@ -171,13 +181,25 @@ export default function SuppliersPage() {
         }
       />
 
-      <TextField
-        size="small"
-        placeholder="Search code or name…"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        sx={{ mb: 2, width: 320 }}
-      />
+      <Stack direction="row" spacing={2} sx={{ mb: 2 }} alignItems="center">
+        <TextField
+          size="small"
+          placeholder="Search code or name…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          sx={{ width: 280 }}
+        />
+        <TextField
+          select size="small" label="Outlet" sx={{ width: 220 }}
+          value={outletId}
+          onChange={(e) => setOutletId(e.target.value)}
+        >
+          <MenuItem value="">All outlets</MenuItem>
+          {outlets.map((o) => (
+            <MenuItem key={o.id} value={String(o.id)}>{o.outlet_name}</MenuItem>
+          ))}
+        </TextField>
+      </Stack>
 
       <DataTable
         rows={rows}

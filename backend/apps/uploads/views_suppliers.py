@@ -15,7 +15,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from apps.accounts.permissions import IsAdmin, IsSuperAdmin
+from apps.accounts.permissions import IsAdmin, IsSuperAdmin, IsManager
 
 from .models import Supplier, GrnLine, RtsLine, AuditLog
 
@@ -56,12 +56,17 @@ def _paginate(request, default_size=50, max_size=200):
 # CRUD                                                                        #
 # --------------------------------------------------------------------------- #
 @api_view(["GET", "POST"])
-@permission_classes([IsAdmin])
+@permission_classes([IsManager])
 def supplier_list_create(request):
     """
     GET  /api/uploads/suppliers/?q=&active=&page=&page_size=
     POST /api/uploads/suppliers/    body: code, name, phone, email, ...
+    POST restricted to admin and above.
     """
+    if request.method == "POST" and request.user.role not in ("admin", "super_admin"):
+        from rest_framework.response import Response as R
+        return R({"detail": "Admin access required."}, status=403)
+
     if request.method == "GET":
         page, page_size = _paginate(request)
         qs = Supplier.objects.all()
@@ -73,6 +78,17 @@ def supplier_list_create(request):
             qs = qs.filter(is_active=True)
         elif active in ("0", "false", "no"):
             qs = qs.filter(is_active=False)
+
+        outlet_id = request.query_params.get("outlet_id")
+        if outlet_id:
+            codes = (
+                GrnLine.objects
+                .filter(outlet_id=outlet_id)
+                .exclude(supplier_code="")
+                .values_list("supplier_code", flat=True)
+                .distinct()
+            )
+            qs = qs.filter(code__in=list(codes))
 
         total = qs.count()
         offset = (page - 1) * page_size
@@ -115,12 +131,15 @@ def supplier_list_create(request):
 
 
 @api_view(["GET", "PATCH", "DELETE"])
-@permission_classes([IsAdmin])
+@permission_classes([IsManager])
 def supplier_detail(request, pk: int):
     s = get_object_or_404(Supplier, pk=pk)
 
     if request.method == "GET":
         return Response(_supplier_dict(s))
+
+    if request.user.role not in ("admin", "super_admin"):
+        return Response({"detail": "Admin access required."}, status=403)
 
     if request.method == "PATCH":
         data = request.data or {}
@@ -305,7 +324,7 @@ def supplier_scorecard(request):
 
 
 @api_view(["GET"])
-@permission_classes([IsSuperAdmin])
+@permission_classes([IsManager])
 def supplier_detail_scorecard(request, code: str):
     """
     Drill-down scorecard for a single supplier: recent deliveries, top items
