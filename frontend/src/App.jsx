@@ -50,6 +50,7 @@ const SalesUploadPage = lazy(() => import("./pages/transactions/SalesUploadPage"
 const SalesReturnsUploadPage = lazy(() => import("./pages/transactions/SalesReturnsUploadPage"));
 const TransactionsHubPage = lazy(() => import("./pages/transactions/TransactionsHubPage"));
 const SuppliersPage = lazy(() => import("./pages/admin/SuppliersPage"));
+const SupplierDetailPage = lazy(() => import("./pages/admin/SupplierDetailPage"));
 const CategoriesPage = lazy(() => import("./pages/admin/CategoriesPage"));
 const LocationsPage = lazy(() => import("./pages/admin/LocationsPage"));
 const CountHistoryDetailPage = lazy(() => import("./pages/admin/CountHistoryDetailPage"));
@@ -150,6 +151,7 @@ export default function App() {
                     <Route path="/super-admin/user-permissions" element={<PermissionRoute code="nav.user_permissions"><UserPermissionsPage /></PermissionRoute>} />
 
                     <Route path="/admin/suppliers" element={<PermissionRoute code="nav.suppliers"><SuppliersPage /></PermissionRoute>} />
+                    <Route path="/admin/suppliers/:id" element={<PermissionRoute code="nav.suppliers"><SupplierDetailPage /></PermissionRoute>} />
                     <Route path="/admin/categories" element={<PermissionRoute code="nav.categories"><CategoriesPage /></PermissionRoute>} />
                     <Route path="/admin/locations" element={<PermissionRoute code="nav.categories"><LocationsPage /></PermissionRoute>} />
                     <Route path="/admin/count-history-detail" element={<PermissionRoute code="nav.manager_dashboard"><CountHistoryDetailPage /></PermissionRoute>} />

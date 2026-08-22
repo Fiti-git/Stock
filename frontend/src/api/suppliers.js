@@ -1,5 +1,7 @@
 import api from "./client";
 
+export const getSupplier = (id) => api.get(`/uploads/suppliers/${id}/`);
+
 export const getSuppliers = ({ q, active, page, pageSize } = {}) =>
   api.get("/uploads/suppliers/", {
     params: {

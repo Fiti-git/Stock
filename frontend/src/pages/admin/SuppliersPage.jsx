@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Stack, TextField, Switch, FormControlLabel, Button, IconButton, Tooltip, Chip,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import Layout from "../../components/Layout";
 import { PageHeader, DataTable, FormDialog, ConfirmDialog } from "../../components/ui";
@@ -33,6 +35,7 @@ function errMsg(err, fallback) {
 }
 
 export default function SuppliersPage() {
+  const navigate = useNavigate();
   const notify = useNotify();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -132,9 +135,14 @@ export default function SuppliersPage() {
       ),
     },
     {
-      field: "actions", headerName: "", width: 110, sortable: false, filterable: false,
+      field: "actions", headerName: "", width: 145, sortable: false, filterable: false,
       renderCell: (p) => (
         <Stack direction="row" spacing={0.25}>
+          <Tooltip title="View details">
+            <IconButton size="small" onClick={() => navigate(`/admin/suppliers/${p.row.id}`)}>
+              <OpenInNewIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           <Tooltip title="Edit">
             <IconButton size="small" onClick={() => setEditing({ ...EMPTY, ...p.row })}>
               <EditIcon fontSize="small" />
